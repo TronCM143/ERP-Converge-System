@@ -4,6 +4,7 @@ using converge_server.Models.DTOs.PurchaseRequest;
 using converge_server.Models.DTOs.PurchaseRequestItem;
 using converge_server.Models.DTOs.Quotation;
 using converge_server.Models.Entities;
+using converge_server.Services.Caching;
 using converge_server.Services.Interfaces;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
@@ -18,6 +19,7 @@ namespace converge_server.Services.Quotations
         private readonly IClientService _clientService;
         private readonly INotificationDispatchService _dispatchService;
         private readonly IAuditService _auditService;
+        private readonly ICacheService _cache;
 
         public QuotationService(
             AppDbContext context,
@@ -25,7 +27,8 @@ namespace converge_server.Services.Quotations
             IHubContext<NotificationHub> hubContext,
             IClientService clientService,
             INotificationDispatchService dispatchService,
-            IAuditService auditService)
+            IAuditService auditService,
+            ICacheService cache)
         {
             _context = context;
             _purchaseRequestService = purchaseRequestService;
@@ -33,6 +36,7 @@ namespace converge_server.Services.Quotations
             _clientService = clientService;
             _dispatchService = dispatchService;
             _auditService = auditService;
+            _cache = cache;
         }
 
         public async Task<Models.Entities.Quotation> CreateQuotationAsync(CreateQuotationDto dto)
@@ -133,18 +137,20 @@ namespace converge_server.Services.Quotations
             quotation.GrandTotal = materialsTotal + taxTotal + laborTotal;
 
             // CRM stage automation: a client's first-ever quotation promotes them from
-            // Leads to RFQ. "First" is checked here, before the insert below.
+            // Leads to Quote. "First" is checked here, before the insert below.
             if (client.Stage == ClientStage.Leads)
             {
                 var hasExistingQuotations = await _context.Quotations.AnyAsync(q => q.ClientId == client.Id);
                 if (!hasExistingQuotations)
                 {
-                    client.Stage = ClientStage.RFQ;
+                    client.Stage = ClientStage.Quote;
                 }
             }
 
             _context.Quotations.Add(quotation);
             await _context.SaveChangesAsync();
+            // Quotation count / auto stage promotion changed the client list.
+            await _cache.RemoveAsync(CacheKeys.Clients);
 
             await _auditService.LogAsync("Quotation", quotation.Id.ToString(), "Created", "system", null, quotation.QuotationNumber);
 
@@ -255,6 +261,7 @@ namespace converge_server.Services.Quotations
 
             var result = await _clientService.PrepareStageChangeAsync(quotation.Client!, ClientStage.Won, actorUsername);
             await _context.SaveChangesAsync();
+            await _cache.RemoveAsync(CacheKeys.Clients);
 
             await _auditService.LogAsync("Quotation", quotation.Id.ToString(), "Approved", actorUsername, null, quotation.QuotationNumber);
 
@@ -289,16 +296,10 @@ namespace converge_server.Services.Quotations
             quotation.Status = QuotationStatus.Rejected;
             quotation.UpdatedAt = DateTime.UtcNow;
 
-            var result = await _clientService.PrepareStageChangeAsync(quotation.Client!, ClientStage.Lost, actorUsername);
             await _context.SaveChangesAsync();
+            await _cache.RemoveAsync(CacheKeys.Clients);
 
             await _auditService.LogAsync("Quotation", quotation.Id.ToString(), "Rejected", actorUsername, null, quotation.QuotationNumber);
-
-            if (result != null)
-            {
-                await _auditService.LogAsync("Client", quotation.ClientId.ToString(), "StageChanged", actorUsername, result.OldStage.ToString(), result.NewStage.ToString(), $"Stage changed from {result.OldStage} to {result.NewStage}");
-                await _dispatchService.DispatchAsync(NotificationType.StageChanged, "Client Stage Changed", $"Client {quotation.Client!.Name} moved from {result.OldStage} to {result.NewStage}.");
-            }
         }
     }
 }

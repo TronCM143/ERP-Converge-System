@@ -16,6 +16,25 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(
         builder.Configuration.GetConnectionString("DefaultConnection")));
 
+// Caching: Redis when ConnectionStrings:Redis is set (e.g. "localhost:6379"),
+// otherwise an in-process memory cache so dev works without a Redis instance.
+var redisConnection = builder.Configuration.GetConnectionString("Redis");
+if (!string.IsNullOrWhiteSpace(redisConnection))
+{
+    builder.Services.AddStackExchangeRedisCache(options =>
+    {
+        options.Configuration = redisConnection;
+        options.InstanceName = "converge:";
+    });
+    Console.WriteLine("Cache: using Redis at " + redisConnection);
+}
+else
+{
+    builder.Services.AddDistributedMemoryCache();
+    Console.WriteLine("Cache: Redis not configured, using in-memory cache.");
+}
+builder.Services.AddScoped<converge_server.Services.Interfaces.ICacheService, converge_server.Services.Caching.CacheService>();
+
 // Controllers
 builder.Services.AddControllers();
 

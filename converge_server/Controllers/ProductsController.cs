@@ -1,6 +1,7 @@
 using converge_server.Data;
 using converge_server.Models.DTOs.Products;
 using converge_server.Models.Entities;
+using converge_server.Services.Caching;
 using converge_server.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -16,21 +17,30 @@ namespace converge_server.Controllers
     {
         private readonly AppDbContext _context;
         private readonly IAuditService _auditService;
+        private readonly ICacheService _cache;
 
-        public ProductsController(AppDbContext context, IAuditService auditService)
+        public ProductsController(AppDbContext context, IAuditService auditService, ICacheService cache)
         {
             _context = context;
             _auditService = auditService;
+            _cache = cache;
         }
 
         [HttpGet]
         public async Task<IActionResult> GetProducts()
         {
+            var cached = await _cache.GetAsync<List<Product>>(CacheKeys.Products);
+            if (cached != null)
+            {
+                return Ok(cached);
+            }
+
             var products = await _context.Products
                 .Where(p => p.IsActive)
                 .OrderBy(p => p.ProductName)
                 .ToListAsync();
 
+            await _cache.SetAsync(CacheKeys.Products, products, TimeSpan.FromMinutes(5));
             return Ok(products);
         }
 
@@ -58,6 +68,7 @@ namespace converge_server.Controllers
 
             _context.Products.Add(product);
             await _context.SaveChangesAsync();
+            await _cache.RemoveAsync(CacheKeys.Products);
 
             var actor = User.Identity?.Name ?? "system";
             await _auditService.LogAsync("Product", product.Id.ToString(), "Created", actor, null, product.ProductName);
@@ -91,6 +102,7 @@ namespace converge_server.Controllers
             product.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
+            await _cache.RemoveAsync(CacheKeys.Products);
 
             var actor = User.Identity?.Name ?? "system";
             await _auditService.LogAsync("Product", product.Id.ToString(), "Updated", actor, null, product.ProductName);

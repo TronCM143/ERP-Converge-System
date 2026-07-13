@@ -5,11 +5,9 @@ namespace converge_server.Models.Entities
     public enum ClientStage
     {
         Leads = 0,
-        RFQ = 1,
+        Quote = 1,
         Proposal = 2,
-        Negotiation = 3,
-        Won = 4,
-        Lost = 5
+        Won = 3
     }
 
     public class Client
@@ -36,6 +34,9 @@ namespace converge_server.Models.Entities
 
         [Required]
         public ClientStage Stage { get; set; } = ClientStage.Leads;
+
+        // Manual position of the card within its Kanban column (lower = higher up).
+        public int SortOrder { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

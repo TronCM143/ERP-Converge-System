@@ -135,3 +135,7 @@ C:\Users\tron\source\repos\Converge\converge_server\bin\Debug\net10.0\System.Ide
 C:\Users\tron\source\repos\Converge\converge_server\bin\Debug\net10.0\BouncyCastle.Cryptography.dll
 C:\Users\tron\source\repos\Converge\converge_server\bin\Debug\net10.0\MailKit.dll
 C:\Users\tron\source\repos\Converge\converge_server\bin\Debug\net10.0\MimeKit.dll
+C:\Users\tron\source\repos\Converge\converge_server\obj\Debug\net10.0\converge_server.sourcelink.json
+C:\Users\tron\source\repos\Converge\converge_server\bin\Debug\net10.0\Microsoft.Extensions.Caching.StackExchangeRedis.dll
+C:\Users\tron\source\repos\Converge\converge_server\bin\Debug\net10.0\Pipelines.Sockets.Unofficial.dll
+C:\Users\tron\source\repos\Converge\converge_server\bin\Debug\net10.0\StackExchange.Redis.dll

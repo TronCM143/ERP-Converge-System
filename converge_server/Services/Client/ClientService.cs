@@ -1,6 +1,7 @@
 using converge_server.Data;
 using converge_server.Models.DTOs.Client;
 using converge_server.Models.Entities;
+using converge_server.Services.Caching;
 using converge_server.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
@@ -12,18 +13,27 @@ namespace converge_server.Services.Clients
         private readonly AppDbContext _context;
         private readonly IAuditService _auditService;
         private readonly INotificationDispatchService _dispatchService;
+        private readonly ICacheService _cache;
 
-        public ClientService(AppDbContext context, IAuditService auditService, INotificationDispatchService dispatchService)
+        public ClientService(AppDbContext context, IAuditService auditService, INotificationDispatchService dispatchService, ICacheService cache)
         {
             _context = context;
             _auditService = auditService;
             _dispatchService = dispatchService;
+            _cache = cache;
         }
 
         public async Task<List<ClientResponseDto>> GetClientsAsync()
         {
-            return await _context.Clients
-                .OrderBy(c => c.Name)
+            var cached = await _cache.GetAsync<List<ClientResponseDto>>(CacheKeys.Clients);
+            if (cached != null)
+            {
+                return cached;
+            }
+
+            var clients = await _context.Clients
+                .OrderBy(c => c.SortOrder)
+                .ThenBy(c => c.Id)
                 .Select(c => new ClientResponseDto
                 {
                     Id = c.Id,
@@ -38,6 +48,9 @@ namespace converge_server.Services.Clients
                     CreatedAt = c.CreatedAt
                 })
                 .ToListAsync();
+
+            await _cache.SetAsync(CacheKeys.Clients, clients, TimeSpan.FromMinutes(2));
+            return clients;
         }
 
         public async Task<ClientResponseDto?> GetClientAsync(int clientId)
@@ -62,6 +75,9 @@ namespace converge_server.Services.Clients
 
         public async Task<ClientResponseDto> CreateClientAsync(CreateClientDto dto)
         {
+            // New cards land at the bottom of their column.
+            var maxSortOrder = await _context.Clients.MaxAsync(c => (int?)c.SortOrder) ?? 0;
+
             var client = new Client
             {
                 Name = dto.Name,
@@ -70,11 +86,13 @@ namespace converge_server.Services.Clients
                 ContactPerson = dto.ContactPerson,
                 Email = dto.Email,
                 Stage = ClientStage.Leads,
+                SortOrder = maxSortOrder + 1,
                 CreatedAt = DateTime.UtcNow
             };
 
             _context.Clients.Add(client);
             await _context.SaveChangesAsync();
+            await _cache.RemoveAsync(CacheKeys.Clients);
 
             await _auditService.LogAsync("Client", client.Id.ToString(), "Created", "system", null, JsonSerializer.Serialize(dto));
 
@@ -96,6 +114,7 @@ namespace converge_server.Services.Clients
             client.Email = dto.Email;
 
             await _context.SaveChangesAsync();
+            await _cache.RemoveAsync(CacheKeys.Clients);
             await _auditService.LogAsync("Client", clientId.ToString(), "Updated", "system", null, JsonSerializer.Serialize(dto));
 
             return await GetClientAsync(clientId);
@@ -111,6 +130,7 @@ namespace converge_server.Services.Clients
 
             var result = await PrepareStageChangeAsync(client, stage, "system");
             await _context.SaveChangesAsync();
+            await _cache.RemoveAsync(CacheKeys.Clients);
 
             if (result != null)
             {
@@ -126,6 +146,49 @@ namespace converge_server.Services.Clients
             }
 
             return await GetClientAsync(clientId);
+        }
+
+        public async Task<bool> ReorderClientsAsync(ClientStage stage, List<int> orderedClientIds, string actorUsername)
+        {
+            var clientsToUpdate = await _context.Clients
+                .Where(c => orderedClientIds.Contains(c.Id))
+                .ToListAsync();
+
+            if (clientsToUpdate.Count == 0)
+            {
+                return false;
+            }
+
+            // At most one card changes column per drag; the rest are same-column reorders.
+            Client? movedClient = null;
+            StageChangeResult? stageChange = null;
+
+            foreach (var client in clientsToUpdate)
+            {
+                if (client.Stage != stage)
+                {
+                    movedClient = client;
+                    stageChange = await PrepareStageChangeAsync(client, stage, actorUsername);
+                }
+                client.SortOrder = orderedClientIds.IndexOf(client.Id);
+            }
+
+            await _context.SaveChangesAsync();
+            await _cache.RemoveAsync(CacheKeys.Clients);
+
+            if (stageChange != null && movedClient != null)
+            {
+                await _auditService.LogAsync("Client", movedClient.Id.ToString(), "StageChanged", actorUsername, stageChange.OldStage.ToString(), stageChange.NewStage.ToString(), $"Stage changed from {stageChange.OldStage} to {stageChange.NewStage}");
+
+                await _dispatchService.DispatchAsync(Models.Entities.NotificationType.StageChanged, "Client Stage Changed", $"Client {movedClient.Name} moved from {stageChange.OldStage} to {stageChange.NewStage}.");
+
+                if (stageChange.EnteredWon)
+                {
+                    await _dispatchService.DispatchAsync(Models.Entities.NotificationType.WonApproval, "Deal Won", $"Congratulations! You've won the deal with {movedClient.Name}!");
+                }
+            }
+
+            return true;
         }
 
         public async Task<StageChangeResult?> PrepareStageChangeAsync(Client trackedClient, ClientStage newStage, string actorUsername)

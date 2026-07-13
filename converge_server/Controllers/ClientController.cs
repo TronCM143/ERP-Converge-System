@@ -55,6 +55,24 @@ namespace converge_server.Controllers
             return client == null ? NotFound() : Ok(client);
         }
 
+        [HttpPut("reorder")]
+        public async Task<IActionResult> ReorderClients([FromBody] ReorderClientsDto dto)
+        {
+            if (!Enum.TryParse<ClientStage>(dto.Stage, ignoreCase: true, out var parsedStage)
+                || !Enum.IsDefined(typeof(ClientStage), parsedStage))
+            {
+                return BadRequest(new { error = $"Unknown stage '{dto.Stage}'." });
+            }
+
+            if (dto.OrderedClientIds.Count == 0)
+            {
+                return BadRequest(new { error = "OrderedClientIds must not be empty." });
+            }
+
+            var updated = await _clientService.ReorderClientsAsync(parsedStage, dto.OrderedClientIds, User.Identity?.Name ?? "system");
+            return updated ? NoContent() : NotFound();
+        }
+
         [HttpPatch("{clientId:int}/stage")]
         public async Task<IActionResult> UpdateStage(int clientId, [FromBody] UpdateClientStageDto dto)
         {
