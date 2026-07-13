@@ -1,0 +1,10 @@
+Implemented endpoints:
+POST /api/purchase-requests - Create a purchase request with client details and requested items. (Implemented)
+POST /api/purchase-requests/{purchaseRequestId}/bill-of-material - Create a bill of materials for a purchase request and auto-check inventory existence. (Implemented)
+
+Pending endpoints:
+Completed endpoints:
+GET /api/purchase-requests/{purchaseRequestId}/process - Retrieve the purchase request process state, including items and BOM status. (Implemented)
+GET /api/purchase-requests/bill-of-materials/{billOfMaterialId} - Retrieve a bill of materials and its item statuses. (Implemented)
+PUT /api/purchase-requests/bill-of-material-items/{itemId}/status - Update the status and remarks for a bill of material item. (Implemented)
+POST /api/purchase-requests/bill-of-materials/{billOfMaterialId}/complete - Mark the bill of materials as complete once all items are ready. (Implemented)

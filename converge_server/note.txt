@@ -1,0 +1,229 @@
+Purchasing Module Overview
+Objective
+
+The Purchasing Module manages the procurement process after a sales quotation has been approved. It ensures that all requested products are tracked from the initial Purchase Request through inventory checking, supplier ordering, receiving, and finally the creation of a Purchase Order.
+
+The module is designed to eliminate duplicate encoding, improve purchasing visibility, and provide complete traceability of every requested item.
+
+
+
+Business Process Flow
+
+Sales Department
+       │
+       ▼
+Purchase Request (PR)
+       │
+       ▼
+Bill of Materials (BOM)
+       │
+       ├── Inventory Checking
+       │
+       ├── Supplier Ordering
+       │
+       ├── Receiving of Items
+       │
+       └── Item Status Monitoring
+       │
+       ▼
+All Required Items Received
+       │
+       ▼
+Generate Purchase Order (PO)
+
+
+
+Process Description
+1. Purchase Request (PR)
+
+The Sales Department generates a Purchase Request whenever products are required for a client project.
+
+A Purchase Request contains:
+
+Client Information
+Delivery Address
+Requested Products
+Required Quantity
+
+Each Purchase Request represents one client but may contain multiple products.
+
+Example:
+
+PR-000001
+
+Client:
+ABC Corporation
+
+Address:
+Koronadal City
+
+Items:
+--------------------------------
+10 × CCTV Camera
+1 × NVR
+300m × CAT6 Cable
+1 × Network Rack
+
+The Purchase Request serves as the official procurement request.
+
+2. Bill of Materials (BOM)
+
+After a Purchase Request is created, the system automatically generates a Bill of Materials.
+
+The BOM is the purchasing workspace where every requested item is monitored throughout the procurement process.
+
+For each product, Purchasing can determine whether it:
+
+is already available in inventory,
+needs to be ordered,
+has been ordered,
+has already arrived,
+is complete.
+
+Example:
+
+Product	Qty	Inventory	Status
+Camera	10	Not Available	Ordered
+NVR	1	Available	Ready
+Cable	300m	Not Available	Received
+Rack	1	Available	Ready
+
+The BOM is considered Completed only when every required item has been received or is available.
+
+3. Purchase Order (PO)
+
+Once all BOM items are completed, the system generates the Purchase Order.
+
+Unlike the Purchase Request, the Purchase Order becomes the official purchasing document issued to suppliers.
+
+Additional purchasing information is added during PO generation, including:
+
+Supplier
+Unit Prices
+Discounts
+Taxes
+Order Date
+Expected Arrival Date
+
+The Purchase Order represents the finalized procurement transaction.
+
+Proposed Database Structure
+PurchaseRequest
+
+Stores the header information of every Purchase Request.
+
+Column	Description
+Id	Primary Key
+PRNumber	Auto-generated PR Number
+ClientId	Client Reference
+ShippingAddress	Delivery Address
+RequestDate	Date Created
+Status	Pending / Processing / Completed
+Remarks	Optional Notes
+
+Relationship:
+
+One Purchase Request
+        │
+        └── Many Purchase Request Items
+PurchaseRequestItem
+
+Stores every product requested under a Purchase Request.
+
+Column	Description
+Id	Primary Key
+PurchaseRequestId	Parent PR
+ProductId	Product Reference (nullable)
+ItemDescription	Product Description
+Quantity	Requested Quantity
+Unit	pcs, box, meter, etc.
+Status	Pending / Ordered / Received
+BillOfMaterials
+
+Represents the purchasing process of one Purchase Request.
+
+Column	Description
+Id	Primary Key
+PurchaseRequestId	Related Purchase Request
+Status	Processing / Completed
+DateCreated	Creation Date
+
+Relationship
+
+Purchase Request
+        │
+        ▼
+Bill Of Materials
+        │
+        └── Many BOM Items
+BillOfMaterialItem
+
+Tracks the procurement status of every requested item.
+
+Column	Description
+Id	Primary Key
+BillOfMaterialId	Parent BOM
+ProductId	Product Reference
+Quantity	Required Quantity
+InventoryStatus	Available / Not Available
+ProcurementStatus	Pending / Ordered / Received / Ready
+SupplierId	Assigned Supplier (Optional)
+
+This table acts as the operational tracking table for Purchasing.
+
+PurchaseOrder
+
+Generated only after all required products have been completed.
+
+Column	Description
+Id	Primary Key
+PONumber	Auto-generated PO Number
+BillOfMaterialId	Source BOM
+ClientId	Client Reference
+ShippingAddress	Delivery Address
+SupplierId	Supplier
+OrderDate	Purchase Date
+ExpectedArrival	Expected Delivery
+UntaxedAmount	Subtotal
+VATAmount	Tax
+Discount	Discount
+GrandTotal	Final Total
+Status	Draft / Sent / Completed
+
+Relationship
+
+One Purchase Order
+        │
+        └── Many Purchase Order Items
+PurchaseOrderItem
+
+Contains the finalized purchasing details.
+
+Column	Description
+Id	Primary Key
+PurchaseOrderId	Parent PO
+ProductId	Product
+ItemDescription	Product Name
+Quantity	Ordered Quantity
+UnitPrice	Price per Unit
+Discount	Optional
+VAT	Optional
+Amount	Total Amount
+Entity Relationship Overview
+PurchaseRequest
+        │
+        ├──────────────┐
+        ▼              │
+PurchaseRequestItem    │
+                       │
+                       ▼
+                BillOfMaterials
+                       │
+                       ▼
+              BillOfMaterialItem
+                       │
+                       ▼
+                PurchaseOrder
+                       │
+                       ▼
+               PurchaseOrderItem

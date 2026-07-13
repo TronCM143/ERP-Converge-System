@@ -1,0 +1,45 @@
+.pr-popup-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.35);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 14vh;
+  z-index: 500;
+}
+
+.pr-popup {
+  width: 100%;
+  max-width: 380px;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 24px 48px rgba(16, 24, 40, 0.22);
+  padding: 22px;
+  text-align: center;
+}
+
+.pr-popup__icon {
+  font-size: 30px;
+  margin-bottom: 8px;
+}
+
+.pr-popup__title {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.pr-popup__body {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: 18px;
+}
+
+.pr-popup__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}

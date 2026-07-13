@@ -1,0 +1,21 @@
+.quotations-list-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.quotations-list__header {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.quotations-list__nav {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.quotations-list__search {
+  max-width: 320px;
+}

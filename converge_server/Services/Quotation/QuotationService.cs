@@ -1,0 +1,304 @@
+using converge_server.Data;
+using converge_server.Hubs;
+using converge_server.Models.DTOs.PurchaseRequest;
+using converge_server.Models.DTOs.PurchaseRequestItem;
+using converge_server.Models.DTOs.Quotation;
+using converge_server.Models.Entities;
+using converge_server.Services.Interfaces;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
+
+namespace converge_server.Services.Quotations
+{
+    public class QuotationService : IQuotationService
+    {
+        private readonly AppDbContext _context;
+        private readonly IPurchaseRequestService _purchaseRequestService;
+        private readonly IHubContext<NotificationHub> _hubContext;
+        private readonly IClientService _clientService;
+        private readonly INotificationDispatchService _dispatchService;
+        private readonly IAuditService _auditService;
+
+        public QuotationService(
+            AppDbContext context,
+            IPurchaseRequestService purchaseRequestService,
+            IHubContext<NotificationHub> hubContext,
+            IClientService clientService,
+            INotificationDispatchService dispatchService,
+            IAuditService auditService)
+        {
+            _context = context;
+            _purchaseRequestService = purchaseRequestService;
+            _hubContext = hubContext;
+            _clientService = clientService;
+            _dispatchService = dispatchService;
+            _auditService = auditService;
+        }
+
+        public async Task<Models.Entities.Quotation> CreateQuotationAsync(CreateQuotationDto dto)
+        {
+            var client = await _context.Clients.FindAsync(dto.ClientId);
+            if (client == null)
+            {
+                throw new InvalidOperationException($"Client {dto.ClientId} was not found.");
+            }
+
+            var productIds = dto.MaterialItems.Select(i => i.ProductId).Distinct().ToList();
+            var products = await _context.Products
+                .Where(p => productIds.Contains(p.Id))
+                .ToDictionaryAsync(p => p.Id);
+
+            var missing = productIds.Where(id => !products.ContainsKey(id)).ToList();
+            if (missing.Any())
+            {
+                throw new InvalidOperationException($"Unknown product id(s): {string.Join(", ", missing)}");
+            }
+
+            var year = DateTime.UtcNow.Year;
+            var lastNumber = await _context.Quotations
+                .Where(q => q.QuotationNumber.StartsWith($"QTN-{year}-"))
+                .OrderByDescending(q => q.QuotationNumber)
+                .Select(q => q.QuotationNumber)
+                .FirstOrDefaultAsync();
+
+            var nextSequence = 1;
+            if (!string.IsNullOrEmpty(lastNumber))
+            {
+                var lastSequenceText = lastNumber.Split('-').Last();
+                if (int.TryParse(lastSequenceText, out var lastSequence))
+                {
+                    nextSequence = lastSequence + 1;
+                }
+            }
+
+            var quotation = new Models.Entities.Quotation
+            {
+                QuotationNumber = $"QTN-{year}-{nextSequence:0000}",
+                QuotationName = dto.QuotationName,
+                OriginalPrompt = dto.OriginalPrompt,
+                ClientId = client.Id,
+                Status = QuotationStatus.Draft,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            decimal materialsTotal = 0;
+            decimal taxTotal = 0;
+            var sortOrder = 0;
+            foreach (var itemDto in dto.MaterialItems)
+            {
+                var product = products[itemDto.ProductId];
+                var unitPrice = itemDto.UnitPrice ?? product.Price;
+                var lineTotal = unitPrice * itemDto.Quantity;
+                materialsTotal += lineTotal;
+                taxTotal += lineTotal * itemDto.TaxPercent / 100m;
+
+                quotation.MaterialItems.Add(new QuotationMaterialItem
+                {
+                    Quotation = quotation,
+                    ProductId = product.Id,
+                    ItemName = product.ProductName,
+                    Specification = itemDto.Note ?? string.Empty,
+                    Model = product.Model,
+                    Quantity = itemDto.Quantity,
+                    Unit = string.IsNullOrWhiteSpace(itemDto.Unit) ? "pcs" : itemDto.Unit,
+                    UnitPrice = unitPrice,
+                    TaxPercent = itemDto.TaxPercent,
+                    SortOrder = sortOrder++,
+                    LineTotal = lineTotal
+                });
+            }
+
+            decimal laborTotal = 0;
+            var laborSortOrder = 0;
+            foreach (var laborDto in dto.LaborItems)
+            {
+                var lineTotal = laborDto.Days * laborDto.Persons * laborDto.RatePerPersonPerDay;
+                laborTotal += lineTotal;
+
+                quotation.LaborItems.Add(new QuotationLaborItem
+                {
+                    Quotation = quotation,
+                    Description = laborDto.Description,
+                    Days = laborDto.Days,
+                    Persons = laborDto.Persons,
+                    RatePerPersonPerDay = laborDto.RatePerPersonPerDay,
+                    SortOrder = laborSortOrder++,
+                    LineTotal = lineTotal
+                });
+            }
+
+            quotation.MaterialsTotal = materialsTotal;
+            quotation.LaborTotal = laborTotal;
+            quotation.GrandTotal = materialsTotal + taxTotal + laborTotal;
+
+            // CRM stage automation: a client's first-ever quotation promotes them from
+            // Leads to RFQ. "First" is checked here, before the insert below.
+            if (client.Stage == ClientStage.Leads)
+            {
+                var hasExistingQuotations = await _context.Quotations.AnyAsync(q => q.ClientId == client.Id);
+                if (!hasExistingQuotations)
+                {
+                    client.Stage = ClientStage.RFQ;
+                }
+            }
+
+            _context.Quotations.Add(quotation);
+            await _context.SaveChangesAsync();
+
+            await _auditService.LogAsync("Quotation", quotation.Id.ToString(), "Created", "system", null, quotation.QuotationNumber);
+
+            return quotation;
+        }
+
+        public async Task<IEnumerable<Models.Entities.Quotation>> GetQuotationsAsync(int? clientId = null)
+        {
+            var query = _context.Quotations
+                .Include(q => q.Client)
+                .Include(q => q.MaterialItems)
+                .Include(q => q.LaborItems)
+                .AsQueryable();
+
+            if (clientId.HasValue)
+            {
+                query = query.Where(q => q.ClientId == clientId.Value);
+            }
+
+            return await query.OrderByDescending(q => q.CreatedAt).ToListAsync();
+        }
+
+        public Task<Models.Entities.Quotation?> GetQuotationAsync(int quotationId)
+        {
+            return _context.Quotations
+                .Include(q => q.Client)
+                .Include(q => q.MaterialItems)
+                .Include(q => q.LaborItems)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(q => q.Id == quotationId);
+        }
+
+        public async Task<PurchaseRequest> SendToPurchasingAsync(int quotationId)
+        {
+            var quotation = await _context.Quotations
+                .Include(q => q.Client)
+                .Include(q => q.MaterialItems)
+                .FirstOrDefaultAsync(q => q.Id == quotationId);
+
+            if (quotation == null)
+            {
+                throw new KeyNotFoundException("Quotation not found.");
+            }
+
+            if (quotation.PurchaseRequestId.HasValue)
+            {
+                throw new InvalidOperationException("This quotation has already been sent to purchasing.");
+            }
+
+            if (!quotation.MaterialItems.Any())
+            {
+                throw new InvalidOperationException("This quotation has no material items to request.");
+            }
+
+            var prDto = new CreatePurchaseRequestDto
+            {
+                ClientName = quotation.Client!.Name,
+                ShippingAddress = quotation.Client.Address,
+                Remarks = $"Auto-generated from Quotation {quotation.QuotationNumber}",
+                Products = quotation.MaterialItems.Select(i => new CreatePurchaseRequestItemDto
+                {
+                    ProductId = i.ProductId,
+                    ItemName = i.ItemName,
+                    Quantity = i.Quantity
+                }).ToList()
+            };
+
+            var purchaseRequest = await _purchaseRequestService.CreatePurchaseRequestAsync(prDto, source: "Quotation", quotationId: quotation.Id);
+
+            quotation.PurchaseRequestId = purchaseRequest.Id;
+            quotation.Status = QuotationStatus.Sent;
+            quotation.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            await _auditService.LogAsync("Quotation", quotation.Id.ToString(), "SentToPurchasing", "system", null, purchaseRequest.PRNumber, $"Sent to purchasing as {purchaseRequest.PRNumber}");
+
+            await _hubContext.Clients.Group("purchasing").SendAsync("NewPurchaseRequest", new
+            {
+                purchaseRequest.Id,
+                purchaseRequest.PRNumber,
+                purchaseRequest.ClientName,
+                ItemCount = purchaseRequest.Items.Count,
+                Source = purchaseRequest.Source,
+                QuotationNumber = quotation.QuotationNumber
+            });
+
+            return purchaseRequest;
+        }
+
+        public async Task ApproveAsync(int quotationId, string actorUsername)
+        {
+            var quotation = await _context.Quotations
+                .Include(q => q.Client)
+                .FirstOrDefaultAsync(q => q.Id == quotationId);
+
+            if (quotation == null)
+            {
+                throw new KeyNotFoundException("Quotation not found.");
+            }
+
+            if (quotation.Status != QuotationStatus.Sent)
+            {
+                throw new InvalidOperationException("Only a quotation that has been sent to purchasing can be approved.");
+            }
+
+            quotation.Status = QuotationStatus.Approved;
+            quotation.UpdatedAt = DateTime.UtcNow;
+
+            var result = await _clientService.PrepareStageChangeAsync(quotation.Client!, ClientStage.Won, actorUsername);
+            await _context.SaveChangesAsync();
+
+            await _auditService.LogAsync("Quotation", quotation.Id.ToString(), "Approved", actorUsername, null, quotation.QuotationNumber);
+
+            if (result != null)
+            {
+                await _auditService.LogAsync("Client", quotation.ClientId.ToString(), "StageChanged", actorUsername, result.OldStage.ToString(), result.NewStage.ToString(), $"Stage changed from {result.OldStage} to {result.NewStage}");
+                await _dispatchService.DispatchAsync(NotificationType.StageChanged, "Client Stage Changed", $"Client {quotation.Client!.Name} moved from {result.OldStage} to {result.NewStage}.");
+
+                if (result.EnteredWon)
+                {
+                    await _dispatchService.DispatchAsync(NotificationType.WonApproval, "Deal Won", $"Congratulations! You've won the deal with {quotation.Client.Name}!");
+                }
+            }
+        }
+
+        public async Task RejectAsync(int quotationId, string actorUsername)
+        {
+            var quotation = await _context.Quotations
+                .Include(q => q.Client)
+                .FirstOrDefaultAsync(q => q.Id == quotationId);
+
+            if (quotation == null)
+            {
+                throw new KeyNotFoundException("Quotation not found.");
+            }
+
+            if (quotation.Status != QuotationStatus.Sent)
+            {
+                throw new InvalidOperationException("Only a quotation that has been sent to purchasing can be rejected.");
+            }
+
+            quotation.Status = QuotationStatus.Rejected;
+            quotation.UpdatedAt = DateTime.UtcNow;
+
+            var result = await _clientService.PrepareStageChangeAsync(quotation.Client!, ClientStage.Lost, actorUsername);
+            await _context.SaveChangesAsync();
+
+            await _auditService.LogAsync("Quotation", quotation.Id.ToString(), "Rejected", actorUsername, null, quotation.QuotationNumber);
+
+            if (result != null)
+            {
+                await _auditService.LogAsync("Client", quotation.ClientId.ToString(), "StageChanged", actorUsername, result.OldStage.ToString(), result.NewStage.ToString(), $"Stage changed from {result.OldStage} to {result.NewStage}");
+                await _dispatchService.DispatchAsync(NotificationType.StageChanged, "Client Stage Changed", $"Client {quotation.Client!.Name} moved from {result.OldStage} to {result.NewStage}.");
+            }
+        }
+    }
+}

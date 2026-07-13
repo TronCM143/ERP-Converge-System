@@ -1,0 +1,113 @@
+.products-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.products-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.products-toolbar__search {
+  width: 240px;
+}
+
+.products-table {
+  margin: 0;
+}
+
+.products-table thead th {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  padding: 14px 12px;
+  text-align: left;
+  border-bottom: 2px solid var(--border);
+}
+
+.products-table__header {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s ease;
+}
+
+.products-table__header:hover {
+  color: var(--primary);
+}
+
+.product-row {
+  transition: background-color 0.15s ease;
+  cursor: pointer;
+}
+
+.product-row:hover {
+  background-color: #f0f7ff;
+}
+
+.product-row td {
+  padding: 12px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.product-row__name {
+  font-weight: 500;
+}
+
+.product-row__specs {
+  color: var(--muted);
+  font-style: italic;
+  font-size: 12px;
+}
+
+.product-row__price {
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.product-row__date {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.product-details {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.product-details__row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.product-details__row > label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+
+.product-details__value {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.product-details__specs {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.8;
+  white-space: pre-wrap;
+  background: #f8fafc;
+  padding: 12px;
+  border-radius: 6px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
