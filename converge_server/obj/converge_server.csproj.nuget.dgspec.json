@@ -56,6 +56,10 @@
               "target": "Package",
               "version": "[4.2.0, )"
             },
+            "DotNetEnv": {
+              "target": "Package",
+              "version": "[3.2.0, )"
+            },
             "MailKit": {
               "target": "Package",
               "version": "[4.17.0, )"
@@ -91,6 +95,10 @@
             "Npgsql.EntityFrameworkCore.PostgreSQL": {
               "target": "Package",
               "version": "[10.0.2, )"
+            },
+            "Resend": {
+              "target": "Package",
+              "version": "[0.6.0, )"
             },
             "Swashbuckle.AspNetCore": {
               "target": "Package",

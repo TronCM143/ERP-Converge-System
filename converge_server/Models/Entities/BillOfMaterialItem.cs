@@ -45,6 +45,12 @@ namespace converge_server.Models.Entities
         [MaxLength(30)]
         public string Status { get; set; } = "Pending";
 
+        // Expected arrival date assigned by purchasing staff.
+        public DateTime? DeliveryDate { get; set; }
+
+        // Stamped automatically the moment the item is marked Received.
+        public DateTime? ReceivedAt { get; set; }
+
         public string? Remarks { get; set; }
     }
 }

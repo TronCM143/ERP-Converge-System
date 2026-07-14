@@ -63,6 +63,32 @@ namespace converge_server.Controllers
             }
         }
 
+        [HttpPut("{quotationId:int}")]
+        [Authorize(Roles = "quotation")]
+        public async Task<IActionResult> UpdateQuotation(int quotationId, [FromBody] CreateQuotationDto dto)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            try
+            {
+                var actorUsername = User.Identity?.Name ?? "system";
+                await _quotationService.UpdateQuotationAsync(quotationId, dto, actorUsername);
+                var full = await _quotationService.GetQuotationAsync(quotationId);
+                return Ok(MapToResponse(full!));
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
         [HttpPost("generate")]
         [Authorize(Roles = "quotation")]
         public async Task<IActionResult> GenerateDraft([FromBody] GenerateQuotationRequestDto dto)
@@ -157,6 +183,7 @@ namespace converge_server.Controllers
                 QuotationNumber = quotation.QuotationNumber,
                 QuotationName = quotation.QuotationName,
                 OriginalPrompt = quotation.OriginalPrompt,
+                Notes = quotation.Notes,
                 ClientId = quotation.ClientId,
                 ClientName = quotation.Client?.Name ?? string.Empty,
                 Status = quotation.Status.ToString(),

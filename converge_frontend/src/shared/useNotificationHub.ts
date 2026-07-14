@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import * as signalR from '@microsoft/signalr';
-import { getToken } from './api';
+import { apiFetch, getToken } from './api';
 
 export interface NewPurchaseRequestNotification {
   id: string;
@@ -11,14 +11,40 @@ export interface NewPurchaseRequestNotification {
   quotationNumber?: string;
 }
 
-// Connects to the backend NotificationHub (only while `enabled`, e.g. once logged
-// in as purchasing) and surfaces the most recent "NewPurchaseRequest" broadcast.
+// Database-backed notification (see backend UserNotification entity).
+export interface UserNotificationItem {
+  id: number;
+  type: string;
+  title: string;
+  details?: string | null;
+  isRead: boolean;
+  createdAt: string;
+}
+
+// Connects to the backend NotificationHub (only while `enabled`) and surfaces:
+// - the most recent "NewPurchaseRequest" broadcast (purchasing side popup)
+// - persisted role notifications: fetched from the DB on load so they survive
+//   refreshes/offline periods, with live "UserNotification" pushes merged in.
 export function useNotificationHub(enabled: boolean) {
   const [notification, setNotification] = useState<NewPurchaseRequestNotification | null>(null);
+  const [userNotifications, setUserNotifications] = useState<UserNotificationItem[]>([]);
   const connectionRef = useRef<signalR.HubConnection | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
+
+    // Load what's already stored (missed-while-offline notifications included).
+    (async () => {
+      try {
+        const res = await apiFetch('/api/notifications');
+        if (res.ok) {
+          const data = await res.json();
+          setUserNotifications(Array.isArray(data) ? data : []);
+        }
+      } catch (err) {
+        console.error('Failed to load notifications:', err);
+      }
+    })();
 
     const connection = new signalR.HubConnectionBuilder()
       .withUrl('/hubs/notifications', {
@@ -29,6 +55,12 @@ export function useNotificationHub(enabled: boolean) {
 
     connection.on('NewPurchaseRequest', (payload: NewPurchaseRequestNotification) => {
       setNotification(payload);
+    });
+
+    connection.on('UserNotification', (payload: UserNotificationItem) => {
+      setUserNotifications((prev) =>
+        prev.some((n) => n.id === payload.id) ? prev : [payload, ...prev]
+      );
     });
 
     connection.start().catch((err) => {
@@ -45,5 +77,17 @@ export function useNotificationHub(enabled: boolean) {
 
   const clearNotification = () => setNotification(null);
 
-  return { notification, clearNotification };
+  const unreadCount = userNotifications.filter((n) => !n.isRead).length;
+
+  // Optimistically flips everything to read, then persists.
+  const markAllRead = async () => {
+    setUserNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    try {
+      await apiFetch('/api/notifications/mark-read', { method: 'PUT' });
+    } catch (err) {
+      console.error('Failed to mark notifications read:', err);
+    }
+  };
+
+  return { notification, clearNotification, userNotifications, unreadCount, markAllRead };
 }

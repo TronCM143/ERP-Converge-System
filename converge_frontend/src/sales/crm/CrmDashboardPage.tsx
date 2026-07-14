@@ -1,33 +1,63 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { DndContext, DragEndEvent, closestCorners, DragOverlay } from '@dnd-kit/core';
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import PageHeader from '../../shared/PageHeader';
-import ClientSelectorModal from '../../shared/ClientSelectorModal';
+import { AnimatePresence } from 'framer-motion';
+import {
+  DndContext,
+  DragEndEvent,
+  closestCorners,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors
+} from '@dnd-kit/core';
+import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { Button } from '../../components/ui/button';
+import { Input } from '../../components/ui/input';
+import { Card } from '../../components/ui/card';
 import ActivityFeed from '../../shared/ActivityFeed';
 import { apiFetch } from '../../shared/api';
+import { queryCache, CACHE_KEYS } from '../../shared/queryCache';
 import ClientFormModal, { ClientSummary } from './ClientFormModal';
 import KanbanCard from './KanbanCard';
 import KanbanCardOverlay from './KanbanCardOverlay';
 import KanbanColumn from './KanbanColumn';
-import './CrmDashboardPage.css';
+import { Package, Plus, Users, FileText } from 'lucide-react';
 
 const STAGES = ['Leads', 'Quote', 'Proposal', 'Won'] as const;
 
 export default function CrmDashboardPage() {
   const navigate = useNavigate();
-  const [clients, setClients] = useState<ClientSummary[]>([]);
+  // Seed from the session cache so returning to this page renders the board
+  // instantly; the fetch below still runs and refreshes in the background.
+  const [clients, setClients] = useState<ClientSummary[]>(
+    () => queryCache.get<ClientSummary[]>(CACHE_KEYS.clients) ?? []
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [isClientFormOpen, setIsClientFormOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeId, setActiveId] = useState<number | null>(null);
+  // Set once a real drag starts, so the click that fires after dropping
+  // a card doesn't also navigate to the client profile.
+  const suppressClickRef = useRef(false);
+
+  // A plain click activates immediately; dragging only starts after the
+  // pointer moves 8px, so cards stay clickable AND draggable.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  );
 
   const fetchClients = async () => {
+    // Only show the loading state on a true cold start (nothing cached);
+    // otherwise revalidate silently behind the already-rendered board.
+    const hasCache = queryCache.get<ClientSummary[]>(CACHE_KEYS.clients) !== undefined;
     try {
-      setIsLoading(true);
+      if (!hasCache) setIsLoading(true);
       const res = await apiFetch('/api/clients');
-      if (res.ok) setClients(await res.json());
+      if (res.ok) {
+        const data: ClientSummary[] = await res.json();
+        setClients(data);
+        queryCache.set(CACHE_KEYS.clients, data);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -41,40 +71,89 @@ export default function CrmDashboardPage() {
 
   const handleClientCreated = (client: ClientSummary) => {
     setIsClientFormOpen(false);
-    setClients((prev) => [...prev, client]);
+    setClients((prev) => {
+      const next = [...prev, client];
+      queryCache.set(CACHE_KEYS.clients, next);
+      return next;
+    });
     navigate(`/sales/clients/${client.id}`);
   };
 
   const handleDragStart = (event: any) => {
+    suppressClickRef.current = true;
     setActiveId(parseInt(event.active.id as string));
+  };
+
+  const releaseClickSuppression = () => {
+    // The browser fires the click right after the drop; clear the flag
+    // just after so the NEXT click on a card navigates normally.
+    window.setTimeout(() => {
+      suppressClickRef.current = false;
+    }, 100);
+  };
+
+  const handleCardClick = (clientId: number) => {
+    if (suppressClickRef.current) return;
+    navigate(`/sales/clients/${clientId}`);
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveId(null);
+    releaseClickSuppression();
 
     if (!over) return;
 
-    const clientId = parseInt(active.id as string);
-    const newStage = over.id as string;
+    const activeIdStr = active.id as string;
+    const overId = over.id as string;
+    if (activeIdStr === overId) return;
 
-    setClients((prev) =>
-      prev.map((c) => (c.id === clientId ? { ...c, stage: newStage } : c))
-    );
+    const clientId = parseInt(activeIdStr);
+    const activeIndex = clients.findIndex((c) => c.id === clientId);
+    if (activeIndex === -1) return;
+
+    // The drop target is either a column (id = stage name) or another card
+    // (id = that client's id).
+    const isColumnDrop = STAGES.includes(overId as (typeof STAGES)[number]);
+    const overClient = isColumnDrop ? null : clients.find((c) => c.id.toString() === overId);
+    if (!isColumnDrop && !overClient) return;
+
+    const newStage = isColumnDrop ? overId : overClient!.stage;
+
+    // Reorder the flat list so per-column order (a filter over it) reflects
+    // exactly where the card was dropped — top, middle, or bottom.
+    let next: ClientSummary[];
+    if (overClient) {
+      const overIndex = clients.findIndex((c) => c.id === overClient.id);
+      next = arrayMove(clients, activeIndex, overIndex).map((c) =>
+        c.id === clientId ? { ...c, stage: newStage } : c
+      );
+    } else {
+      // Dropped on the column's empty area: place at the bottom.
+      next = [...clients];
+      const [moved] = next.splice(activeIndex, 1);
+      next.push({ ...moved, stage: newStage });
+    }
+
+    setClients(next);
+    queryCache.set(CACHE_KEYS.clients, next);
 
     try {
-      await apiFetch(`/api/clients/${clientId}/stage`, {
-        method: 'PATCH',
-        body: JSON.stringify({ stage: newStage })
+      const orderedClientIds = next.filter((c) => c.stage === newStage).map((c) => c.id);
+      const res = await apiFetch('/api/clients/reorder', {
+        method: 'PUT',
+        body: JSON.stringify({ stage: newStage, orderedClientIds })
       });
+      if (!res.ok) throw new Error(`Reorder failed with ${res.status}`);
     } catch (err) {
-      console.error('Failed to update stage:', err);
+      console.error('Failed to save card position:', err);
       await fetchClients();
     }
   };
 
   const handleDragCancel = () => {
     setActiveId(null);
+    releaseClickSuppression();
   };
 
   const activeDraggedClient = clients.find((c) => c.id === activeId);
@@ -84,55 +163,77 @@ export default function CrmDashboardPage() {
   );
 
   return (
-    <div className="crm-dashboard">
-      <div className="crm-dashboard__top-bar">
-        <div className="crm-dashboard__title-section">
-          <h1 className="crm-dashboard__title">CRM Pipeline</h1>
-          <p className="crm-dashboard__subtitle">Drag clients between columns to move through the pipeline</p>
-        </div>
-        <div className="crm-dashboard__actions">
-          <button
-            className="btn btn--primary"
-            type="button"
-            onClick={() => navigate('/inventory')}
-            title="Open Inventory"
-          >
-            📦 Inventory
-          </button>
-          <button
-            className="btn btn--primary"
-            type="button"
-            onClick={() => setIsClientFormOpen(true)}
-            title="Add new client"
-          >
-            + New Client
-          </button>
-        </div>
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-950 to-black flex items-stretch">
+      {/* Left: header + Kanban board */}
+      <div className="flex-1 min-w-0">
+        {/* Header - Top Left Corner */}
+        <div className="px-6 pt-6">
+          <div className="flex flex-col sm:flex-row sm:items-start gap-4 mb-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-gradient-to-r from-blue-600/20 to-blue-500/10 border border-blue-700/30">
+                <Users className="h-5 w-5 text-blue-400" />
+              </div>
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-blue-300 to-cyan-400 bg-clip-text text-transparent">
+                CRM Pipeline
+              </h1>
+            </div>
 
-      <div className="crm-dashboard__body">
-        <div className="crm-dashboard__main">
-          <input
-            type="text"
-            className="form-control crm-dashboard__search"
-            placeholder="Search clients…"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={() => setIsClientFormOpen(true)}
+                className="gap-2 text-sm"
+              >
+                <Plus className="h-4 w-4" />
+                New Client
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => navigate('/sales/quotations')}
+                className="gap-2 text-sm"
+              >
+                <FileText className="h-4 w-4" />
+                Sales
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => navigate('/inventory')}
+                className="gap-2 text-sm"
+              >
+                <Package className="h-4 w-4" />
+                Inventory
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Kanban board */}
+        <div className="px-6 pb-12 space-y-4">
+          <div className="mb-4">
+            <Input
+              type="text"
+              placeholder="Search clients..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="max-w-xs"
+            />
+          </div>
 
           {!isLoading && filteredClients.length === 0 && searchQuery === '' ? (
-            <div className="card empty-state">
-              <div className="empty-state__icon">👥</div>
-              <div className="empty-state__text">No clients yet. Add your first one to get started.</div>
-            </div>
+            <Card className="p-12 text-center">
+              <div className="text-4xl mb-4">👥</div>
+              <p className="text-slate-400">
+                No clients yet. Add your first one to get started.
+              </p>
+            </Card>
           ) : (
             <DndContext
+              sensors={sensors}
               collisionDetection={closestCorners}
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
               onDragCancel={handleDragCancel}
             >
-              <div className="kanban-board">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
                 {STAGES.map((stage) => {
                   const stageClients = filteredClients.filter((c) => c.stage === stage);
                   return (
@@ -142,12 +243,15 @@ export default function CrmDashboardPage() {
                       clientCount={stageClients.length}
                       onAddClient={stage === 'Leads' ? () => setIsClientFormOpen(true) : undefined}
                     >
-                      <SortableContext items={stageClients.map((c) => c.id.toString())} strategy={verticalListSortingStrategy}>
+                      <SortableContext
+                        items={stageClients.map((c) => c.id.toString())}
+                        strategy={verticalListSortingStrategy}
+                      >
                         {stageClients.map((client) => (
                           <KanbanCard
                             key={client.id}
                             client={client}
-                            onClick={() => navigate(`/sales/clients/${client.id}`)}
+                            onClick={() => handleCardClick(client.id)}
                           />
                         ))}
                       </SortableContext>
@@ -163,13 +267,20 @@ export default function CrmDashboardPage() {
           )}
         </div>
 
-        <aside className="crm-dashboard__rail">
-          <ActivityFeed />
-        </aside>
       </div>
 
+      {/* Right: Activity Log side panel — flush to the right edge, no rounding */}
+      <aside className="hidden lg:block w-80 shrink-0 sticky top-0 h-screen border-l border-slate-800 bg-slate-950/70">
+        <ActivityFeed />
+      </aside>
+
       <AnimatePresence>
-        {isClientFormOpen && <ClientFormModal onClose={() => setIsClientFormOpen(false)} onSaved={handleClientCreated} />}
+        {isClientFormOpen && (
+          <ClientFormModal
+            onClose={() => setIsClientFormOpen(false)}
+            onSaved={handleClientCreated}
+          />
+        )}
       </AnimatePresence>
     </div>
   );

@@ -24,6 +24,8 @@ namespace converge_server.Data
         public DbSet<AuditLog> AuditLogs { get; set; }
         public DbSet<NotificationRecipient> NotificationRecipients { get; set; }
         public DbSet<NotificationPreference> NotificationPreferences { get; set; }
+        public DbSet<DepartmentEmail> DepartmentEmails { get; set; }
+        public DbSet<UserNotification> UserNotifications { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -35,6 +37,13 @@ namespace converge_server.Data
 
             modelBuilder.Entity<AuditLog>()
                 .HasIndex(a => new { a.EntityType, a.EntityId });
+
+            modelBuilder.Entity<DepartmentEmail>()
+                .HasIndex(d => d.Department)
+                .IsUnique();
+
+            modelBuilder.Entity<UserNotification>()
+                .HasIndex(n => new { n.TargetRole, n.IsRead });
         }
     }
 }

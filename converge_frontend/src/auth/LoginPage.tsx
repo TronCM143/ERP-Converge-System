@@ -41,16 +41,16 @@ export default function LoginPage() {
         transition={{ duration: 0.35, ease: 'easeOut' }}
       >
         <div className="login-card__brand">
-          <div className="login-card__logo">CV</div>
+       
           <div>
-            <div className="login-card__title">Converge</div>
-            <div className="login-card__subtitle">Sign in to your department portal</div>
+            <div className="login-card__title">Converge.IT Solutions Inc.</div>
+          
           </div>
         </div>
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label>Username</label>
+          
             <input
               type="text"
               className="form-control"
@@ -62,7 +62,7 @@ export default function LoginPage() {
             />
           </div>
           <div className="form-group">
-            <label>Password</label>
+          
             <input
               type="password"
               className="form-control"

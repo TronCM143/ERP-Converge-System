@@ -26,6 +26,9 @@ namespace converge_server.Models.Entities
 
         public string? OriginalPrompt { get; set; }
 
+        // Free-form quotation-level note (terms, delivery remarks, etc.)
+        public string? Notes { get; set; }
+
         [Required]
         public int ClientId { get; set; }
 

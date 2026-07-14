@@ -158,7 +158,35 @@ namespace converge_server.Controllers
             try
             {
                 var po = await _purchaseOrderService.UpdatePurchaseOrderAsync(id, dto);
-                return Ok(po);
+                // Map to a DTO — returning the entity directly creates a JSON
+                // cycle (Items -> PurchaseOrder -> Items -> ...).
+                var response = new PurchaseOrderResponseDto
+                {
+                    Id = po.Id,
+                    PONumber = po.PONumber,
+                    BillOfMaterialId = po.BillOfMaterialId,
+                    SupplierId = po.SupplierId,
+                    OrderDate = po.OrderDate,
+                    ExpectedArrivalDate = po.ExpectedArrivalDate,
+                    ShippingAddress = po.ShippingAddress,
+                    UntaxedAmount = po.UntaxedAmount,
+                    VATAmount = po.VATAmount,
+                    DiscountAmount = po.DiscountAmount,
+                    GrandTotal = po.GrandTotal,
+                    Status = po.Status,
+                    Remarks = po.Remarks,
+                    Items = po.Items.Select(i => new PurchaseOrderItemResponseDto
+                    {
+                        Id = i.Id,
+                        ItemName = i.ItemName,
+                        Quantity = i.Quantity,
+                        Unit = i.Unit,
+                        UnitPrice = i.UnitPrice,
+                        LineTotal = i.LineTotal,
+                        Remarks = i.Remarks
+                    }).ToList()
+                };
+                return Ok(response);
             }
             catch (KeyNotFoundException ex)
             {

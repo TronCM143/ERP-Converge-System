@@ -1,13 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Card } from '../components/ui/card';
 import PageHeader from '../shared/PageHeader';
 import { apiFetch } from '../shared/api';
+import { queryCache, CACHE_KEYS } from '../shared/queryCache';
 import { useAuth } from '../app/AuthContext';
 import { roleHome } from '../app/roleHome';
 import ProductDetailsModal from './ProductDetailsModal';
 import ProductFormModal from './ProductFormModal';
-import './ProductsPage.css';
+import { ArrowLeft, Plus, X } from 'lucide-react';
 
 export interface Product {
   id: number;
@@ -49,7 +53,11 @@ export default function ProductsPage() {
   const { role } = useAuth();
   // Inventory is visible to every role, but only sales and admin can modify it.
   const canModify = role === 'quotation' || role === 'admin';
-  const [products, setProducts] = useState<Product[]>([]);
+  // Seed from the session cache so returning to this page renders instantly;
+  // the fetch below still revalidates in the background.
+  const [products, setProducts] = useState<Product[]>(
+    () => queryCache.get<Product[]>(CACHE_KEYS.products) ?? []
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState<string | null>(null);
@@ -59,18 +67,21 @@ export default function ProductsPage() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
   const fetchProducts = async () => {
+    const hasCache = queryCache.get<Product[]>(CACHE_KEYS.products) !== undefined;
     try {
-      setIsLoading(true);
+      if (!hasCache) setIsLoading(true);
       const res = await apiFetch('/api/products');
       if (res.ok) {
         const data = await res.json();
-        setProducts(Array.isArray(data) ? data : []);
+        const list = Array.isArray(data) ? data : [];
+        setProducts(list);
+        queryCache.set(CACHE_KEYS.products, list);
       } else if (res.status === 404) {
         setProducts([]);
       }
     } catch (err) {
       console.error('Failed to load products:', err);
-      setProducts([]);
+      if (!hasCache) setProducts([]);
     } finally {
       setIsLoading(false);
     }
@@ -91,11 +102,13 @@ export default function ProductsPage() {
     setIsFormOpen(false);
     setEditingProduct(null);
     setSelectedProduct(null);
-    if (editingProduct) {
-      setProducts((prev) => prev.map((p) => (p.id === product.id ? product : p)));
-    } else {
-      setProducts((prev) => [...prev, product]);
-    }
+    setProducts((prev) => {
+      const next = editingProduct
+        ? prev.map((p) => (p.id === product.id ? product : p))
+        : [...prev, product];
+      queryCache.set(CACHE_KEYS.products, next);
+      return next;
+    });
   };
 
   const handleColumnClick = (field: 'category' | 'brand') => {
@@ -113,92 +126,94 @@ export default function ProductsPage() {
   const formatPrice = (price: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(price);
 
   return (
-    <div className="products-page">
-      <PageHeader
-        title="Inventory"
-        subtitle={canModify ? 'Manage your product catalog' : 'Browse the product catalog (read-only)'}
-      />
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-950 to-black">
+        
 
-      <div className="products-toolbar">
-        <button className="btn" type="button" onClick={() => navigate(roleHome(role!))}>
-          ← Back
-        </button>
+      <div className="max-w-7xl mx-auto px-6 py-6 space-y-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="ghost" size="sm" onClick={() => navigate(roleHome(role!))} className="gap-2">
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </Button>
 
-        <input
-          type="text"
-          className="form-control products-toolbar__search"
-          placeholder="Search…"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
+          <Input
+            type="text"
+            placeholder="Search…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="flex-1 max-w-xs"
+          />
 
-        {canModify && (
-          <button className="btn btn--primary" type="button" onClick={() => setIsFormOpen(true)}>
-            Add Product
-          </button>
-        )}
+          {canModify && (
+            <Button onClick={() => setIsFormOpen(true)} className="gap-2">
+              <Plus className="h-4 w-4" />
+              Add Product
+            </Button>
+          )}
 
-        {(filterCategory || filterBrand) && (
-          <button
-            className="btn"
-            type="button"
-            onClick={() => {
-              setFilterCategory(null);
-              setFilterBrand(null);
-            }}
-          >
-            Clear Filters
-          </button>
-        )}
+          {(filterCategory || filterBrand) && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setFilterCategory(null);
+                setFilterBrand(null);
+              }}
+            >
+              <X className="h-4 w-4 mr-1" />
+              Clear Filters
+            </Button>
+          )}
+        </div>
       </div>
 
-      {isLoading ? (
-        <div className="card">
-          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--muted)' }}>Loading…</div>
-        </div>
-      ) : filteredProducts.length === 0 ? (
-        <div className="card">
-          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--muted)' }}>
-            {searchQuery || filterCategory || filterBrand ? 'No products match your search.' : 'No products yet.'}
-          </div>
-        </div>
-      ) : (
-        <div className="table-container">
-          <table className="custom-table products-table">
+      <div className="max-w-7xl mx-auto px-6 pb-12">
+        {isLoading ? (
+          <Card className="p-12 text-center">
+            <p className="text-slate-400">Loading…</p>
+          </Card>
+        ) : filteredProducts.length === 0 ? (
+          <Card className="p-12 text-center">
+            <p className="text-slate-400">
+              {searchQuery || filterCategory || filterBrand ? 'No products match your search.' : 'No products yet.'}
+            </p>
+          </Card>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
             <thead>
-              <tr>
+              <tr className="border-b border-slate-700 bg-slate-900/50">
                 <th
-                  className="products-table__header"
+                  className="px-4 py-3 text-left text-xs font-semibold text-slate-300 uppercase cursor-pointer hover:bg-slate-800/50 transition-colors"
                   onClick={() => setFilterCategory(filterCategory ? null : 'filter')}
                   title="Click to toggle category filter"
                 >
                   Category {filterCategory && filterCategory !== 'filter' && '✓'}
                 </th>
                 <th
-                  className="products-table__header"
+                  className="px-4 py-3 text-left text-xs font-semibold text-slate-300 uppercase cursor-pointer hover:bg-slate-800/50 transition-colors"
                   onClick={() => setFilterBrand(filterBrand ? null : 'filter')}
                   title="Click to toggle brand filter"
                 >
                   Brand {filterBrand && filterBrand !== 'filter' && '✓'}
                 </th>
-                <th>Product Name</th>
-                <th>Price</th>
-                <th>Date Created</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-300 uppercase">Product Name</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-300 uppercase">Price</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-300 uppercase">Date Created</th>
               </tr>
             </thead>
             <tbody>
               {filteredProducts.map((product) => (
                 <tr
                   key={product.id}
-                  className="product-row"
+                  className="border-b border-slate-800/50 hover:bg-slate-800/30 cursor-pointer transition-colors"
                   onClick={() => setSelectedProduct(product)}
-                  style={{ cursor: 'pointer' }}
                 >
-                  <td>{product.category}</td>
-                  <td>{product.brand}</td>
-                  <td className="product-row__name">{product.productName}</td>
-                  <td className="product-row__price">{formatPrice(product.price)}</td>
-                  <td className="product-row__date">{formatDate(product.createdAt)}</td>
+                  <td className="px-4 py-3 text-slate-300">{product.category}</td>
+                  <td className="px-4 py-3 text-slate-300">{product.brand}</td>
+                  <td className="px-4 py-3 text-slate-50 font-medium">{product.productName}</td>
+                  <td className="px-4 py-3 text-slate-300 font-semibold">{formatPrice(product.price)}</td>
+                  <td className="px-4 py-3 text-slate-400 text-sm">{formatDate(product.createdAt)}</td>
                 </tr>
               ))}
             </tbody>
@@ -234,5 +249,6 @@ export default function ProductsPage() {
         )}
       </AnimatePresence>
     </div>
+  </div>
   );
 }

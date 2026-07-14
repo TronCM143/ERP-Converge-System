@@ -1,6 +1,6 @@
 import React from 'react';
+import { Card, CardContent } from '../../components/ui/card';
 import { ClientSummary } from './ClientFormModal';
-import './KanbanCardOverlay.css';
 
 interface KanbanCardOverlayProps {
   client: ClientSummary;
@@ -8,24 +8,24 @@ interface KanbanCardOverlayProps {
 
 export default function KanbanCardOverlay({ client }: KanbanCardOverlayProps) {
   return (
-    <div className="kanban-card-overlay">
-      <div className="kanban-card-overlay__content">
-        <div className="kanban-card-overlay__header">
-          <span className="kanban-card-overlay__name">{client.name}</span>
-          <span className="kanban-card-overlay__drag-handle">⋮⋮⋮</span>
-        </div>
-        {client.contactPerson && (
-          <div className="kanban-card-overlay__contact">{client.contactPerson}</div>
-        )}
-        <div className="kanban-card-overlay__footer">
-          <div className="kanban-card-overlay__meta">
-            <span className="kanban-card-overlay__quotes">📊 {client.quotationCount}</span>
-            <span className="kanban-card-overlay__date">
-              {new Date(client.lastUpdated).toLocaleDateString([], { month: 'short', day: 'numeric' })}
-            </span>
-          </div>
-        </div>
+    <Card className="p-4 bg-slate-800/90 border-slate-600 shadow-2xl rotate-3 w-80">
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <h4 className="font-semibold text-slate-50 flex-1">
+          {client.name}
+        </h4>
+        <span className="text-slate-400">⋮⋮⋮</span>
       </div>
-    </div>
+
+      {client.contactPerson && (
+        <p className="text-xs text-slate-300 mb-2">{client.contactPerson}</p>
+      )}
+
+      <div className="flex items-center justify-between text-xs text-slate-300">
+        <span>📊 {client.quotationCount}</span>
+        <span>
+          {new Date(client.lastUpdated).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+        </span>
+      </div>
+    </Card>
   );
 }

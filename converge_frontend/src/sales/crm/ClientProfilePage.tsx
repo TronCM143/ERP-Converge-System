@@ -1,25 +1,27 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import PageHeader from '../../shared/PageHeader';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { AnimatePresence } from 'framer-motion';
+import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
+import { Button } from '../../components/ui/button';
 import { apiFetch } from '../../shared/api';
 import ClientFormFields, { ClientFormValues } from './ClientFormFields';
 import { ClientSummary } from './ClientFormModal';
 import QuotationsPage from '../quotation/QuotationsPage';
 import QuotationDetailModal from '../quotation/QuotationDetailModal';
-import './ClientProfilePage.css';
-
-type Tab = 'overview' | 'quotations';
+import { ArrowLeft, Edit2, Save, X } from 'lucide-react';
 
 export default function ClientProfilePage() {
   const { clientId } = useParams<{ clientId: string }>();
+  const [searchParams] = useSearchParams();
+  // Set when arriving from the "Quotation Generator" button on the
+  // all-quotations page: opens the new-quotation modal immediately.
+  const autoOpenNewQuotation = searchParams.get('newQuotation') === '1';
 
   const [client, setClient] = useState<ClientSummary | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editValues, setEditValues] = useState<ClientFormValues | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [selectedQuotationId, setSelectedQuotationId] = useState<number | null>(null);
 
   const fetchClient = async () => {
@@ -90,12 +92,17 @@ export default function ClientProfilePage() {
 
   if (notFound) {
     return (
-      <div className="card empty-state">
-        <div className="empty-state__icon">🔍</div>
-        <div className="empty-state__text">Client not found.</div>
-        <Link className="btn" to="/sales/crm" style={{ marginTop: '12px', display: 'inline-block' }}>
-          Back to CRM
-        </Link>
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-950 to-black p-6">
+        <Card className="p-12 text-center max-w-md mx-auto">
+          <div className="text-4xl mb-4">🔍</div>
+          <p className="text-slate-400 mb-6">Client not found.</p>
+          <Link to="/sales/crm">
+            <Button variant="secondary" className="gap-2">
+              <ArrowLeft className="h-4 w-4" />
+              Back to CRM
+            </Button>
+          </Link>
+        </Card>
       </div>
     );
   }
@@ -105,99 +112,90 @@ export default function ClientProfilePage() {
   }
 
   return (
-    <div className="client-profile">
-      <div className="client-profile__header">
-        <div className="client-profile__header-content">
-          <div className="client-profile__back">
-            <Link to="/sales/crm">← Back to CRM</Link>
-          </div>
-          <div className="client-profile__title-section">
-            <h1 className="client-profile__title">{client.name}</h1>
-            <p className="client-profile__meta">
-              Client since {new Date(client.createdAt).toLocaleDateString()}
-            </p>
-          </div>
-          <div className="client-profile__badge">
-            <span className={`badge badge--${client.stage.toLowerCase()}`}>{client.stage}</span>
-          </div>
-        </div>
-
-        <div className="client-profile__tabs">
-          <button
-            className={`client-profile__tab ${activeTab === 'overview' ? 'client-profile__tab--active' : ''}`}
-            onClick={() => setActiveTab('overview')}
-          >
-            Overview
-          </button>
-          <button
-            className={`client-profile__tab ${activeTab === 'quotations' ? 'client-profile__tab--active' : ''}`}
-            onClick={() => setActiveTab('quotations')}
-          >
-            Quotations
-          </button>
-        </div>
-      </div>
-
-      <div className="client-profile__content">
-        {activeTab === 'overview' && (
-          <div className="client-profile__overview">
-            <div className="card">
-              <div className="panel-header">
-                <h2>Client Information</h2>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-950 to-black">
+      {/* Side-by-side Content */}
+      <div className="px-4 py-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+          {/* Left Column - Client Information */}
+          <div className="lg:col-span-1">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                <div className="flex items-center gap-2">
+                  <Link to="/sales/crm" title="Back to CRM">
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                      <ArrowLeft className="h-4 w-4" />
+                    </Button>
+                  </Link>
+                  <CardTitle>Client Information</CardTitle>
+                </div>
                 {!isEditing && (
-                  <button className="btn" type="button" onClick={startEditing}>
-                    Edit
-                  </button>
+                  <Button variant="ghost" size="sm" onClick={startEditing}>
+                    <Edit2 className="h-4 w-4" />
+                  </Button>
                 )}
-              </div>
-
-              {isEditing && editValues ? (
-                <form onSubmit={handleSaveEdit}>
-                  <ClientFormFields values={editValues} onChange={setEditValues} />
-                  <div className="action-bar">
-                    <button className="btn" type="button" onClick={() => setIsEditing(false)}>
-                      Cancel
-                    </button>
-                    <button className="btn btn--primary" type="submit" disabled={isLoading}>
-                      Save
-                    </button>
+              </CardHeader>
+              <CardContent>
+                {isEditing && editValues ? (
+                  <form onSubmit={handleSaveEdit} className="space-y-4">
+                    <ClientFormFields values={editValues} onChange={setEditValues} />
+                    <div className="flex gap-2 pt-4">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setIsEditing(false)}
+                        className="flex-1"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="submit"
+                        disabled={isLoading}
+                        size="sm"
+                        className="flex-1"
+                      >
+                        <Save className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-400 uppercase">Company Name</label>
+                      <p className="text-slate-50 mt-1">{client.name}</p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-400 uppercase">Address</label>
+                      <p className="text-slate-50 mt-1">{client.address}</p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-400 uppercase">Contact Person</label>
+                      <p className="text-slate-50 mt-1">{client.contactPerson || '—'}</p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-400 uppercase">Phone</label>
+                      <p className="text-slate-50 mt-1">{client.contactNumber || '—'}</p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-400 uppercase">Email</label>
+                      <p className="text-slate-50 mt-1 truncate">{client.email || '—'}</p>
+                    </div>
                   </div>
-                </form>
-              ) : (
-                <>
-                  <div className="form-group">
-                    <label>Company Name</label>
-                    <div className="form-control form-control--static">{client.name}</div>
-                  </div>
-                  <div className="form-group">
-                    <label>Address</label>
-                    <div className="form-control form-control--static">{client.address}</div>
-                  </div>
-                  <div className="form-group">
-                    <label>Contact Person</label>
-                    <div className="form-control form-control--static">{client.contactPerson || '—'}</div>
-                  </div>
-                  <div className="form-group">
-                    <label>Contact Number</label>
-                    <div className="form-control form-control--static">{client.contactNumber || '—'}</div>
-                  </div>
-                  <div className="form-group">
-                    <label>Email</label>
-                    <div className="form-control form-control--static">{client.email || '—'}</div>
-                  </div>
-                </>
-              )}
-            </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
-        )}
 
-        {activeTab === 'quotations' && (
-          <QuotationsPage
-            client={client}
-            onQuotationChanged={fetchClient}
-            onQuotationSelect={setSelectedQuotationId}
-          />
-        )}
+          {/* Right Column - Quotations */}
+          <div className="lg:col-span-2">
+            <QuotationsPage
+              client={client}
+              autoOpenModal={autoOpenNewQuotation}
+              onQuotationChanged={fetchClient}
+              onQuotationSelect={setSelectedQuotationId}
+            />
+          </div>
+        </div>
       </div>
 
       <AnimatePresence>

@@ -9,6 +9,11 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
+// Load .env into process environment variables BEFORE the configuration is
+// built, so keys like Groq__ApiKey resolve as Groq:ApiKey. Secrets live in
+// .env (gitignored), not in appsettings.json.
+DotNetEnv.Env.Load();
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Database
@@ -94,11 +99,30 @@ builder.Services.AddScoped<converge_server.Services.Interfaces.IQuotationGenerat
 builder.Services.AddScoped<converge_server.Services.Interfaces.IClientService, converge_server.Services.Clients.ClientService>();
 builder.Services.AddScoped<converge_server.Services.Interfaces.IAuditService, converge_server.Services.Audit.AuditService>();
 builder.Services.AddScoped<converge_server.Services.Interfaces.INotificationRecipientService, converge_server.Services.Notifications.NotificationRecipientService>();
-builder.Services.AddScoped<converge_server.Services.Interfaces.IEmailSender, converge_server.Services.Notifications.SmtpEmailSender>();
+// Email: Resend when RESEND_APIKEY is set in .env, otherwise the SMTP sender
+// (which itself no-ops without SMTP config).
+var resendApiKey = builder.Configuration["Resend:ApiKey"] ?? builder.Configuration["RESEND_APIKEY"];
+if (!string.IsNullOrWhiteSpace(resendApiKey))
+{
+    builder.Services.AddOptions();
+    builder.Services.AddHttpClient<Resend.ResendClient>();
+    builder.Services.Configure<Resend.ResendClientOptions>(o => o.ApiToken = resendApiKey);
+    builder.Services.AddTransient<Resend.IResend, Resend.ResendClient>();
+    builder.Services.AddScoped<converge_server.Services.Interfaces.IEmailSender, converge_server.Services.Notifications.ResendEmailSender>();
+    Console.WriteLine("Email: using Resend.");
+}
+else
+{
+    builder.Services.AddScoped<converge_server.Services.Interfaces.IEmailSender, converge_server.Services.Notifications.SmtpEmailSender>();
+    Console.WriteLine("Email: Resend not configured (set RESEND_APIKEY in .env), falling back to SMTP sender.");
+}
 builder.Services.AddScoped<converge_server.Services.Interfaces.ISmsSender, converge_server.Services.Notifications.M360SmsSender>();
 builder.Services.AddScoped<converge_server.Services.Interfaces.INotificationDispatchService, converge_server.Services.Notifications.NotificationDispatchService>();
+builder.Services.AddScoped<converge_server.Services.Interfaces.IUserNotificationService, converge_server.Services.Notifications.UserNotificationService>();
 
-// Groq (AI quotation generation from a natural-language prompt)
+// Groq (AI quotation generation from a natural-language prompt).
+// The API key comes from .env (Groq__ApiKey); never hardcode it here or in appsettings.json.
+Console.WriteLine($"Groq API key: {(string.IsNullOrWhiteSpace(builder.Configuration["Groq:ApiKey"]) ? "NOT configured — set Groq__ApiKey in converge_server/.env" : "configured")}");
 builder.Services.AddHttpClient("Groq", client =>
 {
     client.BaseAddress = new Uri(builder.Configuration["Groq:BaseUrl"]!);

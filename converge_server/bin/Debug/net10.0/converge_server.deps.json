@@ -9,6 +9,7 @@
       "converge_server/1.0.0": {
         "dependencies": {
           "BCrypt.Net-Next": "4.2.0",
+          "DotNetEnv": "3.2.0",
           "MailKit": "4.17.0",
           "Microsoft.AspNetCore.Authentication.JwtBearer": "10.0.9",
           "Microsoft.AspNetCore.OpenApi": "10.0.9",
@@ -16,6 +17,7 @@
           "Microsoft.EntityFrameworkCore.Design": "10.0.9",
           "Microsoft.Extensions.Caching.StackExchangeRedis": "10.0.9",
           "Npgsql.EntityFrameworkCore.PostgreSQL": "10.0.2",
+          "Resend": "0.6.0",
           "Swashbuckle.AspNetCore": "10.2.3"
         },
         "runtime": {
@@ -35,6 +37,17 @@
           "lib/net6.0/BouncyCastle.Cryptography.dll": {
             "assemblyVersion": "2.0.0.0",
             "fileVersion": "2.6.2.46322"
+          }
+        }
+      },
+      "DotNetEnv/3.2.0": {
+        "dependencies": {
+          "Superpower": "3.0.0"
+        },
+        "runtime": {
+          "lib/netstandard2.0/DotNetEnv.dll": {
+            "assemblyVersion": "3.2.0.0",
+            "fileVersion": "3.2.0.0"
           }
         }
       },
@@ -566,6 +579,14 @@
           }
         }
       },
+      "Resend/0.6.0": {
+        "runtime": {
+          "lib/net8.0/Resend.dll": {
+            "assemblyVersion": "0.6.0.0",
+            "fileVersion": "0.6.0.0"
+          }
+        }
+      },
       "StackExchange.Redis/2.7.27": {
         "dependencies": {
           "Pipelines.Sockets.Unofficial": "2.2.8"
@@ -574,6 +595,14 @@
           "lib/net6.0/StackExchange.Redis.dll": {
             "assemblyVersion": "2.0.0.0",
             "fileVersion": "2.7.27.49176"
+          }
+        }
+      },
+      "Superpower/3.0.0": {
+        "runtime": {
+          "lib/net5.0/Superpower.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "3.0.0.0"
           }
         }
       },
@@ -715,6 +744,13 @@
       "sha512": "sha512-7oWOcvnntmMKNzDLsdxAYqApt+AjpRpP2CShjMfIa3umZ42UQMvH0tl1qAliYPNYO6vTdcGMqnRrCPmsfzTI1w==",
       "path": "bouncycastle.cryptography/2.6.2",
       "hashPath": "bouncycastle.cryptography.2.6.2.nupkg.sha512"
+    },
+    "DotNetEnv/3.2.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-2q+PD+aJcRW9QuRcIv4F8WbvEDxI6cwxzZJec2i45cBY4cAKCAoW4ZPkApJ7H82wr6Yfmxx/0kb1nLnRmZrGZA==",
+      "path": "dotnetenv/3.2.0",
+      "hashPath": "dotnetenv.3.2.0.nupkg.sha512"
     },
     "Humanizer.Core/2.14.1": {
       "type": "package",
@@ -926,12 +962,26 @@
       "path": "pipelines.sockets.unofficial/2.2.8",
       "hashPath": "pipelines.sockets.unofficial.2.2.8.nupkg.sha512"
     },
+    "Resend/0.6.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-tYqh8kDmv2onFxV417PNwaD8SClhTRFG/WtiPoZpizGOzy9aQ0dXXW6lB3mwcIv1pbFOyubN+KprYkFoXY1/lw==",
+      "path": "resend/0.6.0",
+      "hashPath": "resend.0.6.0.nupkg.sha512"
+    },
     "StackExchange.Redis/2.7.27": {
       "type": "package",
       "serviceable": true,
       "sha512": "sha512-Uqc2OQHglqj9/FfGQ6RkKFkZfHySfZlfmbCl+hc+u2I/IqunfelQ7QJi7ZhvAJxUtu80pildVX6NPLdDaUffOw==",
       "path": "stackexchange.redis/2.7.27",
       "hashPath": "stackexchange.redis.2.7.27.nupkg.sha512"
+    },
+    "Superpower/3.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-bjKbAYWePooCAvPxQq+3KnmcLfRggMyRoXmtBMlmCG71bdwBHrO6rmRJ2DRIodg5aztNcxeZXBUVWT+H+MZUhw==",
+      "path": "superpower/3.0.0",
+      "hashPath": "superpower.3.0.0.nupkg.sha512"
     },
     "Swashbuckle.AspNetCore/10.2.3": {
       "type": "package",

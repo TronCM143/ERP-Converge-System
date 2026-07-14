@@ -30,6 +30,7 @@ namespace converge_server.Models.DTOs.Quotation
         public string QuotationNumber { get; set; } = string.Empty;
         public string QuotationName { get; set; } = string.Empty;
         public string? OriginalPrompt { get; set; }
+        public string? Notes { get; set; }
         public int ClientId { get; set; }
         public string ClientName { get; set; } = string.Empty;
         public string Status { get; set; } = string.Empty;

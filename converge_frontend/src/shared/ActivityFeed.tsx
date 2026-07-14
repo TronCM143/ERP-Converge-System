@@ -91,10 +91,7 @@ export default function ActivityFeed() {
   return (
     <div className="activity-feed">
       <div className="activity-feed__header">
-        <div className="activity-feed__title">
-          <span className="activity-feed__pulse" />
-          Activity
-        </div>
+        <div className="activity-feed__title">Activity Log</div>
         <button
           className="activity-feed__refresh"
           type="button"

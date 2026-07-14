@@ -12,6 +12,8 @@ namespace converge_server.Models.DTOs.Quotation
 
         public string? OriginalPrompt { get; set; }
 
+        public string? Notes { get; set; }
+
         [Required]
         [MinLength(1)]
         public List<CreateQuotationMaterialItemDto> MaterialItems { get; set; } = new List<CreateQuotationMaterialItemDto>();

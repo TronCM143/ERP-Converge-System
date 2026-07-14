@@ -141,7 +141,7 @@ namespace converge_server.Services.Clients
 
                 if (result.EnteredWon)
                 {
-                    await _dispatchService.DispatchAsync(Models.Entities.NotificationType.WonApproval, "Deal Won", $"Congratulations! You've won the deal with {client.Name}!");
+                    await DispatchWonNotificationAsync(client);
                 }
             }
 
@@ -184,11 +184,29 @@ namespace converge_server.Services.Clients
 
                 if (stageChange.EnteredWon)
                 {
-                    await _dispatchService.DispatchAsync(Models.Entities.NotificationType.WonApproval, "Deal Won", $"Congratulations! You've won the deal with {movedClient.Name}!");
+                    await DispatchWonNotificationAsync(movedClient);
                 }
             }
 
             return true;
+        }
+
+        // "Deal won" email: named after the client's latest quotation, e.g.
+        // "Quotation QTN-2026-0004 from client Acme was already WON!"
+        private async Task DispatchWonNotificationAsync(Client client)
+        {
+            var latestQuotation = await _context.Quotations
+                .Where(q => q.ClientId == client.Id)
+                .OrderByDescending(q => q.CreatedAt)
+                .Select(q => q.QuotationNumber)
+                .FirstOrDefaultAsync();
+
+            var subject = $"🎉 Deal Won — {client.Name}";
+            var body = latestQuotation != null
+                ? $"<p>Quotation <strong>{latestQuotation}</strong> from client <strong>{client.Name}</strong> was already <strong>WON</strong>! 🎉</p>"
+                : $"<p>Client <strong>{client.Name}</strong> was moved to <strong>WON</strong>! 🎉</p>";
+
+            await _dispatchService.DispatchAsync(Models.Entities.NotificationType.WonApproval, subject, body);
         }
 
         public async Task<StageChangeResult?> PrepareStageChangeAsync(Client trackedClient, ClientStage newStage, string actorUsername)

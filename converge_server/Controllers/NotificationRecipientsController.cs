@@ -10,7 +10,7 @@ namespace converge_server.Controllers
 {
     [ApiController]
     [Route("api/admin/notification-recipients")]
-    [Authorize(Roles = "admin")]
+    [Authorize(Roles = "admin,quotation")]
     public class NotificationRecipientsController : ControllerBase
     {
         private readonly INotificationRecipientService _recipientService;

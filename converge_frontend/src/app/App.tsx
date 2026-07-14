@@ -82,11 +82,11 @@ export default function App() {
         <Route path="/purchasing/bill-of-materials/:billOfMaterialId" element={<Navigate to="/purchasing/purchase-requests?tab=bom" replace />} />
         <Route path="/purchasing/process/:purchaseRequestId" element={<Navigate to="/purchasing/purchase-requests?tab=bom" replace />} />
 
-        {/* Admin module */}
+        {/* Admin module (settings shared with sales so they can manage notification emails) */}
         <Route
           path="/admin/settings"
           element={
-            <RequireRole role="admin">
+            <RequireRole role={['admin', 'quotation']}>
               <AdminSettingsPage />
             </RequireRole>
           }

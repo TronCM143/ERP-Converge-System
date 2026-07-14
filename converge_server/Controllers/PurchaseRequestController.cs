@@ -61,6 +61,8 @@ namespace converge_server.Controllers
                         bomItem.Unit,
                         bomItem.Status,
                         bomItem.QuantityToPurchase,
+                        bomItem.DeliveryDate,
+                        bomItem.ReceivedAt,
                         bomItem.Remarks
                     }).ToList()
                 }
@@ -180,6 +182,8 @@ namespace converge_server.Controllers
                         item.Unit,
                         item.Status,
                         item.QuantityToPurchase,
+                        item.DeliveryDate,
+                        item.ReceivedAt,
                         item.Remarks
                     })
                 }
@@ -210,6 +214,8 @@ namespace converge_server.Controllers
                     item.Unit,
                     item.Status,
                     item.QuantityToPurchase,
+                    item.DeliveryDate,
+                    item.ReceivedAt,
                     item.Remarks
                 })
             });

@@ -1,8 +1,8 @@
 import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { Card, CardContent } from '../../components/ui/card';
 import { ClientSummary } from './ClientFormModal';
-import './KanbanCard.css';
 
 interface KanbanCardProps {
   client: ClientSummary;
@@ -16,38 +16,36 @@ export default function KanbanCard({ client, onClick }: KanbanCardProps) {
 
   const style = {
     transform: CSS.Transform.toString(transform),
-    transition
+    transition,
+    opacity: isDragging ? 0.5 : 1
   };
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`kanban-card ${isDragging ? 'dragging' : ''}`}
       {...attributes}
+      {...listeners}
     >
-      <button
-        type="button"
-        className="kanban-card__content"
+      <Card
         onClick={onClick}
-        title="View client details"
+        className="p-3 cursor-grab active:cursor-grabbing bg-slate-800/40 border border-slate-700 hover:bg-slate-800/60 hover:border-slate-600 transition-all group"
       >
-        <div className="kanban-card__header">
-          <span className="kanban-card__name">{client.name}</span>
-          <span className="kanban-card__drag-handle" {...listeners}>⋮</span>
-        </div>
+        <h4 className="font-semibold text-slate-50 group-hover:text-blue-400 transition-colors mb-1">
+          {client.name}
+        </h4>
+
         {client.contactPerson && (
-          <div className="kanban-card__contact">{client.contactPerson}</div>
+          <p className="text-xs text-slate-400 mb-2">{client.contactPerson}</p>
         )}
-        <div className="kanban-card__footer">
-          <div className="kanban-card__meta">
-            <span className="kanban-card__quotes">📊 {client.quotationCount}</span>
-            <span className="kanban-card__date">
-              {new Date(client.lastUpdated).toLocaleDateString([], { month: 'short', day: 'numeric' })}
-            </span>
-          </div>
+
+        <div className="flex items-center justify-between text-xs text-slate-400">
+          <span>{client.quotationCount} quotations</span>
+          <span>
+            {new Date(client.lastUpdated).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+          </span>
         </div>
-      </button>
+      </Card>
     </div>
   );
 }

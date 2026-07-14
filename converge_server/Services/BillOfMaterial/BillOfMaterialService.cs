@@ -27,8 +27,19 @@ namespace converge_server.Services.BillOfMaterial
                 throw new KeyNotFoundException("Bill of material item not found.");
             }
 
+            // Stamp the received date automatically the first time the item
+            // transitions into Received.
+            if (dto.Status == "Received" && item.Status != "Received" && item.ReceivedAt == null)
+            {
+                item.ReceivedAt = DateTime.UtcNow;
+            }
+
             item.Status = dto.Status;
             item.Remarks = dto.Remarks;
+            if (dto.DeliveryDate.HasValue)
+            {
+                item.DeliveryDate = DateTime.SpecifyKind(dto.DeliveryDate.Value, DateTimeKind.Utc);
+            }
             item.BillOfMaterial!.UpdatedAt = DateTime.UtcNow;
             _context.BillOfMaterialItems.Update(item);
             await _context.SaveChangesAsync();

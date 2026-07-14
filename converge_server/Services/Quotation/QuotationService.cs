@@ -20,6 +20,7 @@ namespace converge_server.Services.Quotations
         private readonly INotificationDispatchService _dispatchService;
         private readonly IAuditService _auditService;
         private readonly ICacheService _cache;
+        private readonly IEmailSender _emailSender;
 
         public QuotationService(
             AppDbContext context,
@@ -28,7 +29,8 @@ namespace converge_server.Services.Quotations
             IClientService clientService,
             INotificationDispatchService dispatchService,
             IAuditService auditService,
-            ICacheService cache)
+            ICacheService cache,
+            IEmailSender emailSender)
         {
             _context = context;
             _purchaseRequestService = purchaseRequestService;
@@ -37,6 +39,7 @@ namespace converge_server.Services.Quotations
             _dispatchService = dispatchService;
             _auditService = auditService;
             _cache = cache;
+            _emailSender = emailSender;
         }
 
         public async Task<Models.Entities.Quotation> CreateQuotationAsync(CreateQuotationDto dto)
@@ -80,6 +83,7 @@ namespace converge_server.Services.Quotations
                 QuotationNumber = $"QTN-{year}-{nextSequence:0000}",
                 QuotationName = dto.QuotationName,
                 OriginalPrompt = dto.OriginalPrompt,
+                Notes = string.IsNullOrWhiteSpace(dto.Notes) ? null : dto.Notes.Trim(),
                 ClientId = client.Id,
                 Status = QuotationStatus.Draft,
                 CreatedAt = DateTime.UtcNow,
@@ -153,6 +157,103 @@ namespace converge_server.Services.Quotations
             await _cache.RemoveAsync(CacheKeys.Clients);
 
             await _auditService.LogAsync("Quotation", quotation.Id.ToString(), "Created", "system", null, quotation.QuotationNumber);
+
+            return quotation;
+        }
+
+        public async Task<Models.Entities.Quotation> UpdateQuotationAsync(int quotationId, CreateQuotationDto dto, string actorUsername)
+        {
+            var quotation = await _context.Quotations
+                .Include(q => q.MaterialItems)
+                .Include(q => q.LaborItems)
+                .FirstOrDefaultAsync(q => q.Id == quotationId);
+
+            if (quotation == null)
+            {
+                throw new KeyNotFoundException("Quotation not found.");
+            }
+
+            if (quotation.Status != QuotationStatus.Draft)
+            {
+                throw new InvalidOperationException("Only draft quotations can be edited.");
+            }
+
+            var productIds = dto.MaterialItems.Select(i => i.ProductId).Distinct().ToList();
+            var products = await _context.Products
+                .Where(p => productIds.Contains(p.Id))
+                .ToDictionaryAsync(p => p.Id);
+
+            var missing = productIds.Where(id => !products.ContainsKey(id)).ToList();
+            if (missing.Any())
+            {
+                throw new InvalidOperationException($"Unknown product id(s): {string.Join(", ", missing)}");
+            }
+
+            // Replace items wholesale; the form always submits the full set.
+            _context.RemoveRange(quotation.MaterialItems);
+            _context.RemoveRange(quotation.LaborItems);
+            quotation.MaterialItems.Clear();
+            quotation.LaborItems.Clear();
+
+            decimal materialsTotal = 0;
+            decimal taxTotal = 0;
+            var sortOrder = 0;
+            foreach (var itemDto in dto.MaterialItems)
+            {
+                var product = products[itemDto.ProductId];
+                var unitPrice = itemDto.UnitPrice ?? product.Price;
+                var lineTotal = unitPrice * itemDto.Quantity;
+                materialsTotal += lineTotal;
+                taxTotal += lineTotal * itemDto.TaxPercent / 100m;
+
+                quotation.MaterialItems.Add(new QuotationMaterialItem
+                {
+                    Quotation = quotation,
+                    ProductId = product.Id,
+                    ItemName = product.ProductName,
+                    Specification = itemDto.Note ?? string.Empty,
+                    Model = product.Model,
+                    Quantity = itemDto.Quantity,
+                    Unit = string.IsNullOrWhiteSpace(itemDto.Unit) ? "pcs" : itemDto.Unit,
+                    UnitPrice = unitPrice,
+                    TaxPercent = itemDto.TaxPercent,
+                    SortOrder = sortOrder++,
+                    LineTotal = lineTotal
+                });
+            }
+
+            decimal laborTotal = 0;
+            var laborSortOrder = 0;
+            foreach (var laborDto in dto.LaborItems)
+            {
+                var lineTotal = laborDto.Days * laborDto.Persons * laborDto.RatePerPersonPerDay;
+                laborTotal += lineTotal;
+
+                quotation.LaborItems.Add(new QuotationLaborItem
+                {
+                    Quotation = quotation,
+                    Description = laborDto.Description,
+                    Days = laborDto.Days,
+                    Persons = laborDto.Persons,
+                    RatePerPersonPerDay = laborDto.RatePerPersonPerDay,
+                    SortOrder = laborSortOrder++,
+                    LineTotal = lineTotal
+                });
+            }
+
+            quotation.QuotationName = dto.QuotationName;
+            quotation.OriginalPrompt = dto.OriginalPrompt;
+            quotation.Notes = string.IsNullOrWhiteSpace(dto.Notes) ? null : dto.Notes.Trim();
+            quotation.MaterialsTotal = materialsTotal;
+            quotation.LaborTotal = laborTotal;
+            quotation.GrandTotal = materialsTotal + taxTotal + laborTotal;
+            quotation.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+            // LastUpdated on the client list is derived from quotation timestamps.
+            await _cache.RemoveAsync(CacheKeys.Clients);
+
+            await _auditService.LogAsync("Quotation", quotation.Id.ToString(), "Updated", actorUsername, null, quotation.QuotationNumber);
 
             return quotation;
         }
@@ -237,6 +338,30 @@ namespace converge_server.Services.Quotations
                 QuotationNumber = quotation.QuotationNumber
             });
 
+            // Notify the purchasing department by email when an address is
+            // configured in Settings. (PDF attachment: planned, not built yet.)
+            try
+            {
+                var purchasingEmail = await _context.DepartmentEmails
+                    .Where(d => d.Department == "purchasing" && d.Email != null && d.Email != "")
+                    .Select(d => d.Email)
+                    .FirstOrDefaultAsync();
+
+                if (!string.IsNullOrWhiteSpace(purchasingEmail))
+                {
+                    var itemsHtml = string.Join("", quotation.MaterialItems.Select(i => $"<li>{i.Quantity} {i.Unit} × {i.ItemName}</li>"));
+                    await _emailSender.SendAsync(
+                        purchasingEmail,
+                        $"New Purchase Request {purchaseRequest.PRNumber} — {quotation.Client.Name}",
+                        $"<p>Quotation <strong>{quotation.QuotationNumber}</strong> for client <strong>{quotation.Client.Name}</strong> was sent to purchasing as <strong>{purchaseRequest.PRNumber}</strong>.</p><ul>{itemsHtml}</ul>");
+                }
+            }
+            catch (Exception ex)
+            {
+                // Email failure must never block the purchasing flow itself.
+                Console.WriteLine($"Failed to email purchasing department: {ex.Message}");
+            }
+
             return purchaseRequest;
         }
 
@@ -272,7 +397,10 @@ namespace converge_server.Services.Quotations
 
                 if (result.EnteredWon)
                 {
-                    await _dispatchService.DispatchAsync(NotificationType.WonApproval, "Deal Won", $"Congratulations! You've won the deal with {quotation.Client.Name}!");
+                    await _dispatchService.DispatchAsync(
+                        NotificationType.WonApproval,
+                        $"🎉 Deal Won — {quotation.Client!.Name}",
+                        $"<p>Quotation <strong>{quotation.QuotationNumber}</strong> from client <strong>{quotation.Client.Name}</strong> was already <strong>WON</strong>! 🎉</p>");
                 }
             }
         }

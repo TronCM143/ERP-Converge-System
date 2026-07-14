@@ -21,11 +21,58 @@ interface NotificationRecipientResponseDto {
   preferences: NotificationPreferenceDto[];
 }
 
+interface DepartmentEmailDto {
+  department: string;
+  email: string;
+}
+
+const DEPARTMENT_LABELS: Record<string, string> = {
+  sales: 'Sales',
+  purchasing: 'Purchasing',
+  inventory: 'Inventory'
+};
+
 export default function AdminSettingsPage() {
   const [recipients, setRecipients] = useState<NotificationRecipientResponseDto[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [testResult, setTestResult] = useState<{ type: string; message: string } | null>(null);
+  const [departmentEmails, setDepartmentEmails] = useState<DepartmentEmailDto[]>([]);
+  const [savingDept, setSavingDept] = useState<string | null>(null);
+  const [deptSavedFlash, setDeptSavedFlash] = useState<string | null>(null);
+
+  const fetchDepartmentEmails = async () => {
+    try {
+      const res = await apiFetch('/api/settings/department-emails');
+      if (res.ok) {
+        const data = await res.json();
+        setDepartmentEmails(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error('Failed to load department emails:', err);
+    }
+  };
+
+  const saveDepartmentEmail = async (department: string, email: string) => {
+    try {
+      setSavingDept(department);
+      const res = await apiFetch('/api/settings/department-emails', {
+        method: 'PUT',
+        body: JSON.stringify({ department, email })
+      });
+      if (res.ok) {
+        setDeptSavedFlash(department);
+        setTimeout(() => setDeptSavedFlash(null), 2000);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        window.alert(err.error || 'Failed to save department email.');
+      }
+    } catch (err) {
+      console.error('Failed to save department email:', err);
+    } finally {
+      setSavingDept(null);
+    }
+  };
 
   const fetchRecipients = async () => {
     try {
@@ -45,6 +92,7 @@ export default function AdminSettingsPage() {
 
   useEffect(() => {
     fetchRecipients();
+    fetchDepartmentEmails();
   }, []);
 
   const handleDelete = async (recipientId: number) => {
@@ -147,6 +195,48 @@ export default function AdminSettingsPage() {
             </table>
           </div>
         )}
+      </div>
+
+      <div className="card">
+        <div className="panel-header">
+          <h2>Department Emails</h2>
+        </div>
+
+        <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '16px' }}>
+          One notification address per department. Purchasing gets an email whenever a quotation
+          is sent to purchasing.
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '480px' }}>
+          {departmentEmails.map((d) => (
+            <div key={d.department} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <label style={{ width: '100px', fontSize: '13px', fontWeight: 600, color: '#cbd5e1' }}>
+                {DEPARTMENT_LABELS[d.department] ?? d.department}
+              </label>
+              <input
+                type="email"
+                className="form-control"
+                style={{ flex: 1 }}
+                placeholder={`${DEPARTMENT_LABELS[d.department] ?? d.department} email…`}
+                value={d.email}
+                onChange={(e) =>
+                  setDepartmentEmails((prev) =>
+                    prev.map((x) => (x.department === d.department ? { ...x, email: e.target.value } : x))
+                  )
+                }
+              />
+              <button
+                className="btn btn--primary"
+                type="button"
+                style={{ padding: '8px 14px', fontSize: '12px' }}
+                disabled={savingDept === d.department}
+                onClick={() => saveDepartmentEmail(d.department, d.email)}
+              >
+                {deptSavedFlash === d.department ? 'Saved ✓' : savingDept === d.department ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="card">

@@ -118,6 +118,9 @@ namespace converge_server.Migrations
                     b.Property<Guid>("BillOfMaterialId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("DeliveryDate")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("ItemName")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -128,6 +131,9 @@ namespace converge_server.Migrations
 
                     b.Property<int>("QuantityToPurchase")
                         .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ReceivedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Remarks")
                         .HasColumnType("text");
@@ -196,6 +202,34 @@ namespace converge_server.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Clients");
+                });
+
+            modelBuilder.Entity("converge_server.Models.Entities.DepartmentEmail", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Department")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Department")
+                        .IsUnique();
+
+                    b.ToTable("DepartmentEmails");
                 });
 
             modelBuilder.Entity("converge_server.Models.Entities.NotificationPreference", b =>
@@ -523,6 +557,9 @@ namespace converge_server.Migrations
                     b.Property<decimal>("MaterialsTotal")
                         .HasColumnType("decimal(14,2)");
 
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
                     b.Property<string>("OriginalPrompt")
                         .HasColumnType("text");
 
@@ -686,6 +723,46 @@ namespace converge_server.Migrations
                         .IsUnique();
 
                     b.ToTable("Users");
+                });
+
+            modelBuilder.Entity("converge_server.Models.Entities.UserNotification", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Details")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("TargetRole")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TargetRole", "IsRead");
+
+                    b.ToTable("UserNotifications");
                 });
 
             modelBuilder.Entity("converge_server.Models.Entities.BillOfMaterial", b =>

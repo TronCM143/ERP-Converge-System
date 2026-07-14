@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { apiFetch } from '../../shared/api';
-import './QuotationDetailModal.css';
+import { X } from 'lucide-react';
 
 interface QuotationMaterialItem {
   id: number;
@@ -66,89 +66,99 @@ export default function QuotationDetailModal({ quotationId, onClose }: Quotation
   }, [quotationId]);
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={onClose}>
       <motion.div
-        className="quotation-detail-modal"
+        className="bg-slate-800 rounded-lg shadow-2xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto border border-slate-700"
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
         transition={{ duration: 0.2 }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="quotation-detail-modal__header">
+        <div className="flex items-start justify-between p-6 border-b border-slate-700">
           <div>
-            <h2 className="quotation-detail-modal__title">{quotation?.quotationNumber}</h2>
-            <p className="quotation-detail-modal__subtitle">{quotation?.quotationName}</p>
+            <h2 className="text-xl font-bold text-slate-50">{quotation?.quotationNumber}</h2>
+            <p className="text-sm text-slate-400 mt-1">{quotation?.quotationName}</p>
           </div>
           <button
-            className="quotation-detail-modal__close"
+            className="p-1 hover:bg-slate-700/50 rounded transition-colors"
             type="button"
             onClick={onClose}
             title="Close"
           >
-            ✕
+            <X className="h-5 w-5 text-slate-400" />
           </button>
         </div>
 
         {isLoading ? (
-          <div className="quotation-detail-modal__loading">Loading…</div>
+          <div className="p-8 text-center text-slate-400">Loading…</div>
         ) : quotation ? (
-          <div className="quotation-detail-modal__body">
-            <div className="quotation-detail-modal__section">
-              <h3>Products</h3>
-              <div className="quotation-detail-modal__items">
+          <div className="p-6 space-y-6">
+            <div>
+              <h3 className="text-sm font-bold text-slate-300 uppercase mb-3">Products</h3>
+              <div className="space-y-2">
                 {quotation.materialItems.map((item) => (
-                  <div key={item.id} className="quotation-detail-modal__item">
-                    <div className="quotation-detail-modal__item-name">{item.itemName}</div>
-                    <div className="quotation-detail-modal__item-meta">
-                      {item.quantity} {item.unit} × {peso(item.unitPrice)}
-                      {item.taxPercent > 0 ? ` (+${item.taxPercent}% tax)` : ''}
+                  <div key={item.id} className="p-3 bg-slate-900/30 rounded border border-slate-800">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-semibold text-slate-50">{item.itemName}</p>
+                        <p className="text-xs text-slate-400 mt-1">
+                          {item.quantity} {item.unit} × {peso(item.unitPrice)}
+                          {item.taxPercent > 0 && ` (+${item.taxPercent}% tax)`}
+                        </p>
+                        {item.note && <p className="text-xs text-slate-500 italic mt-1">Note: {item.note}</p>}
+                      </div>
+                      <p className="font-bold text-slate-50">{peso(item.lineTotal)}</p>
                     </div>
-                    <div className="quotation-detail-modal__item-total">{peso(item.lineTotal)}</div>
-                    {item.note && (
-                      <div className="quotation-detail-modal__item-note">Note: {item.note}</div>
-                    )}
                   </div>
                 ))}
               </div>
             </div>
 
             {quotation.laborItems.length > 0 && (
-              <div className="quotation-detail-modal__section">
-                <h3>Labor</h3>
-                <div className="quotation-detail-modal__items">
+              <div>
+                <h3 className="text-sm font-bold text-slate-300 uppercase mb-3">Labor</h3>
+                <div className="space-y-2">
                   {quotation.laborItems.map((item) => (
-                    <div key={item.id} className="quotation-detail-modal__item">
-                      <div className="quotation-detail-modal__item-name">{item.description}</div>
-                      <div className="quotation-detail-modal__item-meta">
-                        {item.persons} man × {item.days}d @ {peso(item.ratePerPersonPerDay)}/day
+                    <div key={item.id} className="p-3 bg-slate-900/30 rounded border border-slate-800">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="font-semibold text-slate-50">{item.description}</p>
+                          <p className="text-xs text-slate-400 mt-1">
+                            {item.persons} man × {item.days}d @ {peso(item.ratePerPersonPerDay)}/day
+                          </p>
+                        </div>
+                        <p className="font-bold text-slate-50">{peso(item.lineTotal)}</p>
                       </div>
-                      <div className="quotation-detail-modal__item-total">{peso(item.lineTotal)}</div>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            <div className="quotation-detail-modal__totals">
-              <div className="quotation-detail-modal__total-row">
-                <span>Materials</span>
-                <span>{peso(quotation.materialsTotal)}</span>
-              </div>
-              {quotation.laborItems.length > 0 && (
-                <div className="quotation-detail-modal__total-row">
-                  <span>Labor</span>
-                  <span>{peso(quotation.laborTotal)}</span>
+            <div className="p-4 bg-gradient-to-r from-slate-800/50 to-slate-900/50 rounded-lg border border-slate-700">
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-400">Materials</span>
+                  <span className="text-slate-50 font-semibold">{peso(quotation.materialsTotal)}</span>
                 </div>
-              )}
-              <div className="quotation-detail-modal__total-row quotation-detail-modal__total-row--grand">
-                <span>Grand Total</span>
-                <span>{peso(quotation.grandTotal)}</span>
+                {quotation.laborItems.length > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-400">Labor</span>
+                    <span className="text-slate-50 font-semibold">{peso(quotation.laborTotal)}</span>
+                  </div>
+                )}
+                <div className="border-t border-slate-700 pt-2 mt-2 flex justify-between">
+                  <span className="text-slate-50 font-bold">Grand Total</span>
+                  <span className="text-lg font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
+                    {peso(quotation.grandTotal)}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
         ) : (
-          <div className="quotation-detail-modal__error">Failed to load quotation</div>
+          <div className="p-8 text-center text-red-400">Failed to load quotation</div>
         )}
       </motion.div>
     </div>

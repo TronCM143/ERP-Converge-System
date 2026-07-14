@@ -1,6 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import PageHeader from '../shared/PageHeader';
 import { apiFetch } from '../shared/api';
 import './PurchasingDashboard.css';
 
@@ -29,6 +27,8 @@ interface BOMItem {
   unit: string;
   status: string;
   quantityToPurchase: number;
+  deliveryDate?: string | null;
+  receivedAt?: string | null;
   remarks: string;
 }
 
@@ -80,38 +80,163 @@ interface PurchaseOrder {
   items: POItem[];
 }
 
-export default function PurchaseRequestsPage() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get('tab') || 'prs';
+const ITEM_STATUSES = ['Pending', 'Ordered', 'Received', 'Ready', 'Cancelled'];
 
-  // Data States
+/* Full-month delivery calendar shown in a popup dialog. Hovering a day with
+   arrivals shows exactly which items are due that day. */
+function ArrivalsCalendarDialog({ prs, onClose }: { prs: PurchaseRequest[]; onClose: () => void }) {
+  const now = new Date();
+  const [cursor, setCursor] = useState(new Date(now.getFullYear(), now.getMonth(), 1));
+
+  const arrivalsByDay = new Map<string, { label: string; received: boolean }[]>();
+  prs.forEach((pr) => {
+    pr.billOfMaterial?.items.forEach((it) => {
+      if (!it.deliveryDate || it.status === 'Cancelled') return;
+      const key = new Date(it.deliveryDate).toDateString();
+      const list = arrivalsByDay.get(key) ?? [];
+      list.push({
+        label: `${it.itemName} — ${pr.billOfMaterial!.bomNumber} (${pr.clientName})`,
+        received: Boolean(it.receivedAt)
+      });
+      arrivalsByDay.set(key, list);
+    });
+  });
+
+  const year = cursor.getFullYear();
+  const month = cursor.getMonth();
+  const firstDow = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells: (Date | null)[] = [
+    ...Array.from({ length: firstDow }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, i) => new Date(year, month, i + 1))
+  ];
+  const todayKey = new Date().toDateString();
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-6" onClick={onClose}>
+      <div
+        className="bg-slate-900 border border-slate-700 rounded-lg shadow-2xl w-full max-w-2xl p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold text-slate-50">📅 Delivery Calendar</h3>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="p-1.5 text-slate-400 hover:text-slate-50 hover:bg-slate-800 rounded transition-colors"
+              onClick={() => setCursor(new Date(year, month - 1, 1))}
+            >
+              ‹
+            </button>
+            <span className="text-sm font-semibold text-slate-200 min-w-[130px] text-center">
+              {cursor.toLocaleDateString([], { month: 'long', year: 'numeric' })}
+            </span>
+            <button
+              type="button"
+              className="p-1.5 text-slate-400 hover:text-slate-50 hover:bg-slate-800 rounded transition-colors"
+              onClick={() => setCursor(new Date(year, month + 1, 1))}
+            >
+              ›
+            </button>
+            <button
+              type="button"
+              className="ml-2 p-1.5 text-slate-400 hover:text-slate-50 hover:bg-slate-800 rounded transition-colors"
+              onClick={onClose}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-7 gap-1 mb-1">
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
+            <div key={d} className="text-center text-[10px] font-bold text-slate-500 uppercase py-1">
+              {d}
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-7 gap-1">
+          {cells.map((d, idx) => {
+            if (!d) return <div key={`empty-${idx}`} />;
+            const key = d.toDateString();
+            const arrivals = arrivalsByDay.get(key) ?? [];
+            const allReceived = arrivals.length > 0 && arrivals.every((a) => a.received);
+            const isToday = key === todayKey;
+            return (
+              <div
+                key={key}
+                className={`group relative h-16 rounded-md border p-1.5 ${
+                  isToday ? 'border-blue-500 bg-blue-600/15' : 'border-slate-800 bg-slate-950/40'
+                } ${arrivals.length > 0 ? 'cursor-pointer hover:border-slate-600' : ''}`}
+              >
+                <span className={`text-xs font-semibold ${isToday ? 'text-blue-300' : 'text-slate-400'}`}>
+                  {d.getDate()}
+                </span>
+                {arrivals.length > 0 && (
+                  <>
+                    <div
+                      className={`mt-1 mx-auto w-fit px-1.5 rounded-full text-[10px] font-bold ${
+                        allReceived ? 'bg-emerald-600/30 text-emerald-300' : 'bg-blue-600/40 text-blue-200'
+                      }`}
+                    >
+                      {arrivals.length} item{arrivals.length > 1 ? 's' : ''}
+                    </div>
+                    {/* Hover details */}
+                    <div className="hidden group-hover:block absolute left-1/2 -translate-x-1/2 top-full mt-1 z-20 w-64 bg-slate-800 border border-slate-600 rounded-lg shadow-2xl p-3">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1.5">
+                        Arriving {d.toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                      </p>
+                      <ul className="space-y-1">
+                        {arrivals.map((a, i) => (
+                          <li key={i} className={`text-xs ${a.received ? 'text-emerald-400' : 'text-slate-200'}`}>
+                            {a.received ? '✓ ' : '• '}
+                            {a.label}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function PurchaseRequestsPage() {
+  // Data
   const [purchaseRequests, setPurchaseRequests] = useState<PurchaseRequest[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
 
-  // Selection States
-  const [selectedPrId, setSelectedPrId] = useState<string | null>(null);
+  // Selection
+  const [proposalPrId, setProposalPrId] = useState<string | null>(null);
   const [selectedBomId, setSelectedBomId] = useState<string | null>(null);
+  const [isPoPanelOpen, setIsPoPanelOpen] = useState(false);
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [selectedPoId, setSelectedPoId] = useState<string | null>(null);
+  const [editingPo, setEditingPo] = useState<PurchaseOrder | null>(null);
 
-  // UI States
+  // UI
   const [isLoading, setIsLoading] = useState(false);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Auto-hide toasts after ~1.5s
   useEffect(() => {
     if (!errorMessage && !successMessage) return;
     const t = window.setTimeout(() => {
       setErrorMessage(null);
       setSuccessMessage(null);
-    }, 1500);
+    }, 2000);
     return () => window.clearTimeout(t);
   }, [errorMessage, successMessage]);
 
-
-  // Manual PR Form State
+  // Manual PR form
   const [manualClientName, setManualClientName] = useState('');
   const [manualShippingAddress, setManualShippingAddress] = useState('');
   const [manualRemarks, setManualRemarks] = useState('');
@@ -119,16 +244,12 @@ export default function PurchaseRequestsPage() {
     { itemName: '', quantity: 1 }
   ]);
 
-  // PDF OCR Upload State
+  // PDF OCR upload
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
   const [scanMessage, setScanMessage] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Purchase Order Detail Form State
-  const [editingPo, setEditingPo] = useState<PurchaseOrder | null>(null);
-
-  // Fetch initial data
   useEffect(() => {
     fetchProducts();
     fetchPurchaseRequests();
@@ -138,10 +259,7 @@ export default function PurchaseRequestsPage() {
   const fetchProducts = async () => {
     try {
       const res = await apiFetch('/api/products');
-      if (res.ok) {
-        const data = await res.json();
-        setProducts(data);
-      }
+      if (res.ok) setProducts(await res.json());
     } catch (err) {
       console.error('Error fetching products:', err);
     }
@@ -151,13 +269,10 @@ export default function PurchaseRequestsPage() {
     try {
       setIsLoading(true);
       const res = await apiFetch('/api/purchase-requests');
-      if (res.ok) {
-        const data = await res.json();
-        setPurchaseRequests(data);
-      }
+      if (res.ok) setPurchaseRequests(await res.json());
     } catch (err) {
       console.error('Error fetching PRs:', err);
-      setErrorMessage('Failed to fetch purchase requests.');
+      setErrorMessage('Failed to fetch product requests.');
     } finally {
       setIsLoading(false);
     }
@@ -166,25 +281,14 @@ export default function PurchaseRequestsPage() {
   const fetchPurchaseOrders = async () => {
     try {
       const res = await apiFetch('/api/purchase-orders');
-      if (res.ok) {
-        const data = await res.json();
-        setPurchaseOrders(data);
-      }
+      if (res.ok) setPurchaseOrders(await res.json());
     } catch (err) {
       console.error('Error fetching POs:', err);
     }
   };
 
-  const handleTabChange = (tab: string) => {
-    setSearchParams({ tab });
-    setErrorMessage(null);
-    setSuccessMessage(null);
-  };
-
-  // Create Manual PR
-  const handleAddManualItemRow = () => {
-    setManualItems([...manualItems, { itemName: '', quantity: 1 }]);
-  };
+  // ----- Manual PR + OCR -----
+  const handleAddManualItemRow = () => setManualItems([...manualItems, { itemName: '', quantity: 1 }]);
 
   const handleRemoveManualItemRow = (idx: number) => {
     const updated = [...manualItems];
@@ -200,13 +304,8 @@ export default function PurchaseRequestsPage() {
 
   const handleManualItemNameChange = (idx: number, rawValue: string) => {
     const updated = [...manualItems];
-    // Check if the typed value matches a product name in catalog
-    const matched = products.find(p => p.productName.toLowerCase() === rawValue.toLowerCase());
-    updated[idx] = {
-      ...updated[idx],
-      itemName: rawValue,
-      productId: matched ? matched.id : undefined
-    };
+    const matched = products.find((p) => p.productName.toLowerCase() === rawValue.toLowerCase());
+    updated[idx] = { ...updated[idx], itemName: rawValue, productId: matched ? matched.id : undefined };
     setManualItems(updated);
   };
 
@@ -216,8 +315,7 @@ export default function PurchaseRequestsPage() {
       setErrorMessage('Client Name and Shipping Address are required.');
       return;
     }
-
-    const validItems = manualItems.filter(item => item.itemName.trim().length > 0 && item.quantity > 0);
+    const validItems = manualItems.filter((item) => item.itemName.trim().length > 0 && item.quantity > 0);
     if (validItems.length === 0) {
       setErrorMessage('Please add at least one item with a name and quantity.');
       return;
@@ -228,11 +326,11 @@ export default function PurchaseRequestsPage() {
       const res = await apiFetch('/api/purchase-requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        body: JSON.stringify({
           clientName: manualClientName,
           shippingAddress: manualShippingAddress,
           remarks: manualRemarks,
-          products: validItems.map(i => ({
+          products: validItems.map((i) => ({
             productId: i.productId ?? null,
             itemName: i.itemName.trim(),
             quantity: i.quantity
@@ -242,9 +340,8 @@ export default function PurchaseRequestsPage() {
 
       if (res.ok) {
         const newPr = await res.json();
-        setSuccessMessage(`Purchase Request ${newPr.prNumber} created successfully!`);
+        setSuccessMessage(`Product Request ${newPr.prNumber} created!`);
         setIsManualModalOpen(false);
-        // Reset form
         setManualClientName('');
         setManualShippingAddress('');
         setManualRemarks('');
@@ -252,7 +349,7 @@ export default function PurchaseRequestsPage() {
         await fetchPurchaseRequests();
       } else {
         const errData = await res.json();
-        setErrorMessage(errData.error || 'Failed to create purchase request.');
+        setErrorMessage(errData.error || 'Failed to create product request.');
       }
     } catch (err) {
       console.error('Error creating PR:', err);
@@ -262,15 +359,10 @@ export default function PurchaseRequestsPage() {
     }
   };
 
-  // OCR PDF Scanner Simulation
-  const handlePdfUploadClick = () => {
-    fileInputRef.current?.click();
-  };
+  const handlePdfUploadClick = () => fileInputRef.current?.click();
 
   const handlePdfFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      simulateOcrScanning();
-    }
+    if (e.target.files && e.target.files.length > 0) simulateOcrScanning();
   };
 
   const simulateOcrScanning = () => {
@@ -279,7 +371,7 @@ export default function PurchaseRequestsPage() {
     setScanMessage('Uploading file & initializing OCR scanner...');
 
     const interval = setInterval(() => {
-      setScanProgress(prev => {
+      setScanProgress((prev) => {
         const next = prev + 5;
         if (next >= 100) {
           clearInterval(interval);
@@ -289,19 +381,11 @@ export default function PurchaseRequestsPage() {
           }, 600);
           return 100;
         }
-
-        if (next < 25) {
-          setScanMessage('Uploading file & initializing OCR scanner...');
-        } else if (next < 50) {
-          setScanMessage('Scanning document layout & mapping tables...');
-        } else if (next < 75) {
-          setScanMessage('Extracting item descriptions, quantities, and units...');
-        } else if (next < 90) {
-          setScanMessage('Matching items with product database catalog...');
-        } else {
-          setScanMessage('Completing extraction and loading results...');
-        }
-
+        if (next < 25) setScanMessage('Uploading file & initializing OCR scanner...');
+        else if (next < 50) setScanMessage('Scanning document layout & mapping tables...');
+        else if (next < 75) setScanMessage('Extracting item descriptions, quantities, and units...');
+        else if (next < 90) setScanMessage('Matching items with product database catalog...');
+        else setScanMessage('Completing extraction and loading results...');
         return next;
       });
     }, 120);
@@ -311,41 +395,32 @@ export default function PurchaseRequestsPage() {
     setManualClientName('ABC Corporation');
     setManualShippingAddress('Koronadal City, South Cotabato');
     setManualRemarks('Imported via OCR PDF Scanner. Document ID: PR-OCR-7821. Auto-detected client details.');
-    
-    // Attempt to match with seeded products
-    const cameraProduct = products.find(p => p.productName.includes('Camera'));
-    const nvrProduct = products.find(p => p.productName.includes('NVR'));
-    const rackProduct = products.find(p => p.productName.includes('Rack'));
-
+    const cameraProduct = products.find((p) => p.productName.includes('Camera'));
+    const nvrProduct = products.find((p) => p.productName.includes('NVR'));
+    const rackProduct = products.find((p) => p.productName.includes('Rack'));
     setManualItems([
       { itemName: cameraProduct?.productName || 'CCTV Camera 2MP', productId: cameraProduct?.id, quantity: 10 },
       { itemName: nvrProduct?.productName || '4-Channel NVR', productId: nvrProduct?.id, quantity: 1 },
       { itemName: rackProduct?.productName || '9U Network Rack', productId: rackProduct?.id, quantity: 1 }
     ]);
-
     setIsManualModalOpen(true);
     setSuccessMessage('PDF scanned successfully! Review the extracted details below.');
   };
 
-  // Create BOM for a PR
-  const handleCreateBOM = async (prId: string) => {
+  // ----- BOM -----
+  const handleSendToBom = async (prId: string) => {
     try {
       setIsLoading(true);
-      const res = await apiFetch(`/api/purchase-requests/${prId}/bill-of-material`, {
-        method: 'POST'
-      });
-
+      const res = await apiFetch(`/api/purchase-requests/${prId}/bill-of-material`, { method: 'POST' });
       if (res.ok) {
         const bomData = await res.json();
-        setSuccessMessage(`Bill of Material created successfully!`);
+        setSuccessMessage('Sent to BOM.');
         await fetchPurchaseRequests();
-        // Go directly to BOM workspace for this BOM
+        setProposalPrId(null);
         setSelectedBomId(bomData.id);
-        handleTabChange('bom');
       } else {
         const errData = await res.json();
-        setErrorMessage(errData.error || errData.title || errData.message || 'Failed to generate BOM.');
-
+        setErrorMessage(errData.error || errData.title || errData.message || 'Failed to send to BOM.');
       }
     } catch (err) {
       console.error('Error generating BOM:', err);
@@ -355,119 +430,107 @@ export default function PurchaseRequestsPage() {
     }
   };
 
-  // Update BOM item status
-  const handleUpdateBomItemStatus = async (bomItemId: string, newStatus: string, remarks: string = '') => {
+  // Persist a BOM item change (status / remarks / delivery date).
+  const persistBomItem = async (item: BOMItem, patch: Partial<Pick<BOMItem, 'status' | 'remarks' | 'deliveryDate'>>) => {
     try {
-      const res = await apiFetch(`/api/purchase-requests/bill-of-material-items/${bomItemId}/status`, {
+      const res = await apiFetch(`/api/purchase-requests/bill-of-material-items/${item.id}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus, remarks })
+        body: JSON.stringify({
+          status: patch.status ?? item.status,
+          remarks: patch.remarks ?? item.remarks,
+          deliveryDate: patch.deliveryDate !== undefined ? patch.deliveryDate : item.deliveryDate ?? null
+        })
       });
-
       if (res.ok) {
-        // Reload PRs to get updated BOM statuses
         await fetchPurchaseRequests();
-        setSuccessMessage('BOM item status updated.');
       } else {
-        setErrorMessage('Failed to update item status.');
+        setErrorMessage('Failed to update item.');
       }
     } catch (err) {
       console.error('Error updating BOM item:', err);
     }
   };
 
-  // Finish PR and Generate PO
-  const handleFinishPR = async (bomId: string) => {
+  // Local-only edit (smooth typing before blur persists).
+  const updateLocalBomItem = (itemId: string, patch: Partial<BOMItem>) => {
+    setPurchaseRequests((prev) =>
+      prev.map((pr) =>
+        pr.billOfMaterial && pr.billOfMaterial.id === selectedBomId
+          ? {
+              ...pr,
+              billOfMaterial: {
+                ...pr.billOfMaterial,
+                items: pr.billOfMaterial.items.map((i) => (i.id === itemId ? { ...i, ...patch } : i))
+              }
+            }
+          : pr
+      )
+    );
+  };
+
+  // ----- Product Order (complete BOM + create PO) -----
+  const handleCreateProductOrder = async (bomId: string) => {
     try {
       setIsLoading(true);
-      // 1. Complete BOM
-      const completeRes = await apiFetch(`/api/purchase-requests/bill-of-materials/${bomId}/complete`, {
-        method: 'POST'
-      });
-
+      const completeRes = await apiFetch(`/api/purchase-requests/bill-of-materials/${bomId}/complete`, { method: 'POST' });
       if (!completeRes.ok) {
         const err = await completeRes.json();
-        setErrorMessage(err.error || 'Failed to complete BOM. Make sure all items are marked Ready.');
+        setErrorMessage(err.error || 'Failed to complete BOM. Make sure all items are Ready.');
         return;
       }
 
-      // 2. Generate PO from BOM
-      const poRes = await apiFetch(`/api/purchase-orders/from-bom/${bomId}`, {
-        method: 'POST'
-      });
-
+      const poRes = await apiFetch(`/api/purchase-orders/from-bom/${bomId}`, { method: 'POST' });
       if (poRes.ok) {
         const newPo = await poRes.json();
-        setSuccessMessage(`BOM completed and Purchase Order ${newPo.poNumber} created successfully!`);
+        setSuccessMessage(`Product Order ${newPo.poNumber} created!`);
         await fetchPurchaseRequests();
         await fetchPurchaseOrders();
-        // Navigate to POs tab and select the new PO
         setSelectedPoId(newPo.id);
         setEditingPo(newPo);
-        handleTabChange('pos');
+        setIsPoPanelOpen(true);
       } else {
-        setErrorMessage('BOM was completed, but PO generation failed.');
+        setErrorMessage('BOM was completed, but Product Order creation failed.');
       }
     } catch (err) {
-      console.error('Error finishing PR:', err);
-      setErrorMessage('Network error during checkout.');
+      console.error('Error creating product order:', err);
+      setErrorMessage('Network error.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // View PO details
+  // ----- PO editing -----
   const handleSelectPo = (po: PurchaseOrder) => {
     setSelectedPoId(po.id);
     setEditingPo({ ...po });
   };
 
-  // Recalculate PO amounts in real-time
   const handlePoItemPriceChange = (itemId: string, priceStr: string) => {
     if (!editingPo) return;
-
     const price = parseFloat(priceStr) || 0;
-    const updatedItems = editingPo.items.map(item => {
-      if (item.id === itemId) {
-        return {
-          ...item,
-          unitPrice: price,
-          lineTotal: item.quantity * price
-        };
-      }
-      return item;
-    });
-
+    const updatedItems = editingPo.items.map((item) =>
+      item.id === itemId ? { ...item, unitPrice: price, lineTotal: item.quantity * price } : item
+    );
     const untaxedAmount = updatedItems.reduce((acc, item) => acc + item.lineTotal, 0);
-    // Simple 12% VAT calculation on untaxed subtotal
     const vatAmount = parseFloat((untaxedAmount * 0.12).toFixed(2));
     const grandTotal = untaxedAmount + vatAmount - editingPo.discountAmount;
-
-    setEditingPo({
-      ...editingPo,
-      items: updatedItems,
-      untaxedAmount,
-      vatAmount,
-      grandTotal
-    });
+    setEditingPo({ ...editingPo, items: updatedItems, untaxedAmount, vatAmount, grandTotal });
   };
 
   const handlePoDiscountChange = (discountStr: string) => {
     if (!editingPo) return;
     const discount = parseFloat(discountStr) || 0;
-    const grandTotal = editingPo.untaxedAmount + editingPo.vatAmount - discount;
     setEditingPo({
       ...editingPo,
       discountAmount: discount,
-      grandTotal
+      grandTotal: editingPo.untaxedAmount + editingPo.vatAmount - discount
     });
   };
 
-  // Save PO Updates
   const handleSavePO = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingPo) return;
-
     try {
       setIsLoading(true);
       const res = await apiFetch(`/api/purchase-orders/${editingPo.id}`, {
@@ -482,7 +545,7 @@ export default function PurchaseRequestsPage() {
           discountAmount: editingPo.discountAmount,
           grandTotal: editingPo.grandTotal,
           status: editingPo.status,
-          items: editingPo.items.map(i => ({
+          items: editingPo.items.map((i) => ({
             id: i.id,
             unitPrice: i.unitPrice,
             lineTotal: i.lineTotal,
@@ -490,12 +553,11 @@ export default function PurchaseRequestsPage() {
           }))
         })
       });
-
       if (res.ok) {
-        setSuccessMessage(`Purchase Order ${editingPo.poNumber} updated successfully!`);
+        setSuccessMessage(`Product Order ${editingPo.poNumber} saved!`);
         await fetchPurchaseOrders();
       } else {
-        setErrorMessage('Failed to update Purchase Order details.');
+        setErrorMessage('Failed to save Product Order.');
       }
     } catch (err) {
       console.error('Error saving PO:', err);
@@ -505,70 +567,56 @@ export default function PurchaseRequestsPage() {
     }
   };
 
-  // Helpers
-  const getProductCatalogMatch = (itemName: string) => {
-    const matched = products.find(p => p.productName.toLowerCase() === itemName.toLowerCase() || itemName.toLowerCase().includes(p.productName.toLowerCase()));
-    if (matched) {
-      return `Matched: ${matched.brand} - ${matched.productName}`;
-    }
-    return null;
-  };
+  // Derived
+  const proposalPr = purchaseRequests.find((pr) => pr.id === proposalPrId) ?? null;
+  const bomEntries = purchaseRequests.filter((pr) => pr.billOfMaterial);
+  const selectedBomPr = bomEntries.find((pr) => pr.billOfMaterial!.id === selectedBomId) ?? null;
+  const selectedBom = selectedBomPr?.billOfMaterial ?? null;
+  const bomLocked = selectedBom?.status === 'Completed' || selectedBom?.status === 'Ordered';
+  const allReady = Boolean(selectedBom && selectedBom.items.length > 0 && selectedBom.items.every((i) => i.status === 'Ready'));
+  // A Completed BOM without a PO (e.g. an earlier PO attempt failed) can
+  // still create its Product Order.
+  const bomHasPo = Boolean(selectedBom && purchaseOrders.some((po) => po.billOfMaterialId === selectedBom.id));
+  const canCreateProductOrder = allReady && !bomHasPo && selectedBom?.status !== 'Ordered';
 
-  // Get active BOM object based on selection
-  const selectedBom = purchaseRequests
-    .map(pr => pr.billOfMaterial)
-    .find(bom => bom && bom.id === selectedBomId);
+  const dateFmt = (v?: string | null) =>
+    v ? new Date(v).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
+
+  const inputCls =
+    'px-2 py-1 bg-slate-900/60 border border-slate-700 rounded text-slate-50 text-xs focus:border-blue-500 focus:outline-none';
 
   return (
-    <div className="purchasing-dashboard">
-      <PageHeader
-        title="Purchasing Dashboard"
-        subtitle="Consolidated dashboard for Purchase Requests, Bill of Materials checking, and Purchase Orders."
-        actions={
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button
-              className="btn"
-              type="button"
-              onClick={handlePdfUploadClick}
-              disabled={isScanning}
-            >
-              📂 Import PDF (OCR Scan)
-            </button>
-            <input
-              type="file"
-              ref={fileInputRef}
-              style={{ display: 'none' }}
-              accept=".pdf"
-              onChange={handlePdfFileChange}
-            />
-            <button
-              className="btn btn--primary"
-              type="button"
-              onClick={() => setIsManualModalOpen(true)}
-            >
-              + Create Manual PR
-            </button>
-          </div>
-        }
-      />
-
-      {/* Toast notifications (bottom-right, auto-hide) */}
-      <div className="toast-container" aria-live="polite" aria-atomic="true">
-        {errorMessage && (
-          <div className="toast toast--error" role="status">
-            ⚠️ {errorMessage}
-          </div>
-        )}
-        {successMessage && (
-          <div className="toast toast--success" role="status">
-            ✅ {successMessage}
-          </div>
-        )}
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-950 to-black p-4 space-y-4">
+      {/* Header: title + calendar icon + Product Orders */}
+      <div className="flex flex-wrap items-center gap-3">
+        <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
+          Purchasing
+        </h1>
+        <div className="flex-1" />
+        <button
+          type="button"
+          title="Delivery calendar"
+          className="p-2 text-xl border border-slate-700 rounded-lg text-slate-300 hover:text-slate-50 hover:bg-slate-800 hover:border-slate-600 transition-colors"
+          onClick={() => setIsCalendarOpen(true)}
+        >
+          📅
+        </button>
+        <button
+          type="button"
+          className="px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white text-sm font-semibold rounded-lg hover:shadow-lg hover:shadow-blue-500/30 transition-all"
+          onClick={() => setIsPoPanelOpen(true)}
+        >
+          📦 Product Orders ({purchaseOrders.length})
+        </button>
       </div>
 
+      {/* Toasts */}
+      <div className="toast-container" aria-live="polite" aria-atomic="true">
+        {errorMessage && <div className="toast toast--error" role="status">⚠️ {errorMessage}</div>}
+        {successMessage && <div className="toast toast--success" role="status">✅ {successMessage}</div>}
+      </div>
 
-
-      {/* Scanning overlay simulation */}
+      {/* Scanning overlay */}
       {isScanning && (
         <div className="scanning-overlay">
           <div className="scanner-laser"></div>
@@ -581,506 +629,436 @@ export default function PurchaseRequestsPage() {
         </div>
       )}
 
-      {/* Stats Board */}
-      <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-card__icon stat-card__icon--pr">📄</div>
-          <div className="stat-card__content">
-            <span className="stat-card__value">{purchaseRequests.length}</span>
-            <span className="stat-card__label">Total PRs</span>
-          </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-card__icon stat-card__icon--bom">⚙️</div>
-          <div className="stat-card__content">
-            <span className="stat-card__value">
-              {purchaseRequests.filter(pr => pr.billOfMaterial?.status === 'Processing').length}
-            </span>
-            <span className="stat-card__label">Active BOMs</span>
-          </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-card__icon stat-card__icon--po">📦</div>
-          <div className="stat-card__content">
-            <span className="stat-card__value">{purchaseOrders.length}</span>
-            <span className="stat-card__label">Purchase Orders</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Tab Navigation */}
-      <div className="dashboard-tabs">
-        <button
-          className={`dashboard-tab ${activeTab === 'prs' ? 'dashboard-tab--active' : ''}`}
-          type="button"
-          onClick={() => handleTabChange('prs')}
-        >
-          Sales PRs ({purchaseRequests.length})
-        </button>
-        <button
-          className={`dashboard-tab ${activeTab === 'bom' ? 'dashboard-tab--active' : ''}`}
-          type="button"
-          onClick={() => handleTabChange('bom')}
-        >
-          BOM Workspace ({purchaseRequests.filter(pr => pr.billOfMaterial).length})
-        </button>
-        <button
-          className={`dashboard-tab ${activeTab === 'pos' ? 'dashboard-tab--active' : ''}`}
-          type="button"
-          onClick={() => handleTabChange('pos')}
-        >
-          Product Orders ({purchaseOrders.length})
-        </button>
-      </div>
-
-      {/* Tab Panels */}
-      {isLoading && <div style={{ textAlign: 'center', padding: '40px' }}>Loading dashboard data...</div>}
-
-      {!isLoading && activeTab === 'prs' && (
-        <div className="card">
-          <div className="panel-header">
-            <h2>Sales Purchase Requests</h2>
-            <span className="stat-card__label">Purchase requests sent by Sales department</span>
-          </div>
-          {purchaseRequests.length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-state__icon">📭</div>
-              <div className="empty-state__text">No Purchase Requests found. Create a manual PR or upload a PDF to get started!</div>
+      {/* Main: Product Request (30%) | BOM (70%) */}
+      <div className="flex gap-4 items-start">
+        {/* Left: Product Request side panel */}
+        <aside className="w-[30%] shrink-0 border border-slate-800 rounded-lg bg-slate-900/40 overflow-hidden">
+          <div className="flex items-center justify-between px-3 py-2.5 border-b border-slate-800">
+            <h2 className="text-sm font-bold text-slate-200 uppercase tracking-wide">
+              Product Request <span className="text-slate-500 font-normal">({purchaseRequests.length})</span>
+            </h2>
+            <div className="flex gap-1">
+              <button
+                type="button"
+                title="Import PDF (OCR scan)"
+                className="p-1.5 text-slate-400 hover:text-slate-50 hover:bg-slate-800 rounded transition-colors text-sm"
+                onClick={handlePdfUploadClick}
+                disabled={isScanning}
+              >
+                📂
+              </button>
+              <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept=".pdf" onChange={handlePdfFileChange} />
+              <button
+                type="button"
+                title="Create manual Product Request"
+                className="p-1.5 text-slate-400 hover:text-slate-50 hover:bg-slate-800 rounded transition-colors text-sm"
+                onClick={() => setIsManualModalOpen(true)}
+              >
+                ＋
+              </button>
             </div>
+          </div>
+
+          <div className="max-h-[calc(100vh-220px)] overflow-y-auto divide-y divide-slate-800/70">
+            {purchaseRequests.length === 0 ? (
+              <div className="p-6 text-center text-xs text-slate-500">No product requests yet.</div>
+            ) : (
+              purchaseRequests.map((pr) => (
+                <button
+                  key={pr.id}
+                  type="button"
+                  className="w-full text-left px-3 py-2.5 hover:bg-slate-800/50 transition-colors"
+                  onClick={() => setProposalPrId(pr.id)}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-blue-400">{pr.prNumber}</span>
+                    <span className="text-[10px] text-slate-500">{new Date(pr.requestDate).toLocaleDateString()}</span>
+                  </div>
+                  <div className="text-xs text-slate-300 mt-0.5">{pr.clientName}</div>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-[11px] text-slate-500">{pr.items.length} item(s)</span>
+                    <span className="text-[10px] text-slate-500">
+                      {pr.billOfMaterial ? `BOM: ${pr.billOfMaterial.status}` : 'No BOM'}
+                    </span>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </aside>
+
+        {/* Right: BOM workspace */}
+        <main className="flex-1 overflow-hidden">
+          <div className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-800">
+            {selectedBom && (
+              <button
+                type="button"
+                className="text-xs text-slate-400 hover:text-slate-50 transition-colors whitespace-nowrap"
+                onClick={() => setSelectedBomId(null)}
+              >
+                ← All BOMs
+              </button>
+            )}
+            <h2 className="text-sm font-bold text-slate-200 uppercase tracking-wide">
+              Bill of Materials <span className="text-slate-500 font-normal">({bomEntries.length})</span>
+            </h2>
+          </div>
+
+          {!selectedBom ? (
+            /* BOM list */
+            bomEntries.length === 0 ? (
+              <div className="p-10 text-center">
+                <div className="text-3xl mb-2">⚙️</div>
+                <p className="text-sm text-slate-500">No BOMs yet. Open a product request and click "Send to BOM".</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-800/70">
+                {bomEntries.map((pr) => {
+                  const bom = pr.billOfMaterial!;
+                  const readyCount = bom.items.filter((i) => i.status === 'Ready').length;
+                  return (
+                    <button
+                      key={bom.id}
+                      type="button"
+                      className="w-full text-left px-4 py-3 hover:bg-slate-800/50 transition-colors flex items-center gap-4"
+                      onClick={() => setSelectedBomId(bom.id)}
+                    >
+                      <div className="flex-1">
+                        <span className="text-sm font-semibold text-blue-400">{bom.bomNumber}</span>
+                        <span className="text-xs text-slate-400 ml-3">{pr.clientName}</span>
+                        <span className="text-[11px] text-slate-600 ml-3">from {pr.prNumber}</span>
+                      </div>
+                      <span
+                        className={`text-xs font-medium ${
+                          readyCount === bom.items.length && bom.items.length > 0 ? 'text-emerald-400' : 'text-slate-400'
+                        }`}
+                      >
+                        {readyCount}/{bom.items.length} ready
+                      </span>
+                      <span className="text-xs text-slate-500 w-20 text-right">{bom.status}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )
           ) : (
-            <div className="table-container">
-              <table className="custom-table">
+            /* BOM detail: product page */
+            <div className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-50">{selectedBom.bomNumber}</h3>
+                  <p className="text-xs text-slate-500">
+                    {selectedBomPr!.clientName} · from {selectedBomPr!.prNumber} · {selectedBom.status}
+                  </p>
+                </div>
+                {canCreateProductOrder && (
+                  <button
+                    type="button"
+                    className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white text-sm font-semibold rounded-lg hover:shadow-lg hover:shadow-emerald-500/30 transition-all"
+                    disabled={isLoading}
+                    onClick={() => handleCreateProductOrder(selectedBom.id)}
+                  >
+                    Product Order →
+                  </button>
+                )}
+              </div>
+
+              <div className="overflow-x-auto rounded-lg border border-slate-800">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-700 bg-slate-900/60">
+                      <th className="px-3 py-2 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wide">Item</th>
+                      <th className="px-3 py-2 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wide">Qty</th>
+                      <th className="px-3 py-2 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wide">Status</th>
+                      <th className="px-3 py-2 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wide">Delivery Date</th>
+                      <th className="px-3 py-2 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wide">Received</th>
+                      <th className="px-3 py-2 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wide">Remarks</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedBom.items.map((item) => (
+                      <tr
+                        key={item.id}
+                        className={`border-b border-slate-800/60 transition-colors ${
+                          item.status === 'Ready'
+                            ? 'bg-emerald-500/10'
+                            : item.status === 'Cancelled'
+                              ? 'opacity-50'
+                              : ''
+                        }`}
+                      >
+                        <td className="px-3 py-2 font-medium text-slate-50">{item.itemName}</td>
+                        <td className="px-3 py-2 text-slate-300 whitespace-nowrap">
+                          {item.requiredQuantity} {item.unit}
+                        </td>
+                        <td className="px-3 py-2">
+                          <select
+                            className={inputCls}
+                            value={item.status}
+                            disabled={bomLocked}
+                            onChange={(e) => persistBomItem(item, { status: e.target.value })}
+                          >
+                            {ITEM_STATUSES.map((s) => (
+                              <option key={s} value={s}>{s}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="px-3 py-2">
+                          <input
+                            type="date"
+                            className={inputCls}
+                            value={item.deliveryDate ? item.deliveryDate.split('T')[0] : ''}
+                            disabled={bomLocked}
+                            onChange={(e) => persistBomItem(item, { deliveryDate: e.target.value || null })}
+                          />
+                        </td>
+                        <td className="px-3 py-2 text-xs text-emerald-400 whitespace-nowrap">
+                          {item.receivedAt ? `✓ ${dateFmt(item.receivedAt)}` : <span className="text-slate-600">—</span>}
+                        </td>
+                        <td className="px-3 py-2">
+                          <input
+                            type="text"
+                            className={`${inputCls} w-full`}
+                            value={item.remarks || ''}
+                            disabled={bomLocked}
+                            placeholder="Remarks…"
+                            onChange={(e) => updateLocalBomItem(item.id, { remarks: e.target.value })}
+                            onBlur={(e) => persistBomItem(item, { remarks: e.target.value })}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {!bomLocked && !allReady && (
+                <p className="mt-3 text-right text-[11px] text-slate-500">
+                  Mark every item <span className="text-emerald-400 font-semibold">Ready</span> to unlock the Product Order button.
+                </p>
+              )}
+            </div>
+          )}
+        </main>
+      </div>
+
+      {/* Proposal modal: products sent by sales, no labor */}
+      {proposalPr && (
+        <div
+          className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-6"
+          onClick={() => setProposalPrId(null)}
+        >
+          <div
+            className="bg-slate-900 border border-slate-700 rounded-lg shadow-2xl w-full max-w-xl max-h-[85vh] overflow-y-auto flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
+              <div>
+                <h3 className="text-lg font-bold text-slate-50">{proposalPr.prNumber}</h3>
+                <p className="text-xs text-slate-500">
+                  {proposalPr.clientName} · {new Date(proposalPr.requestDate).toLocaleDateString()}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="p-2 text-slate-400 hover:text-slate-50 hover:bg-slate-800 rounded transition-colors"
+                onClick={() => setProposalPrId(null)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-5">
+              <table className="w-full text-sm">
                 <thead>
-                  <tr>
-                    <th>PR Number</th>
-                    <th>Client Name</th>
-                    <th>Date</th>
-                    <th>Status</th>
-                    <th>Items</th>
-                    <th>BOM Status</th>
-                    <th>Actions</th>
+                  <tr className="border-b border-slate-700">
+                    <th className="py-2 text-left text-[11px] font-bold text-slate-400 uppercase">Product</th>
+                    <th className="py-2 text-right text-[11px] font-bold text-slate-400 uppercase">Qty</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {purchaseRequests.map(pr => (
-                    <tr key={pr.id}>
-                      <td style={{ fontWeight: '600' }}>{pr.prNumber}</td>
-                      <td>{pr.clientName}</td>
-                      <td>{new Date(pr.requestDate).toLocaleDateString()}</td>
-                      <td>
-                        <span className={`badge badge--${pr.status.toLowerCase()}`}>{pr.status}</span>
-                      </td>
-                      <td>
-                        <div style={{ fontSize: '12px' }}>
-                          {pr.items.map(item => (
-                            <div key={item.id}>
-                              • {item.quantity} × {item.itemName}
-                            </div>
-                          ))}
-                        </div>
-                      </td>
-                      <td>
-                        {pr.billOfMaterial ? (
-                          <span className={`badge badge--${pr.billOfMaterial.status.toLowerCase()}`}>
-                            {pr.billOfMaterial.status}
-                          </span>
-                        ) : (
-                          <span className="badge badge--waiting">No BOM Generated</span>
-                        )}
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                          {pr.billOfMaterial ? (
-                            <button
-                              className="btn btn--primary"
-                              type="button"
-                              style={{ padding: '4px 8px', fontSize: '11px' }}
-                              onClick={() => {
-                                setSelectedBomId(pr.billOfMaterial!.id);
-                                handleTabChange('bom');
-                              }}
-                            >
-                              Open BOM
-                            </button>
-                          ) : (
-                            <button
-                              className="btn btn--primary"
-                              type="button"
-                              style={{ padding: '4px 8px', fontSize: '11px', background: '#a855f7', borderColor: '#a855f7' }}
-                              onClick={() => handleCreateBOM(pr.id)}
-                            >
-                              Generate BOM
-                            </button>
-                          )}
-                        </div>
+                  {proposalPr.items.map((item) => (
+                    <tr key={item.id} className="border-b border-slate-800/60">
+                      <td className="py-2 text-slate-50">{item.itemName}</td>
+                      <td className="py-2 text-right text-slate-300 whitespace-nowrap">
+                        {item.quantity} {item.unit}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              {proposalPr.remarks && (
+                <p className="mt-3 text-xs text-slate-500 italic">{proposalPr.remarks}</p>
+              )}
             </div>
-          )}
+
+            <div className="flex justify-end gap-2 px-5 py-4 border-t border-slate-800 mt-auto">
+              {proposalPr.billOfMaterial ? (
+                <button
+                  type="button"
+                  className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm rounded-lg transition-colors"
+                  onClick={() => {
+                    setSelectedBomId(proposalPr.billOfMaterial!.id);
+                    setProposalPrId(null);
+                  }}
+                >
+                  Open BOM
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white text-sm font-semibold rounded-lg hover:shadow-lg hover:shadow-blue-500/30 transition-all"
+                  disabled={isLoading}
+                  onClick={() => handleSendToBom(proposalPr.id)}
+                >
+                  Send to BOM →
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
-      {!isLoading && activeTab === 'bom' && (
-        <div className="bom-workspace">
-          {/* Left panel: BOM Selector */}
-          <div className="bom-list-panel">
-            <h3 style={{ fontSize: '14px', margin: '0 0 10px 0', color: 'var(--muted)' }}>Select Bill of Material</h3>
-            {purchaseRequests.filter(pr => pr.billOfMaterial).length === 0 ? (
-              <div className="card empty-state" style={{ padding: '20px' }}>
-                <div style={{ fontSize: '12px' }}>No active BOM workspaces available.</div>
-              </div>
-            ) : (
-              purchaseRequests
-                .filter(pr => pr.billOfMaterial)
-                .map(pr => {
-                  const bom = pr.billOfMaterial!;
-                  return (
-                    <div
-                      key={bom.id}
-                      className={`bom-list-item ${selectedBomId === bom.id ? 'bom-list-item--active' : ''}`}
-                      onClick={() => setSelectedBomId(bom.id)}
-                    >
-                      <div className="bom-list-item__title">
-                        <span>{bom.bomNumber}</span>
-                        <span className={`badge badge--${bom.status.toLowerCase()}`}>{bom.status}</span>
-                      </div>
-                      <div className="bom-list-item__client">{pr.clientName}</div>
-                      <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '4px' }}>
-                        Source PR: {pr.prNumber}
-                      </div>
-                    </div>
-                  );
-                })
-            )}
-          </div>
+      {/* Delivery calendar dialog */}
+      {isCalendarOpen && <ArrivalsCalendarDialog prs={purchaseRequests} onClose={() => setIsCalendarOpen(false)} />}
 
-          {/* Right panel: BOM items and inventory verification */}
-          <div className="card" style={{ flex: 1 }}>
-            {selectedBom ? (
-              <div>
-                <div className="bom-grid-header">
-                  <div>
-                    <h3 style={{ fontSize: '16px', color: 'var(--primary)' }}>{selectedBom.bomNumber}</h3>
-                    <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
-                      Status: <strong>{selectedBom.status}</strong> | Source: {selectedBom.remarks || 'Purchase Request'}
-                    </div>
+      {/* Product Orders overlay */}
+      {isPoPanelOpen && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-lg shadow-2xl w-full h-[92vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-800">
+              <h3 className="text-lg font-bold text-slate-50">📦 Product Orders</h3>
+              <button
+                type="button"
+                className="p-2 text-slate-400 hover:text-slate-50 hover:bg-slate-800 rounded transition-colors"
+                onClick={() => setIsPoPanelOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex flex-1 min-h-0">
+              {/* PO list */}
+              <div className="w-72 shrink-0 border-r border-slate-800 overflow-y-auto divide-y divide-slate-800/70">
+                {purchaseOrders.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-slate-500">
+                    No product orders yet. Complete a BOM and click Product Order.
                   </div>
-                  {selectedBom.status !== 'Completed' && selectedBom.status !== 'Ordered' && (
+                ) : (
+                  purchaseOrders.map((po) => (
                     <button
-                      className="btn btn--primary"
+                      key={po.id}
                       type="button"
-                      disabled={selectedBom.items.some(i => i.status !== 'Ready')}
-                      onClick={() => handleFinishPR(selectedBom.id)}
+                      className={`w-full text-left px-3 py-2.5 transition-colors ${
+                        selectedPoId === po.id ? 'bg-blue-600/15' : 'hover:bg-slate-800/50'
+                      }`}
+                      onClick={() => handleSelectPo(po)}
                     >
-                      Finish PR & Create PO
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-semibold text-blue-400">{po.poNumber}</span>
+                        <span className="text-[10px] text-slate-500">{po.status}</span>
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-0.5 truncate">{po.shippingAddress}</div>
+                      <div className="text-xs text-slate-300 mt-0.5 font-medium">₱{po.grandTotal.toLocaleString()}</div>
                     </button>
-                  )}
-                </div>
+                  ))
+                )}
+              </div>
 
-                <div className="table-container" style={{ margin: '0 -16px -16px -16px' }}>
-                  <table className="custom-table">
-                    <thead>
-                      <tr>
-                        <th>Item Name</th>
-                        <th>Required Qty</th>
-                        <th>Catalog Match (Auto)</th>
-                        <th>Procurement Status</th>
-                        <th>Remarks</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedBom.items.map(item => {
-                        const catalogMatch = getProductCatalogMatch(item.itemName);
-                        return (
-                          <tr key={item.id}>
-                            <td style={{ fontWeight: '600' }}>{item.itemName}</td>
-                            <td>{item.requiredQuantity} {item.unit}</td>
-                            <td>
-                              {catalogMatch ? (
-                                <span className="badge badge--ready" style={{ fontSize: '10px' }}>
-                                  ✔️ {catalogMatch}
-                                </span>
-                              ) : (
-                                <span className="badge badge--unavailable" style={{ fontSize: '10px' }}>
-                                  ❌ No Catalog Match
-                                </span>
-                              )}
-                            </td>
-                            <td>
-                              <select
-                                className="form-control"
-                                style={{ width: '130px', padding: '4px 8px', fontSize: '12px' }}
-                                value={item.status}
-                                disabled={selectedBom.status === 'Completed' || selectedBom.status === 'Ordered'}
-                                onChange={(e) => handleUpdateBomItemStatus(item.id, e.target.value, item.remarks)}
-                              >
-                                <option value="Waiting">Waiting</option>
-                                <option value="Pending">Pending</option>
-                                <option value="Ordered">Ordered</option>
-                                <option value="Received">Received</option>
-                                <option value="Ready">Ready</option>
-                                <option value="Cancelled">Cancelled</option>
-                              </select>
-                            </td>
-                            <td>
-                              <input
-                                type="text"
-                                className="form-control"
-                                style={{ padding: '4px 8px', fontSize: '12px' }}
-                                value={item.remarks || ''}
-                                disabled={selectedBom.status === 'Completed' || selectedBom.status === 'Ordered'}
-                                placeholder="Add remarks..."
-                                onChange={(e) => {
-                                  // Update item in local state first for smooth typing
-                                  const updatedPrs = purchaseRequests.map(pr => {
-                                    if (pr.billOfMaterial && pr.billOfMaterial.id === selectedBomId) {
-                                      return {
-                                        ...pr,
-                                        billOfMaterial: {
-                                          ...pr.billOfMaterial,
-                                          items: pr.billOfMaterial.items.map(i => {
-                                            if (i.id === item.id) {
-                                              return { ...i, remarks: e.target.value };
-                                            }
-                                            return i;
-                                          })
-                                        }
-                                      };
-                                    }
-                                    return pr;
-                                  });
-                                  setPurchaseRequests(updatedPrs);
-                                }}
-                                onBlur={(e) => handleUpdateBomItemStatus(item.id, item.status, e.target.value)}
-                              />
-                            </td>
+              {/* PO editor */}
+              <div className="flex-1 overflow-y-auto p-5">
+                {editingPo ? (
+                  <form onSubmit={handleSavePO}>
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h3 className="text-lg font-bold text-slate-50">{editingPo.poNumber}</h3>
+                        <p className="text-xs text-slate-500">Ordered {new Date(editingPo.orderDate).toLocaleDateString()}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button className="btn" type="button" onClick={() => window.print()}>🖨️ Print</button>
+                        <button className="btn btn--primary" type="submit">Save</button>
+                      </div>
+                    </div>
+
+                    <div className="overflow-x-auto rounded-lg border border-slate-800">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-slate-700 bg-slate-900/60">
+                            <th className="px-3 py-2 text-left text-[11px] font-bold text-slate-300 uppercase">Item</th>
+                            <th className="px-3 py-2 text-left text-[11px] font-bold text-slate-300 uppercase">Qty</th>
+                            <th className="px-3 py-2 text-left text-[11px] font-bold text-slate-300 uppercase">Unit Price (₱)</th>
+                            <th className="px-3 py-2 text-right text-[11px] font-bold text-slate-300 uppercase">Line Total</th>
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                {selectedBom.items.some(i => i.status !== 'Ready') && selectedBom.status === 'Processing' && (
-                  <div style={{ marginTop: '20px', fontSize: '12px', color: 'var(--muted)', textAlign: 'right' }}>
-                    * Mark all items as <strong>Ready</strong> to enable the <strong>Finish PR</strong> action.
+                        </thead>
+                        <tbody>
+                          {editingPo.items.map((item) => (
+                            <tr key={item.id} className="border-b border-slate-800/60">
+                              <td className="px-3 py-2 text-slate-50">{item.itemName}</td>
+                              <td className="px-3 py-2 text-slate-300 whitespace-nowrap">{item.quantity} {item.unit}</td>
+                              <td className="px-3 py-2">
+                                <input
+                                  type="number"
+                                  className={inputCls}
+                                  style={{ width: '110px' }}
+                                  value={item.unitPrice}
+                                  onChange={(e) => handlePoItemPriceChange(item.id, e.target.value)}
+                                  placeholder="Price"
+                                />
+                              </td>
+                              <td className="px-3 py-2 text-right font-semibold text-slate-200">
+                                ₱{item.lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="po-summary-box">
+                      <div className="po-summary-row">
+                        <span>Untaxed Subtotal:</span>
+                        <span>₱{editingPo.untaxedAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                      </div>
+                      <div className="po-summary-row">
+                        <span>VAT (12%):</span>
+                        <span>₱{editingPo.vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                      </div>
+                      <div className="po-summary-row">
+                        <span>Discount:</span>
+                        <input
+                          type="number"
+                          className={inputCls}
+                          style={{ width: '110px', textAlign: 'right' }}
+                          value={editingPo.discountAmount}
+                          onChange={(e) => handlePoDiscountChange(e.target.value)}
+                        />
+                      </div>
+                      <div className="po-summary-row po-summary-row--total">
+                        <span>Grand Total:</span>
+                        <span>₱{editingPo.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-center">
+                    <div>
+                      <div className="text-3xl mb-2">📦</div>
+                      <p className="text-sm text-slate-500">Select a Product Order to review pricing and delivery details.</p>
+                    </div>
                   </div>
                 )}
               </div>
-            ) : (
-              <div className="empty-state">
-                <div className="empty-state__icon">⚙️</div>
-                <div className="empty-state__text">Select a BOM Workspace from the left panel to review items and check catalog availability.</div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {!isLoading && activeTab === 'pos' && (
-        <div className="bom-workspace">
-          {/* Left panel: PO Selector */}
-          <div className="bom-list-panel">
-            <h3 style={{ fontSize: '14px', margin: '0 0 10px 0', color: 'var(--muted)' }}>Select Purchase Order</h3>
-            {purchaseOrders.length === 0 ? (
-              <div className="card empty-state" style={{ padding: '20px' }}>
-                <div style={{ fontSize: '12px' }}>No Purchase Orders generated yet. Complete a BOM and click Finish PR to create one.</div>
-              </div>
-            ) : (
-              purchaseOrders.map(po => (
-                <div
-                  key={po.id}
-                  className={`bom-list-item ${selectedPoId === po.id ? 'bom-list-item--active' : ''}`}
-                  onClick={() => handleSelectPo(po)}
-                >
-                  <div className="bom-list-item__title">
-                    <span>{po.poNumber}</span>
-                    <span className={`badge badge--${po.status.toLowerCase()}`}>{po.status}</span>
-                  </div>
-                  <div className="bom-list-item__client">{po.shippingAddress}</div>
-                  <div style={{ fontSize: '11px', color: 'var(--primary)', marginTop: '4px', fontWeight: '600' }}>
-                    Total: ₱{po.grandTotal.toLocaleString()}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          {/* Right panel: PO Editor */}
-          <div className="card" style={{ flex: 1 }}>
-            {editingPo ? (
-              <form onSubmit={handleSavePO}>
-                <div className="bom-grid-header">
-                  <div>
-                    <h3 style={{ fontSize: '16px', color: 'var(--primary)' }}>{editingPo.poNumber}</h3>
-                    <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
-                      Date: {new Date(editingPo.orderDate).toLocaleDateString()}
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      className="btn"
-                      type="button"
-                      onClick={() => window.print()}
-                    >
-                      🖨️ Print PO
-                    </button>
-                    <button className="btn btn--primary" type="submit">
-                      Save PO Details
-                    </button>
-                  </div>
-                </div>
-
-                <div className="po-details-grid">
-                  <div className="form-group">
-                    <label>Supplier / Vendor</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      value={editingPo.supplierId || ''}
-                      onChange={(e) => setEditingPo({ ...editingPo, supplierId: e.target.value })}
-                      placeholder="e.g. Dahua Tech Distri"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Expected Arrival Date</label>
-                    <input
-                      type="date"
-                      className="form-control"
-                      value={editingPo.expectedArrivalDate ? editingPo.expectedArrivalDate.split('T')[0] : ''}
-                      onChange={(e) => setEditingPo({ ...editingPo, expectedArrivalDate: e.target.value })}
-                    />
-                  </div>
-                  <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                    <label>Shipping / Delivery Address</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      value={editingPo.shippingAddress}
-                      onChange={(e) => setEditingPo({ ...editingPo, shippingAddress: e.target.value })}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>PO Status</label>
-                    <select
-                      className="form-control"
-                      value={editingPo.status}
-                      onChange={(e) => setEditingPo({ ...editingPo, status: e.target.value })}
-                    >
-                      <option value="Draft">Draft</option>
-                      <option value="Sent">Sent / Order Placed</option>
-                      <option value="Completed">Completed / Received</option>
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label>Remarks</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      value={editingPo.remarks || ''}
-                      onChange={(e) => setEditingPo({ ...editingPo, remarks: e.target.value })}
-                      placeholder="Internal tracking notes"
-                    />
-                  </div>
-                </div>
-
-                <h4 style={{ fontSize: '13px', borderBottom: '1px solid var(--border)', paddingBottom: '6px', margin: '20px 0 10px 0' }}>
-                  Line Items Pricing
-                </h4>
-                <div className="table-container" style={{ margin: '0 -16px 0 -16px' }}>
-                  <table className="custom-table">
-                    <thead>
-                      <tr>
-                        <th>Item Description</th>
-                        <th>Qty</th>
-                        <th>Unit Price (₱)</th>
-                        <th>Line Total (₱)</th>
-                        <th>Remarks</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {editingPo.items.map(item => (
-                        <tr key={item.id}>
-                          <td style={{ fontWeight: '600' }}>{item.itemName}</td>
-                          <td>{item.quantity} {item.unit}</td>
-                          <td>
-                            <input
-                              type="number"
-                              className="form-control"
-                              style={{ width: '120px', padding: '4px 8px', fontSize: '12px' }}
-                              value={item.unitPrice}
-                              onChange={(e) => handlePoItemPriceChange(item.id, e.target.value)}
-                              placeholder="Price"
-                            />
-                          </td>
-                          <td style={{ fontWeight: '600' }}>
-                            ₱{item.lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </td>
-                          <td>
-                            <input
-                              type="text"
-                              className="form-control"
-                              style={{ padding: '4px 8px', fontSize: '12px' }}
-                              value={item.remarks || ''}
-                              onChange={(e) => {
-                                const updatedItems = editingPo.items.map(i => {
-                                  if (i.id === item.id) return { ...i, remarks: e.target.value };
-                                  return i;
-                                });
-                                setEditingPo({ ...editingPo, items: updatedItems });
-                              }}
-                              placeholder="Notes"
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="po-summary-box">
-                  <div className="po-summary-row">
-                    <span>Untaxed Subtotal:</span>
-                    <span>₱{editingPo.untaxedAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                  </div>
-                  <div className="po-summary-row">
-                    <span>VAT (12%):</span>
-                    <span>₱{editingPo.vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                  </div>
-                  <div className="po-summary-row">
-                    <span>Discount:</span>
-                    <input
-                      type="number"
-                      className="form-control"
-                      style={{ width: '120px', padding: '2px 6px', fontSize: '12px', textAlign: 'right' }}
-                      value={editingPo.discountAmount}
-                      onChange={(e) => handlePoDiscountChange(e.target.value)}
-                    />
-                  </div>
-                  <div className="po-summary-row po-summary-row--total">
-                    <span>Grand Total:</span>
-                    <span>₱{editingPo.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                  </div>
-                </div>
-              </form>
-            ) : (
-              <div className="empty-state">
-                <div className="empty-state__icon">📦</div>
-                <div className="empty-state__text">Select a Purchase Order from the left panel to review financial details, assign pricing, and finalize procurement.</div>
-              </div>
-            )}
+            </div>
           </div>
         </div>
       )}
 
       {/* Create Manual PR Modal */}
       {isManualModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div className="card" style={{ width: '600px', maxHeight: '90%', overflowY: 'auto', background: 'white', display: 'flex', flexDirection: 'column' }}>
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-6">
+          <div className="bg-slate-900 border border-slate-700 rounded-lg shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto p-6">
             <div className="panel-header">
-              <h2>Create Manual Purchase Request</h2>
+              <h2>Create Product Request</h2>
               <button
                 className="btn-remove-item"
                 type="button"
@@ -1124,11 +1102,10 @@ export default function PurchaseRequestsPage() {
                 />
               </div>
 
-              <h4 style={{ fontSize: '13px', fontWeight: '600', margin: '14px 0 8px 0', color: 'var(--muted)' }}>Requested Items</h4>
-              
-              {/* Hidden datalist for product name autocomplete */}
+              <h4 style={{ fontSize: '13px', fontWeight: 600, margin: '14px 0 8px 0', color: '#94a3b8' }}>Requested Items</h4>
+
               <datalist id="product-catalog-list">
-                {products.map(p => (
+                {products.map((p) => (
                   <option key={p.id} value={p.productName} />
                 ))}
               </datalist>
@@ -1136,7 +1113,6 @@ export default function PurchaseRequestsPage() {
               {manualItems.map((item, idx) => (
                 <div key={idx} className="item-builder-row">
                   <div className="form-group" style={{ margin: 0, flex: 2 }}>
-                    <label style={{ display: 'none' }}>Item Name</label>
                     <div style={{ position: 'relative' }}>
                       <input
                         type="text"
@@ -1149,15 +1125,24 @@ export default function PurchaseRequestsPage() {
                         style={{ paddingRight: item.productId ? '80px' : '8px' }}
                       />
                       {item.productId && (
-                        <span style={{
-                          position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)',
-                          fontSize: '10px', color: '#10b981', fontWeight: '600', pointerEvents: 'none'
-                        }}>✔ Catalog</span>
+                        <span
+                          style={{
+                            position: 'absolute',
+                            right: '8px',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            fontSize: '10px',
+                            color: '#10b981',
+                            fontWeight: 600,
+                            pointerEvents: 'none'
+                          }}
+                        >
+                          ✔ Catalog
+                        </span>
                       )}
                     </div>
                   </div>
                   <div className="form-group" style={{ margin: 0 }}>
-                    <label style={{ display: 'none' }}>Qty</label>
                     <input
                       type="number"
                       className="form-control"
@@ -1189,15 +1174,11 @@ export default function PurchaseRequestsPage() {
               </button>
 
               <div className="action-bar">
-                <button
-                  className="btn"
-                  type="button"
-                  onClick={() => setIsManualModalOpen(false)}
-                >
+                <button className="btn" type="button" onClick={() => setIsManualModalOpen(false)}>
                   Cancel
                 </button>
                 <button className="btn btn--primary" type="submit">
-                  Submit Purchase Request
+                  Submit Product Request
                 </button>
               </div>
             </form>

@@ -1,6 +1,9 @@
 import React from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import './KanbanColumn.css';
+import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
+import { Badge } from '../../components/ui/badge';
+import { Button } from '../../components/ui/button';
+import { Plus } from 'lucide-react';
 
 interface KanbanColumnProps {
   stage: string;
@@ -9,47 +12,36 @@ interface KanbanColumnProps {
   children: React.ReactNode;
 }
 
-const stageIcons: Record<string, string> = {
-  Leads: '🎯',
-  Quote: '📋',
-  Proposal: '📄',
-  Won: '🏆'
-};
-
-const stageColors: Record<string, string> = {
-  Leads: '#6366f1',
-  Quote: '#3b82f6',
-  Proposal: '#a855f7',
-  Won: '#10b981'
-};
-
 export default function KanbanColumn({ stage, clientCount, onAddClient, children }: KanbanColumnProps) {
   const { setNodeRef } = useDroppable({ id: stage });
 
   return (
-    <div
+    <Card
       ref={setNodeRef}
-      className="kanban-column"
-      style={{ '--column-color': stageColors[stage] } as React.CSSProperties}
+      className="flex flex-col max-h-[calc(100vh-280px)] bg-transparent border-0 transition-all duration-300"
     >
-      <div className="kanban-column__header">
-        <div className="kanban-column__title">
-          <span className="kanban-column__icon">{stageIcons[stage]}</span>
-          <span className="kanban-column__name">{stage}</span>
-          <span className="kanban-column__badge">{clientCount}</span>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-base">{stage}</CardTitle>
+            <span className="text-xs text-slate-400 font-normal">({clientCount})</span>
+          </div>
+          {onAddClient && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onAddClient}
+              className="h-6 w-6 p-0 hover:bg-slate-700"
+            >
+              <Plus className="h-3 w-3" />
+            </Button>
+          )}
         </div>
-        {onAddClient && (
-          <button
-            className="kanban-column__add-btn"
-            type="button"
-            onClick={onAddClient}
-            title="Add new client"
-          >
-            +
-          </button>
-        )}
-      </div>
-      <div className="kanban-column__body">{children}</div>
-    </div>
+      </CardHeader>
+
+      <CardContent className="flex-1 overflow-y-auto px-3 pb-3 flex flex-col gap-3 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+        {children}
+      </CardContent>
+    </Card>
   );
 }

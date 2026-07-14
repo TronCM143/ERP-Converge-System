@@ -1,30 +1,64 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import PageHeader from '../../shared/PageHeader';
+import { AnimatePresence, motion } from 'framer-motion';
+import { ArrowLeft, Sparkles } from 'lucide-react';
+import QuotationFormModal, { EditableQuotation } from './QuotationFormModal';
 import { apiFetch } from '../../shared/api';
-import './QuotationsListPage.css';
+import { queryCache, CACHE_KEYS } from '../../shared/queryCache';
 
-interface Quotation {
+interface QuotationMaterialItem {
   id: number;
-  quotationNumber: string;
+  productId: number | null;
+  itemName: string;
+  unit: string;
+  note: string;
+  quantity: number;
+  unitPrice: number;
+  taxPercent: number;
+  lineTotal: number;
+}
+
+interface QuotationLaborItem {
+  id: number;
+  description: string;
+  days: number;
+  persons: number;
+  ratePerPersonPerDay: number;
+  lineTotal: number;
+}
+
+interface Quotation extends EditableQuotation {
+  clientId: number;
   clientName: string;
-  quotationName: string;
   grandTotal: number;
   status: string;
+  createdAt: string;
+  materialItems: QuotationMaterialItem[];
+  laborItems: QuotationLaborItem[];
 }
 
 export default function QuotationsListPage() {
   const navigate = useNavigate();
-  const [quotations, setQuotations] = useState<Quotation[]>([]);
+  // Seed from the session cache so returning to this page renders instantly;
+  // the fetch below still revalidates in the background.
+  const [quotations, setQuotations] = useState<Quotation[]>(
+    () => queryCache.get<Quotation[]>(CACHE_KEYS.quotationsAll) ?? []
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [editingQuotation, setEditingQuotation] = useState<Quotation | null>(null);
 
   const fetchQuotations = async () => {
+    const hasCache = queryCache.get<Quotation[]>(CACHE_KEYS.quotationsAll) !== undefined;
     try {
-      setIsLoading(true);
+      if (!hasCache) setIsLoading(true);
       const res = await apiFetch('/api/quotations');
-      if (res.ok) setQuotations(await res.json());
+      if (res.ok) {
+        const data: Quotation[] = await res.json();
+        setQuotations(data);
+        queryCache.set(CACHE_KEYS.quotationsAll, data);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -44,75 +78,109 @@ export default function QuotationsListPage() {
   );
 
   const peso = (value: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(value);
+  const dateFmt = (value: string) =>
+    new Date(value).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
 
   return (
-    <div className="quotations-list-page">
-      <div className="quotations-list__header">
-        <PageHeader title="Quotations" subtitle="All quotations across clients" />
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-950 to-black">
+      <div className="px-6 py-5 space-y-5">
+        {/* Header row: back button, title, create button */}
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => navigate('/sales/crm')}
+            className="p-2 rounded-lg text-slate-400 hover:text-slate-50 hover:bg-slate-800 transition-colors"
+            title="Back to CRM"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
 
-        <div className="quotations-list__nav">
-          <NavTab onClick={() => navigate('/sales/crm')}>CRM</NavTab>
-          <NavTab active>Quotations</NavTab>
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
+            Quotations
+          </h1>
+          <span className="text-xs text-slate-500">({quotations.length} total)</span>
+
+          <input
+            type="text"
+            className="ml-2 w-full max-w-xs px-3 py-1.5 text-sm bg-slate-900/50 border border-slate-700 rounded-lg text-slate-50 placeholder-slate-500 focus:border-blue-500 focus:outline-none transition-colors"
+            placeholder="Search quotations…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+
+          <div className="flex-1" />
+
+          <motion.button
+            type="button"
+            whileTap={{ scale: 0.97 }}
+            onClick={() => setIsCreateOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white text-sm font-semibold rounded-lg hover:shadow-lg hover:shadow-blue-500/30 transition-all"
+          >
+            <Sparkles className="h-4 w-4" />
+            Create
+          </motion.button>
         </div>
 
-        <input
-          type="text"
-          className="form-control quotations-list__search"
-          placeholder="Search quotations…"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
+        {/* List */}
+        {isLoading ? (
+          <div className="text-center py-10 text-slate-400 text-sm">Loading…</div>
+        ) : filteredQuotations.length === 0 ? (
+          <div className="text-center py-10">
+            <div className="text-3xl mb-2">📋</div>
+            <p className="text-slate-400 text-sm">
+              {searchQuery ? 'No quotations match your search.' : 'No quotations yet.'}
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-slate-800">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-700 bg-slate-900/60">
+                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wide">Quotation #</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wide">Date Created</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wide">Client Name</th>
+                  <th className="px-4 py-3 text-right text-xs font-bold text-slate-300 uppercase tracking-wide">Grand Total</th>
+                  <th className="px-4 py-3 text-right text-xs font-bold text-slate-300 uppercase tracking-wide">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredQuotations.map((q) => (
+                  <tr
+                    key={q.id}
+                    className="border-b border-slate-800/60 hover:bg-slate-800/40 cursor-pointer transition-colors"
+                    onClick={() => setEditingQuotation(q)}
+                  >
+                    <td className="px-4 py-3 font-semibold text-blue-400">{q.quotationNumber}</td>
+                    <td className="px-4 py-3 text-slate-400">{dateFmt(q.createdAt)}</td>
+                    <td className="px-4 py-3 text-slate-50">{q.clientName}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-slate-200">{peso(q.grandTotal)}</td>
+                    <td className="px-4 py-3 text-right text-xs text-slate-400">{q.status}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {isLoading ? (
-        <div className="card empty-state">
-          <div className="empty-state__text">Loading…</div>
-        </div>
-      ) : filteredQuotations.length === 0 ? (
-        <div className="card empty-state">
-          <div className="empty-state__icon">📋</div>
-          <div className="empty-state__text">{searchQuery ? 'No quotations match your search.' : 'No quotations yet.'}</div>
-        </div>
-      ) : (
-        <div className="table-container">
-          <table className="custom-table">
-            <thead>
-              <tr>
-                <th>Quotation #</th>
-                <th>Client</th>
-                <th>Name</th>
-                <th>Grand Total</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredQuotations.map((q) => (
-                <tr key={q.id} className="quotation-row" onClick={() => navigate(`/sales/clients/${q.id}`)}>
-                  <td style={{ fontWeight: 600 }}>{q.quotationNumber}</td>
-                  <td>{q.clientName}</td>
-                  <td>{q.quotationName}</td>
-                  <td>{peso(q.grandTotal)}</td>
-                  <td>
-                    <span className={`badge badge--${q.status.toLowerCase()}`}>{q.status}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <AnimatePresence>
+        {isCreateOpen && (
+          <QuotationFormModal
+            onClose={() => setIsCreateOpen(false)}
+            onCreated={() => fetchQuotations()}
+          />
+        )}
+        {editingQuotation && (
+          <QuotationFormModal
+            quotation={editingQuotation}
+            onClose={() => setEditingQuotation(null)}
+            onCreated={() => {
+              setEditingQuotation(null);
+              fetchQuotations();
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
-  );
-}
-
-function NavTab({ active, onClick, children }: { active?: boolean; onClick?: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      className={`crm-nav-tab ${active ? 'crm-nav-tab--active' : ''}`}
-      type="button"
-      onClick={onClick}
-    >
-      {children}
-    </button>
   );
 }
