@@ -15,5 +15,7 @@ namespace converge_server.Models.DTOs.Client
         public string? ContactPerson { get; set; }
 
         public string? Email { get; set; }
+
+        public string? Notes { get; set; }
     }
 }

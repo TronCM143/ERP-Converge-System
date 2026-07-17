@@ -165,28 +165,32 @@ export default function QuotationsPage({
   return (
     <div>
       {/* Compact header: title + count + search + action in one row */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        <h2 className="text-xl font-bold text-slate-50">Quotations</h2>
-        <span className="text-sm text-slate-400">({quotations.length})</span>
-        <input
-          type="text"
-          className="px-3 py-1.5 text-sm bg-slate-900/50 border border-slate-700 rounded-lg text-slate-50 placeholder-slate-500 focus:border-blue-500 focus:outline-none w-full max-w-[220px] transition-colors"
-          placeholder="Search quotations…"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
-        <div className="flex-1" />
-        {canManage && (
-          <motion.button
-            className="px-3 py-1.5 text-sm bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-lg hover:shadow-lg hover:shadow-blue-500/20 transition-all font-semibold"
-            type="button"
-            whileTap={{ scale: 0.97 }}
-            onClick={() => setIsModalOpen(true)}
-          >
-            + New Quotation
-          </motion.button>
-        )}
-      </div>
+     <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+  <h2 className="text-xl font-bold text-slate-50">
+    Quotations
+  </h2>
+
+  <div className="flex items-center gap-5">
+    <input
+      type="text"
+      className="px-10 py-2 text-sm bg-slate-900/50 border border-slate-700 rounded-lg text-slate-50 placeholder-slate-500 focus:border-blue-500 focus:outline-none w-full max-w-[220px] transition-colors"
+      placeholder="Search quotations…"
+      value={searchQuery}
+      onChange={(e) => setSearchQuery(e.target.value)}
+    />
+
+    {canManage && (
+      <motion.button
+        className="px-5 py-2 text-sm bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-lg hover:shadow-lg hover:shadow-blue-500/20 transition-all font-semibold"
+        type="button"
+        whileTap={{ scale: 0.90 }}
+        onClick={() => setIsModalOpen(true)}
+      >
+        + 
+      </motion.button>
+    )}
+  </div>
+</div>
 
       <div aria-live="polite">
         <AnimatePresence>

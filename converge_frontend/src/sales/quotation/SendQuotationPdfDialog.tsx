@@ -14,7 +14,6 @@ export default function SendQuotationPdfDialog({ quotationNumber, candidates, on
     <EmailRecipientPickerDialog
       icon={<FileText className="h-4 w-4" />}
       title={`Send Quotation ${quotationNumber}`}
-      description="Choose who gets the PDF. This only affects this send — it won't change your saved notification recipients."
       candidates={candidates}
       cancelLabel="Cancel"
       confirmLabel="Send PDF"

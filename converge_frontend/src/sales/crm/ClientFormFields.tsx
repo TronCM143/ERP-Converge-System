@@ -7,6 +7,7 @@ export interface ClientFormValues {
   contactPerson: string;
   contactNumber: string;
   email: string;
+  notes: string;
 }
 
 export const emptyClientFormValues = (): ClientFormValues => ({
@@ -14,7 +15,8 @@ export const emptyClientFormValues = (): ClientFormValues => ({
   address: '',
   contactPerson: '',
   contactNumber: '',
-  email: ''
+  email: '',
+  notes: ''
 });
 
 export default function ClientFormFields({
@@ -24,7 +26,7 @@ export default function ClientFormFields({
   values: ClientFormValues;
   onChange: (values: ClientFormValues) => void;
 }) {
-  const set = (key: keyof ClientFormValues) => (e: React.ChangeEvent<HTMLInputElement>) =>
+  const set = (key: keyof ClientFormValues) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     onChange({ ...values, [key]: e.target.value });
 
   return (
@@ -54,6 +56,16 @@ export default function ClientFormFields({
       <div>
         <label className="text-xs font-semibold text-slate-400 uppercase">Email</label>
         <Input type="text" value={values.email} onChange={set('email')} placeholder="Email address" className="mt-1" />
+      </div>
+      <div>
+        <label className="text-xs font-semibold text-slate-400 uppercase">Note</label>
+        <textarea
+          value={values.notes}
+          onChange={set('notes')}
+          placeholder="Any additional notes about this client"
+          rows={3}
+          className="mt-1 flex w-full rounded-md border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        />
       </div>
     </div>
   );

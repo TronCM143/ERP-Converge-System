@@ -49,7 +49,8 @@ export default function ClientProfilePage() {
     address: c.address,
     contactPerson: c.contactPerson || '',
     contactNumber: c.contactNumber || '',
-    email: c.email || ''
+    email: c.email || '',
+    notes: c.notes || ''
   });
 
   const startEditing = () => {
@@ -75,7 +76,8 @@ export default function ClientProfilePage() {
           address: editValues.address.trim(),
           contactPerson: editValues.contactPerson.trim() || null,
           contactNumber: editValues.contactNumber.trim() || null,
-          email: editValues.email.trim() || null
+          email: editValues.email.trim() || null,
+          notes: editValues.notes.trim() || null
         })
       });
       if (!res.ok) {
@@ -118,16 +120,9 @@ export default function ClientProfilePage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
           {/* Left Column - Client Information */}
           <div className="lg:col-span-1">
-            <Card>
+            <Card className="border-0">
               <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                <div className="flex items-center gap-2">
-                  <Link to="/sales/crm" title="Back to CRM">
-                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-                      <ArrowLeft className="h-4 w-4" />
-                    </Button>
-                  </Link>
-                  <CardTitle>Client Information</CardTitle>
-                </div>
+                <CardTitle>Client Information</CardTitle>
                 {!isEditing && (
                   <Button variant="ghost" size="sm" onClick={startEditing}>
                     <Edit2 className="h-4 w-4" />
@@ -165,6 +160,12 @@ export default function ClientProfilePage() {
                       <p className="text-slate-50 mt-1">{client.name}</p>
                     </div>
                     <div>
+                      <label className="text-xs font-semibold text-slate-400 uppercase">Total Sales</label>
+                      <p className="text-lg font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent mt-1">
+                        {new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(client.totalSales)}
+                      </p>
+                    </div>
+                    <div>
                       <label className="text-xs font-semibold text-slate-400 uppercase">Address</label>
                       <p className="text-slate-50 mt-1">{client.address}</p>
                     </div>
@@ -179,6 +180,10 @@ export default function ClientProfilePage() {
                     <div>
                       <label className="text-xs font-semibold text-slate-400 uppercase">Email</label>
                       <p className="text-slate-50 mt-1 truncate">{client.email || '—'}</p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-400 uppercase">Note</label>
+                      <p className="text-slate-50 mt-1 whitespace-pre-wrap">{client.notes || '—'}</p>
                     </div>
                   </div>
                 )}

@@ -307,47 +307,55 @@ export default function ProductsPage() {
               {/* Image */}
               <div className="shrink-0 w-[280px]">
                 <div
-                  className={`relative aspect-square w-full bg-slate-900/60 border border-slate-800 rounded-lg overflow-hidden ${
-                    imageUrl ? 'cursor-zoom-in' : ''
-                  }`}
-                  onClick={() => imageUrl && setIsZoomOpen(true)}
-                >
-                  {isImageLoading ? (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <Loader2 className="h-8 w-8 text-slate-500 animate-spin" />
-                    </div>
-                  ) : imageUrl ? (
-                    <img
-                      src={imageUrl}
-                      alt={selectedProduct?.productName ?? ''}
-                      className="w-full h-full object-contain"
-                    />
-                  ) : (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-600 gap-2">
-                      <ImageOff className="h-8 w-8" />
-                      <span className="text-xs">No Image Available</span>
-                    </div>
-                  )}
-                </div>
+  className={`relative aspect-square w-full bg-slate-900/60 border border-slate-800 rounded-lg overflow-hidden ${
+    imageUrl ? "cursor-zoom-in" : ""
+  }`}
+  onClick={() => imageUrl && setIsZoomOpen(true)}
+>
+  {isImageLoading ? (
+    <div className="absolute inset-0 flex items-center justify-center">
+      <Loader2 className="h-8 w-8 text-slate-500 animate-spin" />
+    </div>
+  ) : imageUrl ? (
+    <img
+      src={imageUrl}
+      alt={selectedProduct?.productName ?? ""}
+      className="w-full h-full object-contain"
+    />
+  ) : (
+    <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-600 gap-2">
+      <ImageOff className="h-8 w-8" />
+      <span className="text-xs">No Image Available</span>
+    </div>
+  )}
 
-                {canModify && !isImageLoading && (
-                  <button
-                    type="button"
-                    onClick={handleRefreshImage}
-                    className="mt-2 flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors"
-                    title="Search for a different image"
-                  >
-                    <RefreshCw className="h-3 w-3" />
-                    Refresh image
-                  </button>
-                )}
+  {canModify && !isImageLoading && (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation(); // Prevent opening zoom
+        handleRefreshImage();
+      }}
+      className="absolute bottom-2 right-2 p-2 rounded-full  hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
+      title="Search for a different image"
+    >
+      <RefreshCw className="h-4 w-4" />
+    </button>
+  )}
+</div>
 
-                {selectedProduct && (
-                  <div className="mt-6 flex flex-col items-center gap-2 p-4 bg-slate-900/40 border border-slate-800 rounded-lg">
-                    <QRCodeSVG value={selectedProduct.sku} size={112} bgColor="transparent" fgColor="#cbd5e1" />
-                    <span className="text-[11px] text-slate-500 font-mono">{selectedProduct.sku}</span>
-                  </div>
-                )}
+              
+
+               {selectedProduct && (
+  <div className="mt-6 w-full  flex items-center justify-center p-6">
+    <QRCodeSVG
+      value={selectedProduct.sku}
+      size={240}
+      bgColor="transparent"
+      fgColor="#cbd5e1"
+    />
+  </div>
+)}
               </div>
 
               {/* Details */}

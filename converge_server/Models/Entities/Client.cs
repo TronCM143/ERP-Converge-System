@@ -32,6 +32,9 @@ namespace converge_server.Models.Entities
         [MaxLength(150)]
         public string? Email { get; set; }
 
+        [MaxLength(2000)]
+        public string? Notes { get; set; }
+
         [Required]
         public ClientStage Stage { get; set; } = ClientStage.Leads;
 

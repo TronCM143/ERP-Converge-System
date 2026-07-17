@@ -12,7 +12,6 @@ export interface EmailCandidate {
 interface Props {
   icon: React.ReactNode;
   title: string;
-  description: string;
   candidates: EmailCandidate[];
   cancelLabel: string;
   confirmLabel: string;
@@ -25,7 +24,6 @@ interface Props {
 export default function EmailRecipientPickerDialog({
   icon,
   title,
-  description,
   candidates,
   cancelLabel,
   confirmLabel,
@@ -105,7 +103,7 @@ export default function EmailRecipientPickerDialog({
         </div>
 
         <div style={{ padding: '0 4px' }}>
-          <p style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '12px' }}>{description}</p>
+        
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
             {candidates.length === 0 && extraEmails.length === 0 && (

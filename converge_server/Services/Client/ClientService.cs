@@ -49,8 +49,10 @@ namespace converge_server.Services.Clients
                     ContactNumber = c.ContactNumber,
                     ContactPerson = c.ContactPerson,
                     Email = c.Email,
+                    Notes = c.Notes,
                     Stage = c.Stage.ToString(),
                     QuotationCount = c.Quotations.Count,
+                    TotalSales = c.Quotations.Where(q => q.Status == QuotationStatus.Approved).Sum(q => (decimal?)q.GrandTotal) ?? 0,
                     LastUpdated = c.Quotations.Any() ? c.Quotations.Max(q => q.UpdatedAt) : c.CreatedAt,
                     CreatedAt = c.CreatedAt
                 })
@@ -72,8 +74,10 @@ namespace converge_server.Services.Clients
                     ContactNumber = c.ContactNumber,
                     ContactPerson = c.ContactPerson,
                     Email = c.Email,
+                    Notes = c.Notes,
                     Stage = c.Stage.ToString(),
                     QuotationCount = c.Quotations.Count,
+                    TotalSales = c.Quotations.Where(q => q.Status == QuotationStatus.Approved).Sum(q => (decimal?)q.GrandTotal) ?? 0,
                     LastUpdated = c.Quotations.Any() ? c.Quotations.Max(q => q.UpdatedAt) : c.CreatedAt,
                     CreatedAt = c.CreatedAt
                 })
@@ -92,6 +96,7 @@ namespace converge_server.Services.Clients
                 ContactNumber = dto.ContactNumber,
                 ContactPerson = dto.ContactPerson,
                 Email = dto.Email,
+                Notes = dto.Notes,
                 Stage = ClientStage.Leads,
                 SortOrder = maxSortOrder + 1,
                 CreatedAt = DateTime.UtcNow
@@ -119,6 +124,7 @@ namespace converge_server.Services.Clients
             client.ContactNumber = dto.ContactNumber;
             client.ContactPerson = dto.ContactPerson;
             client.Email = dto.Email;
+            client.Notes = dto.Notes;
 
             await _context.SaveChangesAsync();
             await _cache.RemoveAsync(CacheKeys.Clients);

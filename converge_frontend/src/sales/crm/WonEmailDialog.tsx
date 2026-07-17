@@ -17,9 +17,6 @@ export default function WonEmailDialog({ clientName, candidates, onConfirm, onSk
     <EmailRecipientPickerDialog
       icon={<Mail className="h-4 w-4" />}
       title={`Notify — ${clientName} won`}
-      description={
-        'Choose who gets the "deal won" email. This only affects this send — it won\'t change your saved notification recipients.'
-      }
       candidates={candidates}
       cancelLabel="Cancel"
       skipLabel="Skip Email"

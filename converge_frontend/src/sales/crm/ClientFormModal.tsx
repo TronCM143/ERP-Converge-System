@@ -11,8 +11,10 @@ export interface ClientSummary {
   contactNumber?: string;
   contactPerson?: string;
   email?: string;
+  notes?: string;
   stage: string;
   quotationCount: number;
+  totalSales: number;
   lastUpdated: string;
   createdAt: string;
 }
@@ -46,7 +48,8 @@ export default function ClientFormModal({
           address: values.address.trim(),
           contactPerson: values.contactPerson.trim() || null,
           contactNumber: values.contactNumber.trim() || null,
-          email: values.email.trim() || null
+          email: values.email.trim() || null,
+          notes: values.notes.trim() || null
         })
       });
       if (!res.ok) {
