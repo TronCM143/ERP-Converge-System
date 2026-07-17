@@ -1,11 +1,7 @@
-using converge_server.Data;
 using converge_server.Models.DTOs.Products;
-using converge_server.Models.Entities;
-using converge_server.Services.Caching;
 using converge_server.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace converge_server.Controllers
 {
@@ -15,33 +11,24 @@ namespace converge_server.Controllers
     [Authorize]
     public class ProductsController : ControllerBase
     {
-        private readonly AppDbContext _context;
-        private readonly IAuditService _auditService;
-        private readonly ICacheService _cache;
+        private readonly IProductService _productService;
 
-        public ProductsController(AppDbContext context, IAuditService auditService, ICacheService cache)
+        public ProductsController(IProductService productService)
         {
-            _context = context;
-            _auditService = auditService;
-            _cache = cache;
+            _productService = productService;
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetProducts()
+        public async Task<IActionResult> GetProducts([FromQuery] string? search)
         {
-            var cached = await _cache.GetAsync<List<Product>>(CacheKeys.Products);
-            if (cached != null)
-            {
-                return Ok(cached);
-            }
+            return Ok(await _productService.GetProductsAsync(search));
+        }
 
-            var products = await _context.Products
-                .Where(p => p.IsActive)
-                .OrderBy(p => p.ProductName)
-                .ToListAsync();
-
-            await _cache.SetAsync(CacheKeys.Products, products, TimeSpan.FromMinutes(5));
-            return Ok(products);
+        [HttpGet("{productId:int}")]
+        public async Task<IActionResult> GetProduct(int productId)
+        {
+            var product = await _productService.GetProductByIdAsync(productId);
+            return product == null ? NotFound(new { error = "Product not found." }) : Ok(product);
         }
 
         [HttpPost]
@@ -53,26 +40,8 @@ namespace converge_server.Controllers
                 return BadRequest(ModelState);
             }
 
-            var product = new Product
-            {
-                Category = dto.Category.Trim(),
-                Subcategory = dto.Subcategory?.Trim() ?? string.Empty,
-                Brand = dto.Brand.Trim(),
-                Model = dto.Model?.Trim() ?? string.Empty,
-                ProductName = dto.ProductName.Trim(),
-                Specs = dto.Specs?.Trim() ?? string.Empty,
-                Price = dto.Price,
-                IsActive = dto.IsActive,
-                CreatedAt = DateTime.UtcNow
-            };
-
-            _context.Products.Add(product);
-            await _context.SaveChangesAsync();
-            await _cache.RemoveAsync(CacheKeys.Products);
-
             var actor = User.Identity?.Name ?? "system";
-            await _auditService.LogAsync("Product", product.Id.ToString(), "Created", actor, null, product.ProductName);
-
+            var product = await _productService.CreateProductAsync(dto, actor);
             return Ok(product);
         }
 
@@ -85,29 +54,39 @@ namespace converge_server.Controllers
                 return BadRequest(ModelState);
             }
 
-            var product = await _context.Products.FindAsync(productId);
-            if (product == null)
-            {
-                return NotFound(new { error = "Product not found." });
-            }
-
-            product.Category = dto.Category.Trim();
-            product.Subcategory = dto.Subcategory?.Trim() ?? string.Empty;
-            product.Brand = dto.Brand.Trim();
-            product.Model = dto.Model?.Trim() ?? string.Empty;
-            product.ProductName = dto.ProductName.Trim();
-            product.Specs = dto.Specs?.Trim() ?? string.Empty;
-            product.Price = dto.Price;
-            product.IsActive = dto.IsActive;
-            product.UpdatedAt = DateTime.UtcNow;
-
-            await _context.SaveChangesAsync();
-            await _cache.RemoveAsync(CacheKeys.Products);
-
             var actor = User.Identity?.Name ?? "system";
-            await _auditService.LogAsync("Product", product.Id.ToString(), "Updated", actor, null, product.ProductName);
+            var product = await _productService.UpdateProductAsync(productId, dto, actor);
+            return product == null ? NotFound(new { error = "Product not found." }) : Ok(product);
+        }
 
-            return Ok(product);
+        // Click-to-resolve: returns the cached image immediately if one exists,
+        // otherwise searches once and caches the result (found or not).
+        [HttpPost("{productId:int}/image")]
+        public async Task<IActionResult> ResolveProductImage(int productId)
+        {
+            try
+            {
+                return Ok(await _productService.ResolveProductImageAsync(productId));
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { error = ex.Message });
+            }
+        }
+
+        // Manual override: ignores any prior "not found" result and searches again.
+        [HttpPost("{productId:int}/image/refresh")]
+        [Authorize(Roles = "quotation,admin")]
+        public async Task<IActionResult> RefreshProductImage(int productId)
+        {
+            try
+            {
+                return Ok(await _productService.ResolveProductImageAsync(productId, forceRefresh: true));
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { error = ex.Message });
+            }
         }
     }
 }

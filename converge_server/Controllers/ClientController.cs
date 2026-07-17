@@ -69,8 +69,8 @@ namespace converge_server.Controllers
                 return BadRequest(new { error = "OrderedClientIds must not be empty." });
             }
 
-            var updated = await _clientService.ReorderClientsAsync(parsedStage, dto.OrderedClientIds, User.Identity?.Name ?? "system");
-            return updated ? NoContent() : NotFound();
+            var (success, wonSheetSaved) = await _clientService.ReorderClientsAsync(parsedStage, dto.OrderedClientIds, User.Identity?.Name ?? "system", dto.WonNotifyEmails);
+            return success ? Ok(new { wonSheetSaved }) : NotFound();
         }
 
         [HttpPatch("{clientId:int}/stage")]
@@ -82,8 +82,8 @@ namespace converge_server.Controllers
                 return BadRequest(new { error = $"Unknown stage '{dto.Stage}'." });
             }
 
-            var client = await _clientService.UpdateClientStageAsync(clientId, parsedStage);
-            return client == null ? NotFound() : Ok(client);
+            var (client, wonSheetSaved) = await _clientService.UpdateClientStageAsync(clientId, parsedStage);
+            return client == null ? NotFound() : Ok(new { client, wonSheetSaved });
         }
     }
 }

@@ -14,13 +14,20 @@ namespace converge_server.Services.Clients
         private readonly IAuditService _auditService;
         private readonly INotificationDispatchService _dispatchService;
         private readonly ICacheService _cache;
+        private readonly IWonDealSheetService _wonDealSheetService;
 
-        public ClientService(AppDbContext context, IAuditService auditService, INotificationDispatchService dispatchService, ICacheService cache)
+        public ClientService(
+            AppDbContext context,
+            IAuditService auditService,
+            INotificationDispatchService dispatchService,
+            ICacheService cache,
+            IWonDealSheetService wonDealSheetService)
         {
             _context = context;
             _auditService = auditService;
             _dispatchService = dispatchService;
             _cache = cache;
+            _wonDealSheetService = wonDealSheetService;
         }
 
         public async Task<List<ClientResponseDto>> GetClientsAsync()
@@ -120,18 +127,19 @@ namespace converge_server.Services.Clients
             return await GetClientAsync(clientId);
         }
 
-        public async Task<ClientResponseDto?> UpdateClientStageAsync(int clientId, ClientStage stage)
+        public async Task<(ClientResponseDto? Client, bool WonSheetSaved)> UpdateClientStageAsync(int clientId, ClientStage stage)
         {
             var client = await _context.Clients.FindAsync(clientId);
             if (client == null)
             {
-                return null;
+                return (null, false);
             }
 
             var result = await PrepareStageChangeAsync(client, stage, "system");
             await _context.SaveChangesAsync();
             await _cache.RemoveAsync(CacheKeys.Clients);
 
+            var wonSheetSaved = false;
             if (result != null)
             {
                 await _auditService.LogAsync("Client", clientId.ToString(), "StageChanged", "system", result.OldStage.ToString(), result.NewStage.ToString(), $"Stage changed from {result.OldStage} to {result.NewStage}");
@@ -141,14 +149,14 @@ namespace converge_server.Services.Clients
 
                 if (result.EnteredWon)
                 {
-                    await DispatchWonNotificationAsync(client);
+                    wonSheetSaved = await HandleWonAsync(client);
                 }
             }
 
-            return await GetClientAsync(clientId);
+            return (await GetClientAsync(clientId), wonSheetSaved);
         }
 
-        public async Task<bool> ReorderClientsAsync(ClientStage stage, List<int> orderedClientIds, string actorUsername)
+        public async Task<(bool Success, bool WonSheetSaved)> ReorderClientsAsync(ClientStage stage, List<int> orderedClientIds, string actorUsername, List<string>? wonNotifyEmails = null)
         {
             var clientsToUpdate = await _context.Clients
                 .Where(c => orderedClientIds.Contains(c.Id))
@@ -156,7 +164,7 @@ namespace converge_server.Services.Clients
 
             if (clientsToUpdate.Count == 0)
             {
-                return false;
+                return (false, false);
             }
 
             // At most one card changes column per drag; the rest are same-column reorders.
@@ -176,6 +184,7 @@ namespace converge_server.Services.Clients
             await _context.SaveChangesAsync();
             await _cache.RemoveAsync(CacheKeys.Clients);
 
+            var wonSheetSaved = false;
             if (stageChange != null && movedClient != null)
             {
                 await _auditService.LogAsync("Client", movedClient.Id.ToString(), "StageChanged", actorUsername, stageChange.OldStage.ToString(), stageChange.NewStage.ToString(), $"Stage changed from {stageChange.OldStage} to {stageChange.NewStage}");
@@ -184,29 +193,46 @@ namespace converge_server.Services.Clients
 
                 if (stageChange.EnteredWon)
                 {
-                    await DispatchWonNotificationAsync(movedClient);
+                    wonSheetSaved = await HandleWonAsync(movedClient, wonNotifyEmails);
                 }
             }
 
-            return true;
+            return (true, wonSheetSaved);
         }
 
-        // "Deal won" email: named after the client's latest quotation, e.g.
-        // "Quotation QTN-2026-0004 from client Acme was already WON!"
-        private async Task DispatchWonNotificationAsync(Client client)
+        // Fires everything tied to a client entering Won: the notification
+        // email and a logged row in the "Deals Won" Google Sheet. Named after
+        // the client's latest quotation, e.g. project code "QTN-2026-0004".
+        // overrideEmails is non-null only when the Kanban drag went through the
+        // pre-move confirmation dialog: null keeps the default admin-configured
+        // recipient list, a (possibly empty) list sends to exactly those emails.
+        private async Task<bool> HandleWonAsync(Client client, List<string>? overrideEmails = null)
         {
             var latestQuotation = await _context.Quotations
                 .Where(q => q.ClientId == client.Id)
                 .OrderByDescending(q => q.CreatedAt)
-                .Select(q => q.QuotationNumber)
+                .Select(q => new { q.QuotationNumber, q.GrandTotal })
                 .FirstOrDefaultAsync();
 
             var subject = $"🎉 Deal Won — {client.Name}";
             var body = latestQuotation != null
-                ? $"<p>Quotation <strong>{latestQuotation}</strong> from client <strong>{client.Name}</strong> was already <strong>WON</strong>! 🎉</p>"
+                ? $"<p>Quotation <strong>{latestQuotation.QuotationNumber}</strong> from client <strong>{client.Name}</strong> was already <strong>WON</strong>! 🎉</p>"
                 : $"<p>Client <strong>{client.Name}</strong> was moved to <strong>WON</strong>! 🎉</p>";
 
-            await _dispatchService.DispatchAsync(Models.Entities.NotificationType.WonApproval, subject, body);
+            if (overrideEmails != null)
+            {
+                await _dispatchService.DispatchToExplicitRecipientsAsync(Models.Entities.NotificationType.WonApproval, subject, body, overrideEmails);
+            }
+            else
+            {
+                await _dispatchService.DispatchAsync(Models.Entities.NotificationType.WonApproval, subject, body);
+            }
+
+            return await _wonDealSheetService.AppendWonDealAsync(
+                projectCode: latestQuotation?.QuotationNumber ?? $"CLIENT-{client.Id}",
+                clientName: client.Name,
+                totalSales: latestQuotation?.GrandTotal ?? 0m,
+                wonDate: DateTime.UtcNow);
         }
 
         public async Task<StageChangeResult?> PrepareStageChangeAsync(Client trackedClient, ClientStage newStage, string actorUsername)

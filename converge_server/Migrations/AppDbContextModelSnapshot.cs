@@ -307,6 +307,12 @@ namespace converge_server.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool>("ImageSearchAttempted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("ImageUrl")
+                        .HasColumnType("text");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
@@ -318,6 +324,10 @@ namespace converge_server.Migrations
                         .HasColumnType("numeric");
 
                     b.Property<string>("ProductName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Sku")
                         .IsRequired()
                         .HasColumnType("text");
 

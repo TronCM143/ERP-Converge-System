@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, Sparkles } from 'lucide-react';
+import { ArrowLeft, FileText } from 'lucide-react';
 import QuotationFormModal, { EditableQuotation } from './QuotationFormModal';
 import { apiFetch } from '../../shared/api';
 import { queryCache, CACHE_KEYS } from '../../shared/queryCache';
@@ -114,9 +114,8 @@ export default function QuotationsListPage() {
             type="button"
             whileTap={{ scale: 0.97 }}
             onClick={() => setIsCreateOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white text-sm font-semibold rounded-lg hover:shadow-lg hover:shadow-blue-500/30 transition-all"
+            className="px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white text-sm font-semibold rounded-lg hover:shadow-lg hover:shadow-blue-500/30 transition-all"
           >
-            <Sparkles className="h-4 w-4" />
             Create
           </motion.button>
         </div>
@@ -126,21 +125,23 @@ export default function QuotationsListPage() {
           <div className="text-center py-10 text-slate-400 text-sm">Loading…</div>
         ) : filteredQuotations.length === 0 ? (
           <div className="text-center py-10">
-            <div className="text-3xl mb-2">📋</div>
+            <FileText className="h-8 w-8 mx-auto mb-2 text-slate-600" />
             <p className="text-slate-400 text-sm">
               {searchQuery ? 'No quotations match your search.' : 'No quotations yet.'}
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-slate-800">
+          // Fixed-height scroll container so the column header stays locked
+          // while the rows scroll underneath it.
+          <div className="overflow-auto rounded-lg border border-slate-800 max-h-[calc(100vh-170px)]">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-700 bg-slate-900/60">
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wide">Quotation #</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wide">Date Created</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wide">Client Name</th>
-                  <th className="px-4 py-3 text-right text-xs font-bold text-slate-300 uppercase tracking-wide">Grand Total</th>
-                  <th className="px-4 py-3 text-right text-xs font-bold text-slate-300 uppercase tracking-wide">Status</th>
+              <thead className="sticky top-0 z-10">
+                <tr className="border-b border-slate-700">
+                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wide bg-slate-900">Quotation #</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wide bg-slate-900">Date Created</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wide bg-slate-900">Client Name</th>
+                  <th className="px-4 py-3 text-right text-xs font-bold text-slate-300 uppercase tracking-wide bg-slate-900">Grand Total</th>
+                  <th className="px-4 py-3 text-right text-xs font-bold text-slate-300 uppercase tracking-wide bg-slate-900">Status</th>
                 </tr>
               </thead>
               <tbody>

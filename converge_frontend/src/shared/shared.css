@@ -149,7 +149,6 @@
 .badge--waiting { background: #374151; color: #d1d5db; }
 .badge--ready { background: #166534; color: #86efac; }
 .badge--received { background: #047857; color: #a7f3d0; }
-.badge--unavailable { background: #7f1d1d; color: #fca5a5; }
 .badge--draft { background: #374151; color: #d1d5db; }
 .badge--sent { background: #1e3a8a; color: #93c5fd; }
 .badge--approved { background: #166534; color: #86efac; }

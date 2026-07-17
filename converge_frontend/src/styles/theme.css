@@ -30,3 +30,16 @@ button, input, select, textarea {
   font: inherit;
 }
 
+/* Number inputs: no up/down spinner arrows anywhere (also hides the
+   Chrome hover spinners), so numbers can be typed freely. */
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+

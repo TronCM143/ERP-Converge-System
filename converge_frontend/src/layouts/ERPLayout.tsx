@@ -1,34 +1,24 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
+import { Bell, LogOut, Package, Settings, User } from 'lucide-react';
 import { useAuth } from '../app/AuthContext';
+import { roleHome } from '../app/roleHome';
 import { useNotificationHub } from '../shared/useNotificationHub';
 import NewPrPopup from '../shared/NewPrPopup';
 import ClientSelectorModal from '../shared/ClientSelectorModal';
 import './ERPLayout.css';
 
-function SidebarLink({ to, label }: { to: string; label: string }) {
-  return (
-    <NavLink
-      to={to}
-      className={({ isActive }) =>
-        `px-4 py-2 rounded-lg transition-colors ${
-          isActive
-            ? 'bg-blue-600/20 text-blue-400 border-l-2 border-blue-400'
-            : 'text-slate-400 hover:text-slate-300 hover:bg-slate-800/50'
-        }`
-      }
-      end
-    >
-      {label}
-    </NavLink>
-  );
+// Department name shown next to the logo — derived from the current route
+// rather than role, since a page like Inventory is reachable from more than
+// one role. Purely decorative: not a link, not clickable.
+function moduleLabelForPath(pathname: string): string | null {
+  if (pathname.startsWith('/purchasing')) return 'Purchasing';
+  if (pathname.startsWith('/sales')) return 'Sales';
+  if (pathname.startsWith('/inventory')) return 'Inventory';
+  if (pathname.startsWith('/admin')) return 'Admin';
+  return null;
 }
-
-const MODULE_LABEL: Record<string, string> = {
-  quotation: 'Quotation',
-  purchasing: 'Purchasing'
-};
 
 export default function ERPLayout() {
   const { username, role, logout } = useAuth();
@@ -88,19 +78,22 @@ export default function ERPLayout() {
       <header className="border-b border-slate-800 bg-gradient-to-r from-slate-900/80 via-slate-950/80 to-black/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-full px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
-             <nav className="hidden md:flex gap-2">
-              {isQuotation && (
-                <SidebarLink to="/sales/crm" label="CRM" />
-              )}
-              {isPurchasing && (
-                <SidebarLink to="/purchasing/purchase-requests" label="Purchase Requests" />
-              )}
-            </nav>
-            
-            <div className="text-xl font-bold text-blue-400" aria-label="Converge logo">
-              Converge.IT Solutions Inc.
-            </div>
-           
+            <button
+              type="button"
+              onClick={() => role && navigate(roleHome(role))}
+              aria-label="Home"
+              className="hover:opacity-85 transition-opacity"
+            >
+              <img src="/CSiLogo.png" alt="Converge.IT Solutions Inc." className="h-9 w-auto" />
+            </button>
+            {moduleLabelForPath(location.pathname) && (
+              <span
+                className="px-4 py-1.5 rounded-lg text-sm font-semibold text-blue-200 uppercase tracking-wide select-none pointer-events-none"
+                style={{ background: 'linear-gradient(to right, rgba(59,130,246,0.35), rgba(59,130,246,0))' }}
+              >
+                {moduleLabelForPath(location.pathname)}
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-4">
@@ -126,11 +119,11 @@ export default function ERPLayout() {
                 {userNotifications.length > 0 && (unread.length === 0 || isTickerDismissed || isNotifOpen) && (
                   <button
                     type="button"
-                    className="relative text-2xl hover:opacity-80 transition-opacity"
+                    className="relative p-1 text-slate-300 hover:text-slate-50 transition-colors"
                     aria-label="Purchasing notifications"
                     onClick={() => setIsNotifOpen((v) => !v)}
                   >
-                    🔔
+                    <Bell className="h-6 w-6" />
                     {unreadCount > 0 && (
                       <span className="absolute -top-1 -right-1 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center text-xs font-bold text-white">
                         {unreadCount}
@@ -197,8 +190,8 @@ export default function ERPLayout() {
 
             {isPurchasing && (
               <div className="relative">
-                <button className="text-2xl hover:opacity-80 transition-opacity" type="button" aria-label="Notifications">
-                  🔔
+                <button className="p-1 text-slate-300 hover:text-slate-50 transition-colors" type="button" aria-label="Notifications">
+                  <Bell className="h-6 w-6" />
                 </button>
                 {notification && (
                   <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-xs font-bold text-white">
@@ -210,12 +203,12 @@ export default function ERPLayout() {
 
             <div className="relative" ref={profileMenuRef}>
               <button
-                className="text-2xl hover:opacity-80 transition-opacity"
+                className="p-1 text-slate-300 hover:text-slate-50 transition-colors"
                 type="button"
                 onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
                 aria-label="Profile menu"
               >
-                👤
+                <User className="h-6 w-6" />
               </button>
 
               <AnimatePresence>
@@ -228,38 +221,38 @@ export default function ERPLayout() {
                     transition={{ duration: 0.15 }}
                   >
                     <button
-                      className="w-full text-left px-4 py-2 text-slate-400 text-sm disabled:opacity-50"
+                      className="w-full flex items-center gap-2 text-left px-4 py-2 text-slate-400 text-sm disabled:opacity-50"
                       type="button"
                       disabled
                       title="Coming soon"
                     >
-                      👤 Profile
+                      <User className="h-4 w-4" /> Profile
                     </button>
                     <button
-                      className="w-full text-left px-4 py-2 text-slate-400 hover:bg-slate-700/50 text-sm transition-colors"
+                      className="w-full flex items-center gap-2 text-left px-4 py-2 text-slate-400 hover:bg-slate-700/50 text-sm transition-colors"
                       type="button"
                       onClick={() => {
                         navigate('/inventory');
                         setIsProfileMenuOpen(false);
                       }}
                     >
-                      📦 Inventory
+                      <Package className="h-4 w-4" /> Inventory
                     </button>
                     {(isAdmin || isQuotation) && (
                       <button
-                        className="w-full text-left px-4 py-2 text-slate-400 hover:bg-slate-700/50 text-sm transition-colors"
+                        className="w-full flex items-center gap-2 text-left px-4 py-2 text-slate-400 hover:bg-slate-700/50 text-sm transition-colors"
                         type="button"
                         onClick={() => {
                           navigate('/admin/settings');
                           setIsProfileMenuOpen(false);
                         }}
                       >
-                        ⚙️ Settings
+                        <Settings className="h-4 w-4" /> Settings
                       </button>
                     )}
                     <div className="border-t border-slate-700 my-1"></div>
-                    <button className="w-full text-left px-4 py-2 text-red-400 hover:bg-red-600/10 text-sm transition-colors" type="button" onClick={handleLogout}>
-                      🚪 Logout
+                    <button className="w-full flex items-center gap-2 text-left px-4 py-2 text-red-400 hover:bg-red-600/10 text-sm transition-colors" type="button" onClick={handleLogout}>
+                      <LogOut className="h-4 w-4" /> Logout
                     </button>
                   </motion.div>
                 )}
@@ -270,12 +263,14 @@ export default function ERPLayout() {
       </header>
 
       <main className="flex-1 overflow-auto">
+        {/* Opacity-only transition: animating transforms here breaks
+            position:sticky for everything inside the page. */}
         <AnimatePresence mode="wait">
           <motion.div
             key={location.pathname}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             transition={{ duration: 0.18, ease: 'easeOut' }}
           >
             <Outlet />

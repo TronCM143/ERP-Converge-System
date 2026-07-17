@@ -26,7 +26,11 @@
 
 .history-timeline__dot {
   flex-shrink: 0;
-  font-size: 18px;
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: #64748b;
 }
 
 .history-timeline__content {

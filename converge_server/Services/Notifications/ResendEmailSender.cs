@@ -18,11 +18,16 @@ namespace converge_server.Services.Notifications
         public ResendEmailSender(IResend resend, IConfiguration configuration, ILogger<ResendEmailSender> logger)
         {
             _resend = resend;
-            _fromAddress = configuration["Resend:FromAddress"] ?? "onboarding@resend.dev";
+            var configuredFromAddress = configuration["Resend:FromAddress"];
+            // "??" alone doesn't catch this: an explicitly-blank env var (e.g.
+            // "Resend__FromAddress=" with nothing after it) resolves to "", not
+            // null, so it silently skipped the fallback and sent with an empty
+            // From address — which Resend rejects as "The domain is invalid".
+            _fromAddress = string.IsNullOrWhiteSpace(configuredFromAddress) ? "onboarding@resend.dev" : configuredFromAddress;
             _logger = logger;
         }
 
-        public async Task SendAsync(string toEmail, string subject, string body)
+        public async Task SendAsync(string toEmail, string subject, string body, Interfaces.EmailAttachment? attachment = null)
         {
             var message = new EmailMessage
             {
@@ -31,6 +36,19 @@ namespace converge_server.Services.Notifications
                 HtmlBody = body
             };
             message.To.Add(toEmail);
+
+            if (attachment != null)
+            {
+                message.Attachments = new List<Resend.EmailAttachment>
+                {
+                    new()
+                    {
+                        Filename = attachment.FileName,
+                        Content = attachment.Content,
+                        ContentType = attachment.ContentType
+                    }
+                };
+            }
 
             var response = await _resend.EmailSendAsync(message);
             _logger.LogInformation("Resend email to {To} ({Subject}): id {Id}", toEmail, subject, response.Content);

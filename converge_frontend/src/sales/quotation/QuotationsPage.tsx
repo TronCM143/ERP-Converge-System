@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { FileSearch, FileText } from 'lucide-react';
 import { apiFetch } from '../../shared/api';
 import { queryCache, CACHE_KEYS } from '../../shared/queryCache';
 import { useAuth } from '../../app/AuthContext';
@@ -215,12 +216,12 @@ export default function QuotationsPage({
       <div>
         {quotations.length === 0 && !isLoading ? (
           <div className="text-center py-10">
-            <div className="text-4xl mb-3">🧾</div>
+            <FileText className="h-9 w-9 mx-auto mb-3 text-slate-600" />
             <p className="text-slate-400 text-sm">No quotations yet.</p>
           </div>
         ) : filteredQuotations.length === 0 ? (
           <div className="text-center py-10">
-            <div className="text-4xl mb-3">🔍</div>
+            <FileSearch className="h-9 w-9 mx-auto mb-3 text-slate-600" />
             <p className="text-slate-400 text-sm">No quotations match "{searchQuery}".</p>
           </div>
         ) : (
@@ -265,7 +266,9 @@ export default function QuotationsPage({
                       <td className="px-3 py-3 font-medium text-slate-50">{q.quotationName}</td>
                       <td className="px-3 py-3 font-semibold text-slate-200">{peso(q.grandTotal)}</td>
                       <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                        {canManage && q.status === 'Draft' ? (
+                        {/* Sending to purchasing is only offered once the client
+                            has reached the Proposal stage of the pipeline. */}
+                        {canManage && q.status === 'Draft' && client.stage === 'Proposal' ? (
                           <motion.button
                             className="px-3 py-1 bg-blue-600/80 hover:bg-blue-600 text-white text-xs font-medium rounded transition-all"
                             type="button"

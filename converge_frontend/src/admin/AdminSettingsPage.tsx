@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Check, Mail, Smartphone } from 'lucide-react';
 import PageHeader from '../shared/PageHeader';
 import { apiFetch } from '../shared/api';
 import NotificationRecipientFormModal from './NotificationRecipientFormModal';
@@ -172,14 +173,14 @@ export default function AdminSettingsPage() {
                           <div key={pref.type} className="admin-settings__pref-item">
                             <span className="admin-settings__pref-type">{pref.type}</span>
                             <span className="admin-settings__pref-badges">
-                              {pref.emailEnabled && <span className="badge">📧</span>}
-                              {pref.smsEnabled && <span className="badge">📱</span>}
+                              {pref.emailEnabled && <span className="badge"><Mail className="h-3 w-3" /></span>}
+                              {pref.smsEnabled && <span className="badge"><Smartphone className="h-3 w-3" /></span>}
                             </span>
                           </div>
                         ))}
                       </div>
                     </td>
-                    <td>{recipient.isActive ? '✓' : '—'}</td>
+                    <td>{recipient.isActive ? <Check className="h-4 w-4 text-emerald-400" /> : '—'}</td>
                     <td>
                       <button
                         className="btn btn--small"
@@ -232,7 +233,15 @@ export default function AdminSettingsPage() {
                 disabled={savingDept === d.department}
                 onClick={() => saveDepartmentEmail(d.department, d.email)}
               >
-                {deptSavedFlash === d.department ? 'Saved ✓' : savingDept === d.department ? 'Saving…' : 'Save'}
+                {deptSavedFlash === d.department ? (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <Check className="h-3.5 w-3.5" /> Saved
+                  </span>
+                ) : savingDept === d.department ? (
+                  'Saving…'
+                ) : (
+                  'Save'
+                )}
               </button>
             </div>
           ))}

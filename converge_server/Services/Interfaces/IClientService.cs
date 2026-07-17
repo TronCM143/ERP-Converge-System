@@ -11,8 +11,8 @@ namespace converge_server.Services.Interfaces
         Task<ClientResponseDto?> GetClientAsync(int clientId);
         Task<ClientResponseDto> CreateClientAsync(CreateClientDto dto);
         Task<ClientResponseDto?> UpdateClientAsync(int clientId, CreateClientDto dto);
-        Task<ClientResponseDto?> UpdateClientStageAsync(int clientId, ClientStage stage);
-        Task<bool> ReorderClientsAsync(ClientStage stage, List<int> orderedClientIds, string actorUsername);
+        Task<(ClientResponseDto? Client, bool WonSheetSaved)> UpdateClientStageAsync(int clientId, ClientStage stage);
+        Task<(bool Success, bool WonSheetSaved)> ReorderClientsAsync(ClientStage stage, List<int> orderedClientIds, string actorUsername, List<string>? wonNotifyEmails = null);
         Task<StageChangeResult?> PrepareStageChangeAsync(Client trackedClient, ClientStage newStage, string actorUsername);
     }
 }

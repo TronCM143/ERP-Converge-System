@@ -1,4 +1,5 @@
 import React from 'react';
+import { FileText, GripVertical } from 'lucide-react';
 import { Card, CardContent } from '../../components/ui/card';
 import { ClientSummary } from './ClientFormModal';
 
@@ -13,7 +14,7 @@ export default function KanbanCardOverlay({ client }: KanbanCardOverlayProps) {
         <h4 className="font-semibold text-slate-50 flex-1">
           {client.name}
         </h4>
-        <span className="text-slate-400">⋮⋮⋮</span>
+        <GripVertical className="h-4 w-4 text-slate-400" />
       </div>
 
       {client.contactPerson && (
@@ -21,7 +22,9 @@ export default function KanbanCardOverlay({ client }: KanbanCardOverlayProps) {
       )}
 
       <div className="flex items-center justify-between text-xs text-slate-300">
-        <span>📊 {client.quotationCount}</span>
+        <span className="flex items-center gap-1">
+          <FileText className="h-3.5 w-3.5" /> {client.quotationCount}
+        </span>
         <span>
           {new Date(client.lastUpdated).toLocaleDateString([], { month: 'short', day: 'numeric' })}
         </span>

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
+import { X } from 'lucide-react';
 import { apiFetch } from '../shared/api';
 
 interface Props {
@@ -86,7 +87,7 @@ export default function NotificationRecipientFormModal({ onClose, onSaved }: Pro
         <div className="panel-header">
           <h2>Add Notification Recipient</h2>
           <button className="btn-remove-item" type="button" onClick={onClose}>
-            ✕
+            <X className="h-5 w-5" />
           </button>
         </div>
 

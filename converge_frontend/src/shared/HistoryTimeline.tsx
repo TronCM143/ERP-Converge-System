@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { apiFetch } from './api';
 import { formatRelativeTime } from './formatRelativeTime';
 import './HistoryTimeline.css';
@@ -61,7 +62,7 @@ export default function HistoryTimeline({ entityType, entityId }: Props) {
           initial={{ opacity: 0, x: -8 }}
           animate={{ opacity: 1, x: 0 }}
         >
-          <div className="history-timeline__dot">📝</div>
+          <div className="history-timeline__dot" aria-hidden="true" />
           <div className="history-timeline__content">
             <div className="history-timeline__header">
               <span className="history-timeline__action">{log.action}</span>
@@ -73,9 +74,10 @@ export default function HistoryTimeline({ entityType, entityId }: Props) {
               <div className="history-timeline__values">
                 <button
                   className="history-timeline__toggle"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                   onClick={() => setExpandedId(expandedId === log.id ? null : log.id)}
                 >
-                  {expandedId === log.id ? '▼' : '▶'} View changes
+                  {expandedId === log.id ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />} View changes
                 </button>
                 <AnimatePresence>
                   {expandedId === log.id && (

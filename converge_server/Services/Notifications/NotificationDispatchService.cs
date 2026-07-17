@@ -99,5 +99,42 @@ namespace converge_server.Services.Notifications
                 _logger.LogError(ex, "Failed to dispatch {Type} notification", type);
             }
         }
+
+        public async Task DispatchToExplicitRecipientsAsync(NotificationType type, string subject, string body, List<string> emails)
+        {
+            try
+            {
+                var emailAttempted = 0;
+
+                foreach (var email in emails.Where(e => !string.IsNullOrWhiteSpace(e)).Distinct())
+                {
+                    try
+                    {
+                        await _emailSender.SendAsync(email, subject, body);
+                        emailAttempted++;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to send email to {Email}", email);
+                    }
+                }
+
+                await _auditService.LogAsync(
+                    "Notification",
+                    type.ToString(),
+                    "NotificationSent",
+                    "system",
+                    null,
+                    $"Emails: {emailAttempted}",
+                    $"Dispatched {type} notification to {emailAttempted} explicitly chosen email(s)"
+                );
+
+                _logger.LogInformation("Dispatched {Type} notification to explicit recipients: {EmailCount} emails", type, emailAttempted);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to dispatch {Type} notification to explicit recipients", type);
+            }
+        }
     }
 }

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
+import { X } from 'lucide-react';
 import { apiFetch } from '../../shared/api';
 import ClientFormFields, { ClientFormValues, emptyClientFormValues } from './ClientFormFields';
 
@@ -81,7 +82,7 @@ export default function ClientFormModal({
         <div className="panel-header">
           <h2>New Client</h2>
           <button className="btn-remove-item" type="button" onClick={onClose}>
-            ✕
+            <X className="h-5 w-5" />
           </button>
         </div>
 

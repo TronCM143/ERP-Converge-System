@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { FileText, Package, RefreshCw, ShoppingCart, StickyNote, User } from 'lucide-react';
 import { apiFetch } from './api';
 import { formatRelativeTime } from './formatRelativeTime';
 import './ActivityFeed.css';
@@ -17,11 +18,11 @@ interface ActivityEntry {
   details?: string;
 }
 
-const ENTITY_ICONS: Record<string, string> = {
-  Client: '👤',
-  Quotation: '📄',
-  PurchaseRequest: '🛒',
-  Product: '📦'
+const ENTITY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  Client: User,
+  Quotation: FileText,
+  PurchaseRequest: ShoppingCart,
+  Product: Package
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -99,7 +100,9 @@ export default function ActivityFeed() {
           disabled={isRefreshing}
           title="Refresh activity"
         >
-          <span className={isRefreshing ? 'activity-feed__refresh-icon spinning' : 'activity-feed__refresh-icon'}>⟳</span>
+          <span className={isRefreshing ? 'activity-feed__refresh-icon spinning' : 'activity-feed__refresh-icon'}>
+            <RefreshCw className="h-3.5 w-3.5" />
+          </span>
         </button>
       </div>
 
@@ -124,7 +127,10 @@ export default function ActivityFeed() {
                 title={entry.details || undefined}
               >
                 <div className={`activity-feed__icon activity-feed__icon--${entry.entityType.toLowerCase()}`}>
-                  {ENTITY_ICONS[entry.entityType] ?? '📝'}
+                  {(() => {
+                    const Icon = ENTITY_ICONS[entry.entityType] ?? StickyNote;
+                    return <Icon className="h-3.5 w-3.5" />;
+                  })()}
                 </div>
                 <div className="activity-feed__body">
                   <div className="activity-feed__line">

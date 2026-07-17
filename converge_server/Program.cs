@@ -95,6 +95,7 @@ builder.Services.AddScoped<converge_server.Services.Interfaces.IBillOfMaterialSe
 builder.Services.AddScoped<converge_server.Services.Interfaces.IPurchaseOrderService, converge_server.Services.PurchaseOrders.PurchaseOrderService>();
 builder.Services.AddScoped<IAuthService, converge_server.Services.Auth.AuthService>();
 builder.Services.AddScoped<IQuotationService, converge_server.Services.Quotations.QuotationService>();
+builder.Services.AddSingleton<converge_server.Services.Interfaces.IQuotationPdfService, converge_server.Services.Quotations.QuotationPdfService>();
 builder.Services.AddScoped<converge_server.Services.Interfaces.IQuotationGenerationService, converge_server.Services.Ai.GroqQuotationGenerationService>();
 builder.Services.AddScoped<converge_server.Services.Interfaces.IClientService, converge_server.Services.Clients.ClientService>();
 builder.Services.AddScoped<converge_server.Services.Interfaces.IAuditService, converge_server.Services.Audit.AuditService>();
@@ -119,6 +120,14 @@ else
 builder.Services.AddScoped<converge_server.Services.Interfaces.ISmsSender, converge_server.Services.Notifications.M360SmsSender>();
 builder.Services.AddScoped<converge_server.Services.Interfaces.INotificationDispatchService, converge_server.Services.Notifications.NotificationDispatchService>();
 builder.Services.AddScoped<converge_server.Services.Interfaces.IUserNotificationService, converge_server.Services.Notifications.UserNotificationService>();
+builder.Services.AddScoped<converge_server.Services.Interfaces.IWonDealSheetService, converge_server.Services.Notifications.GoogleWonDealSheetService>();
+
+// Products: image search (Google Custom Search, no-ops until configured) +
+// the product service itself (also needs its own HttpClient to download the
+// image bytes once a source URL is found).
+builder.Services.AddHttpClient<converge_server.Services.Interfaces.IProductImageSearchService, converge_server.Services.Products.GoogleProductImageSearchService>();
+builder.Services.AddHttpClient<converge_server.Services.Products.ProductService>();
+builder.Services.AddScoped<converge_server.Services.Interfaces.IProductService, converge_server.Services.Products.ProductService>();
 
 // Groq (AI quotation generation from a natural-language prompt).
 // The API key comes from .env (Groq__ApiKey); never hardcode it here or in appsettings.json.
@@ -213,6 +222,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseStaticFiles();
 
 app.UseAuthentication();
 app.UseMiddleware<SessionValidationMiddleware>();

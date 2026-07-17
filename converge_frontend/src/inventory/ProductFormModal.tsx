@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
+import { X } from 'lucide-react';
 import { apiFetch } from '../shared/api';
 import { Product } from './ProductsPage';
 
@@ -105,7 +106,7 @@ export default function ProductFormModal({ onClose, onSaved, product }: Props) {
         <div className="panel-header">
           <h2>{isEditing ? 'Edit Product' : 'Add New Product'}</h2>
           <button className="btn-remove-item" type="button" onClick={onClose}>
-            ✕
+            <X className="h-5 w-5" />
           </button>
         </div>
 

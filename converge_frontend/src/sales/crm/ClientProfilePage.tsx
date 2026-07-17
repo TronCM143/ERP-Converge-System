@@ -8,7 +8,7 @@ import ClientFormFields, { ClientFormValues } from './ClientFormFields';
 import { ClientSummary } from './ClientFormModal';
 import QuotationsPage from '../quotation/QuotationsPage';
 import QuotationDetailModal from '../quotation/QuotationDetailModal';
-import { ArrowLeft, Edit2, Save, X } from 'lucide-react';
+import { ArrowLeft, Edit2, Save, Search, X } from 'lucide-react';
 
 export default function ClientProfilePage() {
   const { clientId } = useParams<{ clientId: string }>();
@@ -94,7 +94,7 @@ export default function ClientProfilePage() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-950 to-black p-6">
         <Card className="p-12 text-center max-w-md mx-auto">
-          <div className="text-4xl mb-4">🔍</div>
+          <Search className="h-10 w-10 mx-auto mb-4 text-slate-600" />
           <p className="text-slate-400 mb-6">Client not found.</p>
           <Link to="/sales/crm">
             <Button variant="secondary" className="gap-2">

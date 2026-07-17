@@ -9,16 +9,35 @@ using Microsoft.EntityFrameworkCore;
 
 namespace converge_server.Services.Ai
 {
-    // Two-stage RAG-style pipeline for turning a free-text prompt into quotation line items:
-    //   1. Retrieve nothing yet - ask Groq to EXTRACT the items the user actually asked for
-    //      (no inventing extras) as structured JSON.
-    //   2. Retrieve: for each extracted item, look up real candidates from the Products table
-    //      (lexical keyword scoring - the catalog is small/structured enough that this beats
-    //      the cost/complexity of a vector store, and Groq has no embeddings endpoint anyway).
-    //      Items with no good catalog match are returned as unmatched/"unavailable" rather than
-    //      hallucinated into existence.
+    // RAG pipeline for turning a free-text prompt into quotation line items.
+    // The catalog is large (thousands of rows), so it can't be dumped wholesale
+    // into a prompt - genuine retrieval has to narrow it down first:
+    //   1. Extract - ask Groq to pull the physical items + quantities the user
+    //      actually asked for out of the free-text prompt. No catalog involved
+    //      yet, so this call stays small regardless of catalog size.
+    //   2. Retrieve - scan the REAL, CURRENT database catalog and, for each
+    //      extracted item, keyword-rank every active product to shortlist a
+    //      handful of plausible candidates (cheap, in-process, scales to
+    //      thousands of rows). An item with zero lexical overlap against the
+    //      whole catalog is unmatched immediately - no LLM call wasted on it.
+    //   3. Decide - hand Groq ONLY those short per-item candidate lists (never
+    //      the full catalog) and ask it to pick the single best real productId
+    //      per item, or say none of them fit. This is where semantic judgement
+    //      (synonyms, spec phrasing) beats plain keyword scoring.
+    //   4. Verify - every productId Groq returns is checked against the same
+    //      catalog dictionary server-side before use. A hallucinated or
+    //      out-of-candidate id is downgraded to unmatched, and every displayed
+    //      field (name/brand/model/price) is always re-read from the real
+    //      Product row, never from the LLM's output.
+    // This guarantees a quotation can never contain a product that doesn't
+    // exist in the database, while keeping every prompt bounded regardless of
+    // how large the catalog grows. (Groq has no embeddings endpoint, so the
+    // retrieval step is lexical rather than vector search - fine at this
+    // catalog size; a much larger catalog would want real vector retrieval.)
     public class GroqQuotationGenerationService : IQuotationGenerationService
     {
+        private const int MaxCandidatesPerItem = 6;
+
         private static readonly string[] StopWords =
         {
             "a", "an", "the", "with", "and", "of", "for", "to", "in", "on", "unit", "units",
@@ -46,13 +65,57 @@ namespace converge_server.Services.Ai
         {
             var extractedItems = await ExtractItemsAsync(prompt);
 
+            // Retrieve: scan the database BEFORE any catalog-aware generation.
             var catalog = await _context.Products
                 .Where(p => p.IsActive)
                 .ToListAsync();
+            var catalogById = catalog.ToDictionary(p => p.Id);
 
-            var draftItems = extractedItems
-                .Select(item => MatchToCatalog(item, catalog))
+            var candidatesByItem = extractedItems
+                .Select((item, index) => (index, item, candidates: RetrieveCandidates(item.Description, catalog)))
                 .ToList();
+
+            // Decide: only items with at least one lexical candidate are worth
+            // an LLM call - anything with zero overlap against the whole
+            // catalog is unmatched without spending a token on it.
+            var itemsNeedingDecision = candidatesByItem.Where(x => x.candidates.Count > 0).ToList();
+            var decisions = itemsNeedingDecision.Count > 0
+                ? await DecideAsync(itemsNeedingDecision)
+                : new Dictionary<int, int?>();
+
+            var draftItems = candidatesByItem.Select(x =>
+            {
+                var quantity = x.item.Quantity <= 0 ? 1 : x.item.Quantity;
+
+                // Verify: only trust a productId that (a) Groq actually chose
+                // and (b) is really in the catalog we retrieved candidates
+                // from. Anything else - including "no candidates at all" -
+                // surfaces as unmatched rather than a guess.
+                if (decisions.TryGetValue(x.index, out var chosenId)
+                    && chosenId.HasValue
+                    && catalogById.TryGetValue(chosenId.Value, out var product))
+                {
+                    return new GenerateQuotationDraftItemDto
+                    {
+                        RequestedDescription = x.item.Description,
+                        Quantity = quantity,
+                        Matched = true,
+                        ProductId = product.Id,
+                        ProductName = product.ProductName,
+                        Brand = product.Brand,
+                        Model = product.Model,
+                        Category = product.Category,
+                        UnitPrice = product.Price
+                    };
+                }
+
+                return new GenerateQuotationDraftItemDto
+                {
+                    RequestedDescription = x.item.Description,
+                    Quantity = quantity,
+                    Matched = false
+                };
+            }).ToList();
 
             return new GenerateQuotationDraftResponseDto
             {
@@ -69,11 +132,115 @@ namespace converge_server.Services.Ai
                 "Do not add accessories, tools, cables, mounts, or any item the user did not ask for, " +
                 "even if commonly needed for installation. Do not invent brands, models, or specs that " +
                 "were not stated. Ignore labor/service/installation actions - only list physical items. " +
-                "For each item return: \"description\" (short phrase capturing what was asked, including " +
-                "any brand/model/spec keywords the user gave) and \"quantity\" (integer; default to 1 if " +
-                "not stated). Respond with ONLY valid JSON of this exact shape, no prose, no markdown " +
-                "fences: {\"items\":[{\"description\":\"...\",\"quantity\":1}]}";
+                "Correct obvious spelling and typing mistakes in product names, brands, and model numbers " +
+                "(e.g. \"dahau\" -> \"dahua\", \"camara\" -> \"camera\") while preserving the user's actual " +
+                "intent - never change a brand/model into a different real brand/model, only fix the spelling " +
+                "of what they clearly meant. For each item return: \"description\" (short phrase capturing " +
+                "what was asked, spelling-corrected, including any brand/model/spec keywords the user gave) " +
+                "and \"quantity\" (integer; default to 1 if not stated). Respond with ONLY valid JSON of this " +
+                "exact shape, no prose, no markdown fences: {\"items\":[{\"description\":\"...\",\"quantity\":1}]}";
 
+            var rawContent = await CallGroqAsync(systemPrompt, prompt);
+
+            ExtractedItemsPayload? parsed;
+            try
+            {
+                parsed = JsonSerializer.Deserialize<ExtractedItemsPayload>(
+                    StripMarkdownFences(rawContent),
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "Failed to parse Groq extraction response: {Content}", rawContent);
+                throw new InvalidOperationException("Could not understand the AI service's response.");
+            }
+
+            return parsed?.Items?.Where(i => !string.IsNullOrWhiteSpace(i.Description)).ToList()
+                   ?? new List<ExtractedItem>();
+        }
+
+        // Lexical retrieval: rank the whole catalog by token overlap against
+        // the item description and keep only the top few plausible options.
+        // This is the piece that lets a 3000+ row catalog stay usable - the
+        // LLM never sees more than a handful of real candidates per item.
+        private static List<Product> RetrieveCandidates(string description, List<Product> catalog)
+        {
+            var tokens = Tokenize(description);
+            if (tokens.Count == 0) return new List<Product>();
+
+            return catalog
+                .Select(p =>
+                {
+                    var haystack = Normalize($"{p.ProductName} {p.Brand} {p.Category} {p.Subcategory} {p.Model} {p.Specs}");
+                    var brandHaystack = Normalize(p.Brand);
+                    var matchedCount = tokens.Count(t => haystack.Contains(t));
+                    var brandBonus = brandHaystack.Length > 0 && tokens.Any(brandHaystack.Contains) ? 1 : 0;
+                    return (product: p, score: matchedCount * 10 + brandBonus, matchedCount);
+                })
+                .Where(x => x.matchedCount > 0)
+                .OrderByDescending(x => x.score)
+                .Take(MaxCandidatesPerItem)
+                .Select(x => x.product)
+                .ToList();
+        }
+
+        private async Task<Dictionary<int, int?>> DecideAsync(
+            List<(int index, ExtractedItem item, List<Product> candidates)> itemsWithCandidates)
+        {
+            var itemBlocks = itemsWithCandidates.Select(x =>
+            {
+                var candidateLines = x.candidates.Select(p =>
+                    $"    {p.Id} | {p.ProductName.Replace('_', ' ')} | {p.Brand} | {p.Model} | {TruncateSpecs(p.Specs)} | ₱{p.Price}");
+                return $"Item {x.index}: \"{x.item.Description}\" (qty {x.item.Quantity})\n  Candidates:\n{string.Join('\n', candidateLines)}";
+            });
+
+            var systemPrompt =
+                "You are a purchasing assistant matching requested items to real product candidates from " +
+                "our database. For each numbered item below, pick the SINGLE candidate that best matches what " +
+                "was requested, using its id. If none of the listed candidates are actually a reasonable match " +
+                "(wrong product entirely, not just an imperfect spec), return null for that item.\n\n" +
+                "CRITICAL: You may ONLY return a productId that appears in that item's own candidate list, or " +
+                "null. Never return an id from a different item's list, and never invent an id.\n\n" +
+                "Respond with ONLY valid JSON of this exact shape, no prose, no markdown fences: " +
+                "{\"decisions\":[{\"itemIndex\":0,\"productId\":123}]} (productId may be null)";
+
+            var userPrompt = string.Join("\n\n", itemBlocks);
+            var rawContent = await CallGroqAsync(systemPrompt, userPrompt);
+
+            DecisionPayload? parsed;
+            try
+            {
+                parsed = JsonSerializer.Deserialize<DecisionPayload>(
+                    StripMarkdownFences(rawContent),
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "Failed to parse Groq decision response: {Content}", rawContent);
+                // Don't fail the whole draft over a malformed decision reply -
+                // every item just falls back to unmatched (verified downstream).
+                return new Dictionary<int, int?>();
+            }
+
+            var validCandidateIds = itemsWithCandidates.ToDictionary(
+                x => x.index,
+                x => x.candidates.Select(p => p.Id).ToHashSet());
+
+            var result = new Dictionary<int, int?>();
+            foreach (var decision in parsed?.Decisions ?? new List<Decision>())
+            {
+                if (decision.ProductId.HasValue
+                    && validCandidateIds.TryGetValue(decision.ItemIndex, out var allowedIds)
+                    && allowedIds.Contains(decision.ProductId.Value))
+                {
+                    result[decision.ItemIndex] = decision.ProductId;
+                }
+            }
+            return result;
+        }
+
+        private async Task<string> CallGroqAsync(string systemPrompt, string userPrompt)
+        {
             var client = _httpClientFactory.CreateClient("Groq");
             var requestBody = new GroqChatRequest
             {
@@ -83,7 +250,7 @@ namespace converge_server.Services.Ai
                 Messages = new List<GroqMessage>
                 {
                     new GroqMessage { Role = "system", Content = systemPrompt },
-                    new GroqMessage { Role = "user", Content = prompt }
+                    new GroqMessage { Role = "user", Content = userPrompt }
                 }
             };
 
@@ -112,23 +279,14 @@ namespace converge_server.Services.Ai
                 throw new InvalidOperationException("The AI service returned an empty response.");
             }
 
-            var jsonText = StripMarkdownFences(rawContent);
+            return rawContent;
+        }
 
-            ExtractedItemsPayload? parsed;
-            try
-            {
-                parsed = JsonSerializer.Deserialize<ExtractedItemsPayload>(
-                    jsonText,
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            }
-            catch (JsonException ex)
-            {
-                _logger.LogError(ex, "Failed to parse Groq JSON response: {Content}", rawContent);
-                throw new InvalidOperationException("Could not understand the AI service's response.");
-            }
-
-            return parsed?.Items?.Where(i => !string.IsNullOrWhiteSpace(i.Description)).ToList()
-                   ?? new List<ExtractedItem>();
+        private static string TruncateSpecs(string specs)
+        {
+            const int maxLength = 160;
+            if (string.IsNullOrEmpty(specs) || specs.Length <= maxLength) return specs.Replace('_', ' ');
+            return specs[..maxLength].Replace('_', ' ') + "…";
         }
 
         private static string StripMarkdownFences(string content)
@@ -144,77 +302,6 @@ namespace converge_server.Services.Ai
                 }
             }
             return trimmed;
-        }
-
-        private static GenerateQuotationDraftItemDto MatchToCatalog(ExtractedItem item, List<Product> catalog)
-        {
-            var quantity = item.Quantity <= 0 ? 1 : item.Quantity;
-            var tokens = Tokenize(item.Description);
-
-            if (tokens.Count == 0)
-            {
-                return new GenerateQuotationDraftItemDto
-                {
-                    RequestedDescription = item.Description,
-                    Quantity = quantity,
-                    Matched = false
-                };
-            }
-
-            // A short description (e.g. "RTX 5070") gives us little room for error, so every
-            // token must show up somewhere on the product before we call it a match - a single
-            // generic word (like "rtx" also appearing inside "rtx3050") is not enough evidence.
-            // Longer descriptions get some slack for filler words the LLM didn't fully strip.
-            var requiredCoverage = tokens.Count <= 2 ? 1.0 : 0.67;
-
-            Product? best = null;
-            var bestCoverage = 0.0;
-            var bestRank = -1;
-
-            foreach (var product in catalog)
-            {
-                var haystack = Normalize(
-                    $"{product.ProductName} {product.Brand} {product.Category} {product.Subcategory} {product.Model} {product.Specs}");
-                var brandHaystack = Normalize(product.Brand);
-
-                var matchedCount = tokens.Count(token => haystack.Contains(token));
-                var coverage = matchedCount / (double)tokens.Count;
-                if (coverage < requiredCoverage) continue;
-
-                // Tie-break equally-covered candidates by whether the query also names the brand.
-                var brandBonus = brandHaystack.Length > 0 && tokens.Any(brandHaystack.Contains) ? 1 : 0;
-                var rank = matchedCount * 10 + brandBonus;
-
-                if (rank > bestRank)
-                {
-                    best = product;
-                    bestCoverage = coverage;
-                    bestRank = rank;
-                }
-            }
-
-            if (best != null && bestCoverage >= requiredCoverage)
-            {
-                return new GenerateQuotationDraftItemDto
-                {
-                    RequestedDescription = item.Description,
-                    Quantity = quantity,
-                    Matched = true,
-                    ProductId = best.Id,
-                    ProductName = best.ProductName,
-                    Brand = best.Brand,
-                    Model = best.Model,
-                    Category = best.Category,
-                    UnitPrice = best.Price
-                };
-            }
-
-            return new GenerateQuotationDraftItemDto
-            {
-                RequestedDescription = item.Description,
-                Quantity = quantity,
-                Matched = false
-            };
         }
 
         private static string Normalize(string value)
@@ -244,6 +331,21 @@ namespace converge_server.Services.Ai
 
             [JsonPropertyName("quantity")]
             public int Quantity { get; set; } = 1;
+        }
+
+        private class DecisionPayload
+        {
+            [JsonPropertyName("decisions")]
+            public List<Decision>? Decisions { get; set; }
+        }
+
+        private class Decision
+        {
+            [JsonPropertyName("itemIndex")]
+            public int ItemIndex { get; set; }
+
+            [JsonPropertyName("productId")]
+            public int? ProductId { get; set; }
         }
 
         private class GroqChatRequest

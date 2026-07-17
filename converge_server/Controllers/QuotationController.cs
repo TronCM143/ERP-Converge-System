@@ -140,9 +140,9 @@ namespace converge_server.Controllers
             try
             {
                 var actorUsername = User.Identity?.Name ?? "system";
-                await _quotationService.ApproveAsync(quotationId, actorUsername);
+                var wonSheetSaved = await _quotationService.ApproveAsync(quotationId, actorUsername);
                 var quotation = await _quotationService.GetQuotationAsync(quotationId);
-                return Ok(new { message = "Quotation approved.", quotation = MapToResponse(quotation!) });
+                return Ok(new { message = "Quotation approved.", quotation = MapToResponse(quotation!), wonSheetSaved });
             }
             catch (KeyNotFoundException ex)
             {
@@ -172,6 +172,41 @@ namespace converge_server.Controllers
             catch (InvalidOperationException ex)
             {
                 return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        [HttpGet("{quotationId:int}/pdf")]
+        public async Task<IActionResult> GetQuotationPdf(int quotationId)
+        {
+            try
+            {
+                var (bytes, fileName) = await _quotationService.GenerateQuotationPdfAsync(quotationId);
+                return File(bytes, "application/pdf", fileName);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { error = ex.Message });
+            }
+        }
+
+        [HttpPost("{quotationId:int}/send-pdf")]
+        [Authorize(Roles = "quotation")]
+        public async Task<IActionResult> SendQuotationPdf(int quotationId, [FromBody] SendQuotationPdfDto dto)
+        {
+            if (dto.Emails == null || dto.Emails.Count == 0)
+            {
+                return BadRequest(new { error = "At least one email is required." });
+            }
+
+            try
+            {
+                var actorUsername = User.Identity?.Name ?? "system";
+                var sentCount = await _quotationService.SendQuotationPdfAsync(quotationId, dto.Emails, actorUsername);
+                return Ok(new { message = $"Sent to {sentCount} recipient(s).", sentCount });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { error = ex.Message });
             }
         }
 

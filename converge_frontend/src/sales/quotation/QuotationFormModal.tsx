@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { X } from 'lucide-react';
+import { Pencil, Sparkles, X } from 'lucide-react';
 import { apiFetch } from '../../shared/api';
 import { queryCache, CACHE_KEYS } from '../../shared/queryCache';
+import { formatProductName } from '../../shared/formatProductName';
 import { ClientSummary } from '../crm/ClientFormModal';
 
 interface Product {
@@ -23,11 +24,6 @@ interface ProductDraftRow {
   taxPercent: number;
   note: string;
   showNote: boolean;
-}
-
-interface UnavailableDraftRow {
-  description: string;
-  quantity: number;
 }
 
 interface GenerateDraftItem {
@@ -116,7 +112,7 @@ export default function QuotationFormModal({
     quotation && quotation.materialItems.length > 0
       ? quotation.materialItems.map((mi) => ({
           productId: mi.productId,
-          productLabel: mi.itemName,
+          productLabel: formatProductName(mi.itemName),
           quantity: mi.quantity,
           unit: mi.unit || 'pcs',
           unitPrice: mi.unitPrice,
@@ -129,7 +125,6 @@ export default function QuotationFormModal({
   const [laborPersons, setLaborPersons] = useState<number | null>(existingLabor?.persons ?? null);
   const [laborDays, setLaborDays] = useState<number | null>(existingLabor?.days ?? null);
   const [laborRate, setLaborRate] = useState(existingLabor?.ratePerPersonPerDay ?? DEFAULT_LABOR_RATE);
-  const [unavailableRows, setUnavailableRows] = useState<UnavailableDraftRow[]>([]);
   const [notes, setNotes] = useState(quotation?.notes ?? '');
   const [originalPrompt, setOriginalPrompt] = useState(quotation?.originalPrompt ?? '');
   const [promptDraft, setPromptDraft] = useState('');
@@ -186,13 +181,16 @@ export default function QuotationFormModal({
       }
       const draft: { originalPrompt: string; items: GenerateDraftItem[] } = await res.json();
 
-      const matchedRows: ProductDraftRow[] = draft.items
-        .filter((i) => i.matched && i.productId != null)
-        .map((i) => {
+      // Every extracted item becomes a real row, matched or not - an
+      // unmatched item still shows up (with its corrected description as
+      // the search text) so the user can fix the search or leave it as a
+      // flagged "needs sourcing" line instead of losing it entirely.
+      const rows: ProductDraftRow[] = draft.items.map((i) => {
+        if (i.matched && i.productId != null) {
           const product = products.find((p) => p.id === i.productId);
           return {
             productId: i.productId,
-            productLabel: product?.productName ?? i.requestedDescription,
+            productLabel: product ? formatProductName(product.productName) : i.requestedDescription,
             quantity: i.quantity,
             unit: 'pcs',
             unitPrice: i.unitPrice ?? product?.price ?? null,
@@ -200,16 +198,23 @@ export default function QuotationFormModal({
             note: '',
             showNote: false
           };
-        });
-      const unmatched: UnavailableDraftRow[] = draft.items
-        .filter((i) => !i.matched)
-        .map((i) => ({ description: i.requestedDescription, quantity: i.quantity }));
+        }
+        return {
+          productId: null,
+          productLabel: i.requestedDescription,
+          quantity: i.quantity,
+          unit: 'pcs',
+          unitPrice: null,
+          taxPercent: 0,
+          note: '',
+          showNote: false
+        };
+      });
 
-      setProductRows(matchedRows.length > 0 ? matchedRows : [emptyProductRow()]);
-      setUnavailableRows(unmatched);
+      setProductRows(rows.length > 0 ? rows : [emptyProductRow()]);
       setOriginalPrompt(draft.originalPrompt);
 
-      if (matchedRows.length === 0 && unmatched.length === 0) {
+      if (rows.length === 0) {
         setErrorMessage('Could not find any items in that prompt. Try being more specific.');
       }
     } catch (err) {
@@ -220,7 +225,9 @@ export default function QuotationFormModal({
   };
 
   const handleProductChange = (idx: number, rawValue: string) => {
-    const matched = products.find((p) => p.productName.toLowerCase() === rawValue.toLowerCase());
+    // The datalist shows formatted (space-separated) names, so match against
+    // the same formatted form rather than the raw underscored catalog value.
+    const matched = products.find((p) => formatProductName(p.productName).toLowerCase() === rawValue.toLowerCase());
     setProductRows((rows) =>
       rows.map((row, i) =>
         i === idx
@@ -343,75 +350,69 @@ export default function QuotationFormModal({
         </div>
 
         <form onSubmit={handleCreateQuotation} className="p-6 grid gap-6" style={{ gridTemplateColumns: '320px 1fr 280px' }}>
-          {/* Left column: quotation + client info */}
-          <div className="col-span-1 space-y-4">
-            <div>
-              <label className="text-sm font-semibold text-slate-300">Quotation Name</label>
-              <input
-                type="text"
-                className="w-full mt-1 px-3 py-2 bg-slate-900/50 border border-slate-600 rounded text-slate-50 placeholder-slate-500 focus:border-blue-500 focus:outline-none transition-colors"
-                value={quotationName}
-                onChange={(e) => setQuotationName(e.target.value)}
-              />
+          {/* Left column: quotation + client info — minimal, placeholders only */}
+          <div className="col-span-1 space-y-3">
+            <input
+              type="text"
+              className="w-full px-3 py-2 bg-slate-900/50 border border-slate-600 rounded text-slate-50 placeholder-slate-500 focus:border-blue-500 focus:outline-none transition-colors"
+              placeholder="Quotation name"
+              value={quotationName}
+              onChange={(e) => setQuotationName(e.target.value)}
+            />
+
+            {client ? (
+              <div className="px-3 py-2 bg-slate-900/50 border border-slate-700 rounded text-slate-300">{client.name}</div>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  list="quotation-client-list"
+                  className="w-full px-3 py-2 bg-slate-900/50 border border-slate-600 rounded text-slate-50 placeholder-slate-500 focus:border-blue-500 focus:outline-none transition-colors"
+                  placeholder="Client name…"
+                  value={clientQuery}
+                  onChange={(e) => setClientQuery(e.target.value)}
+                />
+                <datalist id="quotation-client-list">
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.name} />
+                  ))}
+                </datalist>
+              </>
+            )}
+
+            <div className="px-3 py-2 bg-slate-900/50 border border-slate-700 rounded">
+              {selectedClient?.address
+                ? <span className="text-slate-300">{selectedClient.address}</span>
+                : <span className="text-slate-500">Address</span>}
+            </div>
+            <div className="px-3 py-2 bg-slate-900/50 border border-slate-700 rounded">
+              {selectedClient?.contactNumber
+                ? <span className="text-slate-300">{selectedClient.contactNumber}</span>
+                : <span className="text-slate-500">Contact</span>}
+            </div>
+            <div className="px-3 py-2 bg-slate-900/50 border border-slate-700 rounded">
+              {selectedClient?.email
+                ? <span className="text-slate-300">{selectedClient.email}</span>
+                : <span className="text-slate-500">Email</span>}
             </div>
 
-            <div>
-              <label className="text-sm font-semibold text-slate-300">Client Name</label>
-              {client ? (
-                <div className="mt-1 px-3 py-2 bg-slate-900/50 border border-slate-700 rounded text-slate-400">{client.name}</div>
-              ) : (
-                <>
-                  <input
-                    type="text"
-                    list="quotation-client-list"
-                    className="w-full mt-1 px-3 py-2 bg-slate-900/50 border border-slate-600 rounded text-slate-50 placeholder-slate-500 focus:border-blue-500 focus:outline-none transition-colors"
-                    placeholder="search client..."
-                    value={clientQuery}
-                    onChange={(e) => setClientQuery(e.target.value)}
-                  />
-                  <datalist id="quotation-client-list">
-                    {clients.map((c) => (
-                      <option key={c.id} value={c.name} />
-                    ))}
-                  </datalist>
-                </>
-              )}
-            </div>
-
-            <div>
-              <label className="text-sm font-semibold text-slate-300">Address</label>
-              <div className="mt-1 px-3 py-2 bg-slate-900/50 border border-slate-700 rounded text-slate-400">{selectedClient?.address || '—'}</div>
-            </div>
-            <div>
-              <label className="text-sm font-semibold text-slate-300">Contact</label>
-              <div className="mt-1 px-3 py-2 bg-slate-900/50 border border-slate-700 rounded text-slate-400">{selectedClient?.contactNumber || '—'}</div>
-            </div>
-            <div>
-              <label className="text-sm font-semibold text-slate-300">Email</label>
-              <div className="mt-1 px-3 py-2 bg-slate-900/50 border border-slate-700 rounded text-slate-400">{selectedClient?.email || '—'}</div>
-            </div>
-
-            <div>
-              <label className="text-sm font-semibold text-slate-300">Notes</label>
-              <textarea
-                className="w-full mt-1 px-3 py-2 bg-slate-900/50 border border-slate-600 rounded text-slate-50 text-sm placeholder-slate-500 focus:border-blue-500 focus:outline-none transition-colors resize-none overflow-hidden"
-                rows={3}
-                ref={autoGrow}
-                placeholder="Additional notes (terms, delivery, remarks)…"
-                value={notes}
-                onChange={(e) => {
-                  autoGrow(e.target);
-                  setNotes(e.target.value);
-                }}
-              />
-            </div>
+            <textarea
+              className="w-full px-3 py-2 bg-slate-900/50 border border-slate-600 rounded text-slate-50 text-sm placeholder-slate-500 focus:border-blue-500 focus:outline-none transition-colors resize-none overflow-hidden"
+              rows={3}
+              ref={autoGrow}
+              placeholder="Notes (terms, delivery, remarks)…"
+              value={notes}
+              onChange={(e) => {
+                autoGrow(e.target);
+                setNotes(e.target.value);
+              }}
+            />
 
             <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-300">✨ Generate from Prompt</label>
               <textarea
                 className="w-full px-3 py-2 bg-slate-900/50 border border-slate-600 rounded text-slate-50 placeholder-slate-500 focus:border-blue-500 focus:outline-none transition-colors resize-none"
                 rows={3}
-                placeholder="Describe what you need..."
+                placeholder="✨ Describe what you need and generate…"
                 value={promptDraft}
                 onChange={(e) => setPromptDraft(e.target.value)}
               />
@@ -422,7 +423,13 @@ export default function QuotationFormModal({
                 disabled={isGenerating || !promptDraft.trim()}
                 onClick={handleGenerateFromPrompt}
               >
-                {isGenerating ? 'Generating…' : 'Generate'}
+                {isGenerating ? (
+                  'Generating…'
+                ) : (
+                  <span className="flex items-center justify-center gap-1.5">
+                    <Sparkles className="h-4 w-4" /> Generate
+                  </span>
+                )}
               </motion.button>
             </div>
           </div>
@@ -431,7 +438,7 @@ export default function QuotationFormModal({
           <div>
             <datalist id="quotation-product-list">
               {products.map((p) => (
-                <option key={p.id} value={p.productName} />
+                <option key={p.id} value={formatProductName(p.productName)} />
               ))}
             </datalist>
             <datalist id="quotation-unit-list">
@@ -443,8 +450,8 @@ export default function QuotationFormModal({
               <option value="unit" />
             </datalist>
 
-            <div className="space-y-3">
-              <div className="flex gap-3 text-xs font-semibold text-slate-300 uppercase px-3 py-2">
+            <div>
+              <div className="flex gap-3 text-xs font-semibold text-slate-300 uppercase px-1 py-2">
                 <div className="flex-1">Product</div>
                 <div style={{ width: '70px' }}>Qty</div>
                 <div style={{ width: '70px' }}>Unit</div>
@@ -453,8 +460,20 @@ export default function QuotationFormModal({
                 <div style={{ width: '40px' }}></div>
               </div>
 
-              {productRows.map((row, idx) => (
-                <div key={idx} className="flex gap-3 p-3 items-start bg-slate-900/30 rounded border border-slate-700">
+              {productRows.map((row, idx) => {
+                // No catalog match: has text but never resolved to a real
+                // product. Flagged with a thin red accent instead of a
+                // separate "not in catalog" block - fixing the search text
+                // (or picking a real match) clears it automatically.
+                const isUnavailable = !row.productId && row.productLabel.trim().length > 0;
+                return (
+                <div
+                  key={idx}
+                  className={`flex gap-3 px-1 py-2.5 items-start border-b ${
+                    isUnavailable ? 'border-l-2 border-l-red-500 border-b-slate-800 bg-red-500/5' : 'border-slate-800'
+                  }`}
+                  title={isUnavailable ? 'Not in catalog — search for the correct item or leave for manual sourcing' : undefined}
+                >
                   {/* Product name + note merged into one field */}
                   <div className="flex-1 bg-slate-900/50 border border-slate-600 rounded focus-within:border-blue-500 transition-colors">
                     <div className="relative">
@@ -472,7 +491,7 @@ export default function QuotationFormModal({
                         title="Add a note for this item"
                         onClick={() => toggleProductNote(idx)}
                       >
-                        ✏️
+                        <Pencil className="h-3.5 w-3.5" />
                       </button>
                     </div>
                     {row.showNote && (
@@ -563,76 +582,55 @@ export default function QuotationFormModal({
                     title="Remove product"
                     onClick={() => setProductRows((rows) => rows.filter((_, i) => i !== idx))}
                   >
-                    ✕
+                    <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
             <button
-              className="w-full mt-3 px-3 py-2 border-2 border-dashed border-slate-600 text-slate-400 hover:text-slate-50 hover:border-slate-500 rounded transition-colors text-sm"
+              className="mt-3 px-3 py-1.5 border border-dashed border-slate-600 text-slate-400 hover:text-slate-50 hover:border-slate-500 rounded transition-colors text-xs"
               type="button"
               onClick={() => setProductRows((rows) => [...rows, emptyProductRow()])}
             >
-              + Add Product
+              + Add
             </button>
-
-            {unavailableRows.length > 0 && (
-              <div className="unavailable-items">
-                <div className="unavailable-items__title">
-                  Not in catalog — needs sourcing before this can be quoted
-                </div>
-                {unavailableRows.map((row, idx) => (
-                  <div key={idx} className="unavailable-items__row">
-                    <span className="badge badge--unavailable">Unavailable</span>
-                    <span className="unavailable-items__desc">
-                      {row.quantity} × {row.description}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
 
           {/* Right column: labor + totals */}
           <div className="col-span-1 space-y-4">
             <h3 className="text-sm font-bold text-slate-300 uppercase">Summary</h3>
 
-            <div className="space-y-2">
-              <label htmlFor="quotation-labor-persons" className="text-sm font-semibold text-slate-300">Man Power</label>
+            {/* Man power + days share one row; placeholders instead of labels */}
+            <div className="flex gap-2">
               <input
-                id="quotation-labor-persons"
                 type="number"
-                className="w-full px-3 py-2 bg-slate-900/50 border border-slate-600 rounded text-slate-50 text-sm placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+                className="flex-1 min-w-0 px-3 py-2 bg-slate-900/50 border border-slate-600 rounded text-slate-50 text-sm placeholder-slate-500 focus:border-blue-500 focus:outline-none"
                 min={0}
-                placeholder="0"
+                placeholder="Man power"
+                title="Man power"
                 value={laborPersons ?? ''}
                 onChange={(e) => setLaborPersons(e.target.value ? parseInt(e.target.value) : null)}
               />
-            </div>
-
-            <div className="space-y-2">
-              <label htmlFor="quotation-labor-days" className="text-sm font-semibold text-slate-300">Days</label>
               <input
-                id="quotation-labor-days"
                 type="number"
-                className="w-full px-3 py-2 bg-slate-900/50 border border-slate-600 rounded text-slate-50 text-sm placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+                className="flex-1 min-w-0 px-3 py-2 bg-slate-900/50 border border-slate-600 rounded text-slate-50 text-sm placeholder-slate-500 focus:border-blue-500 focus:outline-none"
                 min={0}
-                placeholder="0"
+                placeholder="Days"
+                title="Days"
                 value={laborDays ?? ''}
                 onChange={(e) => setLaborDays(e.target.value ? parseInt(e.target.value) : null)}
               />
             </div>
 
-            <div className="space-y-2">
-              <label htmlFor="quotation-labor-rate" className="text-sm font-semibold text-slate-300">Rate</label>
-              <input
-                id="quotation-labor-rate"
-                type="number"
-                className="w-full px-3 py-2 bg-slate-900/50 border border-slate-600 rounded text-slate-50 text-sm placeholder-slate-500 focus:border-blue-500 focus:outline-none"
-                value={laborRate}
-                onChange={(e) => setLaborRate(e.target.value ? parseFloat(e.target.value) : 0)}
-              />
-            </div>
+            <input
+              type="number"
+              className="w-full px-3 py-2 bg-slate-900/50 border border-slate-600 rounded text-slate-50 text-sm placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+              placeholder="Rate per person / day"
+              title="Rate per person per day"
+              value={laborRate || ''}
+              onChange={(e) => setLaborRate(e.target.value ? parseFloat(e.target.value) : 0)}
+            />
 
             <div className="p-4 bg-slate-900/50 rounded border border-slate-700 space-y-3">
               <div className="flex justify-between text-sm">

@@ -1,5 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
+import {
+  AlertTriangle,
+  Calendar,
+  Check,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  ClipboardList,
+  Package,
+  Plus,
+  Printer,
+  Trash2,
+  Upload,
+  X
+} from 'lucide-react';
 import { apiFetch } from '../shared/api';
+import { formatProductName } from '../shared/formatProductName';
 import './PurchasingDashboard.css';
 
 interface Product {
@@ -95,7 +111,7 @@ function ArrivalsCalendarDialog({ prs, onClose }: { prs: PurchaseRequest[]; onCl
       const key = new Date(it.deliveryDate).toDateString();
       const list = arrivalsByDay.get(key) ?? [];
       list.push({
-        label: `${it.itemName} — ${pr.billOfMaterial!.bomNumber} (${pr.clientName})`,
+        label: `${formatProductName(it.itemName)} — ${pr.billOfMaterial!.bomNumber} (${pr.clientName})`,
         received: Boolean(it.receivedAt)
       });
       arrivalsByDay.set(key, list);
@@ -119,16 +135,19 @@ function ArrivalsCalendarDialog({ prs, onClose }: { prs: PurchaseRequest[]; onCl
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-slate-50">📅 Delivery Calendar</h3>
+          <h3 className="text-[22px] font-bold text-slate-50 flex items-center gap-2">
+            <Calendar className="h-5 w-5 text-slate-400" />
+            Delivery Calendar
+          </h3>
           <div className="flex items-center gap-2">
             <button
               type="button"
               className="p-1.5 text-slate-400 hover:text-slate-50 hover:bg-slate-800 rounded transition-colors"
               onClick={() => setCursor(new Date(year, month - 1, 1))}
             >
-              ‹
+              <ChevronLeft className="h-4 w-4" />
             </button>
-            <span className="text-sm font-semibold text-slate-200 min-w-[130px] text-center">
+            <span className="text-[18px] font-semibold text-slate-200 min-w-[130px] text-center">
               {cursor.toLocaleDateString([], { month: 'long', year: 'numeric' })}
             </span>
             <button
@@ -136,21 +155,21 @@ function ArrivalsCalendarDialog({ prs, onClose }: { prs: PurchaseRequest[]; onCl
               className="p-1.5 text-slate-400 hover:text-slate-50 hover:bg-slate-800 rounded transition-colors"
               onClick={() => setCursor(new Date(year, month + 1, 1))}
             >
-              ›
+              <ChevronRight className="h-4 w-4" />
             </button>
             <button
               type="button"
               className="ml-2 p-1.5 text-slate-400 hover:text-slate-50 hover:bg-slate-800 rounded transition-colors"
               onClick={onClose}
             >
-              ✕
+              <X className="h-4 w-4" />
             </button>
           </div>
         </div>
 
         <div className="grid grid-cols-7 gap-1 mb-1">
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
-            <div key={d} className="text-center text-[10px] font-bold text-slate-500 uppercase py-1">
+            <div key={d} className="text-center text-[14px] font-bold text-slate-500 uppercase py-1">
               {d}
             </div>
           ))}
@@ -170,13 +189,13 @@ function ArrivalsCalendarDialog({ prs, onClose }: { prs: PurchaseRequest[]; onCl
                   isToday ? 'border-blue-500 bg-blue-600/15' : 'border-slate-800 bg-slate-950/40'
                 } ${arrivals.length > 0 ? 'cursor-pointer hover:border-slate-600' : ''}`}
               >
-                <span className={`text-xs font-semibold ${isToday ? 'text-blue-300' : 'text-slate-400'}`}>
+                <span className={`text-[16px] font-semibold ${isToday ? 'text-blue-300' : 'text-slate-400'}`}>
                   {d.getDate()}
                 </span>
                 {arrivals.length > 0 && (
                   <>
                     <div
-                      className={`mt-1 mx-auto w-fit px-1.5 rounded-full text-[10px] font-bold ${
+                      className={`mt-1 mx-auto w-fit px-1.5 rounded-full text-[14px] font-bold ${
                         allReceived ? 'bg-emerald-600/30 text-emerald-300' : 'bg-blue-600/40 text-blue-200'
                       }`}
                     >
@@ -184,13 +203,13 @@ function ArrivalsCalendarDialog({ prs, onClose }: { prs: PurchaseRequest[]; onCl
                     </div>
                     {/* Hover details */}
                     <div className="hidden group-hover:block absolute left-1/2 -translate-x-1/2 top-full mt-1 z-20 w-64 bg-slate-800 border border-slate-600 rounded-lg shadow-2xl p-3">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1.5">
+                      <p className="text-[14px] font-bold text-slate-400 uppercase mb-1.5">
                         Arriving {d.toLocaleDateString([], { month: 'short', day: 'numeric' })}
                       </p>
                       <ul className="space-y-1">
                         {arrivals.map((a, i) => (
-                          <li key={i} className={`text-xs ${a.received ? 'text-emerald-400' : 'text-slate-200'}`}>
-                            {a.received ? '✓ ' : '• '}
+                          <li key={i} className={`text-[16px] flex items-center gap-1.5 ${a.received ? 'text-emerald-400' : 'text-slate-200'}`}>
+                            {a.received ? <Check className="h-3.5 w-3.5 shrink-0" /> : <span className="h-1 w-1 rounded-full bg-slate-500 shrink-0" />}
                             {a.label}
                           </li>
                         ))}
@@ -214,12 +233,14 @@ export default function PurchaseRequestsPage() {
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
 
   // Selection
-  const [proposalPrId, setProposalPrId] = useState<string | null>(null);
   const [selectedBomId, setSelectedBomId] = useState<string | null>(null);
   const [isPoPanelOpen, setIsPoPanelOpen] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [selectedPoId, setSelectedPoId] = useState<string | null>(null);
   const [editingPo, setEditingPo] = useState<PurchaseOrder | null>(null);
+  // Product requests the user has clicked at least once this session — used
+  // to fade the "unread" highlight on the side panel row.
+  const [visitedPrIds, setVisitedPrIds] = useState<Set<string>>(new Set());
 
   // UI
   const [isLoading, setIsLoading] = useState(false);
@@ -239,7 +260,6 @@ export default function PurchaseRequestsPage() {
   // Manual PR form
   const [manualClientName, setManualClientName] = useState('');
   const [manualShippingAddress, setManualShippingAddress] = useState('');
-  const [manualRemarks, setManualRemarks] = useState('');
   const [manualItems, setManualItems] = useState<{ itemName: string; productId?: number; quantity: number }[]>([
     { itemName: '', quantity: 1 }
   ]);
@@ -304,7 +324,9 @@ export default function PurchaseRequestsPage() {
 
   const handleManualItemNameChange = (idx: number, rawValue: string) => {
     const updated = [...manualItems];
-    const matched = products.find((p) => p.productName.toLowerCase() === rawValue.toLowerCase());
+    // The datalist shows formatted (space-separated) names, so match against
+    // the same formatted form rather than the raw underscored catalog value.
+    const matched = products.find((p) => formatProductName(p.productName).toLowerCase() === rawValue.toLowerCase());
     updated[idx] = { ...updated[idx], itemName: rawValue, productId: matched ? matched.id : undefined };
     setManualItems(updated);
   };
@@ -329,7 +351,6 @@ export default function PurchaseRequestsPage() {
         body: JSON.stringify({
           clientName: manualClientName,
           shippingAddress: manualShippingAddress,
-          remarks: manualRemarks,
           products: validItems.map((i) => ({
             productId: i.productId ?? null,
             itemName: i.itemName.trim(),
@@ -344,7 +365,6 @@ export default function PurchaseRequestsPage() {
         setIsManualModalOpen(false);
         setManualClientName('');
         setManualShippingAddress('');
-        setManualRemarks('');
         setManualItems([{ itemName: '', quantity: 1 }]);
         await fetchPurchaseRequests();
       } else {
@@ -394,14 +414,13 @@ export default function PurchaseRequestsPage() {
   const populateOcrData = () => {
     setManualClientName('ABC Corporation');
     setManualShippingAddress('Koronadal City, South Cotabato');
-    setManualRemarks('Imported via OCR PDF Scanner. Document ID: PR-OCR-7821. Auto-detected client details.');
     const cameraProduct = products.find((p) => p.productName.includes('Camera'));
     const nvrProduct = products.find((p) => p.productName.includes('NVR'));
     const rackProduct = products.find((p) => p.productName.includes('Rack'));
     setManualItems([
-      { itemName: cameraProduct?.productName || 'CCTV Camera 2MP', productId: cameraProduct?.id, quantity: 10 },
-      { itemName: nvrProduct?.productName || '4-Channel NVR', productId: nvrProduct?.id, quantity: 1 },
-      { itemName: rackProduct?.productName || '9U Network Rack', productId: rackProduct?.id, quantity: 1 }
+      { itemName: cameraProduct ? formatProductName(cameraProduct.productName) : 'CCTV Camera 2MP', productId: cameraProduct?.id, quantity: 10 },
+      { itemName: nvrProduct ? formatProductName(nvrProduct.productName) : '4-Channel NVR', productId: nvrProduct?.id, quantity: 1 },
+      { itemName: rackProduct ? formatProductName(rackProduct.productName) : '9U Network Rack', productId: rackProduct?.id, quantity: 1 }
     ]);
     setIsManualModalOpen(true);
     setSuccessMessage('PDF scanned successfully! Review the extracted details below.');
@@ -416,7 +435,6 @@ export default function PurchaseRequestsPage() {
         const bomData = await res.json();
         setSuccessMessage('Sent to BOM.');
         await fetchPurchaseRequests();
-        setProposalPrId(null);
         setSelectedBomId(bomData.id);
       } else {
         const errData = await res.json();
@@ -568,7 +586,6 @@ export default function PurchaseRequestsPage() {
   };
 
   // Derived
-  const proposalPr = purchaseRequests.find((pr) => pr.id === proposalPrId) ?? null;
   const bomEntries = purchaseRequests.filter((pr) => pr.billOfMaterial);
   const selectedBomPr = bomEntries.find((pr) => pr.billOfMaterial!.id === selectedBomId) ?? null;
   const selectedBom = selectedBomPr?.billOfMaterial ?? null;
@@ -582,50 +599,64 @@ export default function PurchaseRequestsPage() {
   const dateFmt = (v?: string | null) =>
     v ? new Date(v).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
 
+  const MONTHS_ABBR = ['Jan.', 'Feb.', 'Mar.', 'Apr.', 'May', 'Jun.', 'Jul.', 'Aug.', 'Sep.', 'Oct.', 'Nov.', 'Dec.'];
+  const dateTimeFmt = (v: string) => {
+    const d = new Date(v);
+    const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).replace(' ', '');
+    const date = `${MONTHS_ABBR[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+    return `${time} | ${date}`;
+  };
+
   const inputCls =
     'px-2 py-1 bg-slate-900/60 border border-slate-700 rounded text-slate-50 text-xs focus:border-blue-500 focus:outline-none';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-950 to-black p-4 space-y-4">
-      {/* Header: title + calendar icon + Product Orders */}
+      {/* Header: Product Orders + calendar icon, left-aligned */}
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
-          Purchasing
-        </h1>
-        <div className="flex-1" />
+        <button
+          type="button"
+          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white text-[18px] font-semibold rounded-lg hover:shadow-lg hover:shadow-blue-500/30 transition-all"
+          onClick={() => setIsPoPanelOpen(true)}
+        >
+          <Package className="h-4 w-4" />
+          Product Orders
+        </button>
         <button
           type="button"
           title="Delivery calendar"
-          className="p-2 text-xl border border-slate-700 rounded-lg text-slate-300 hover:text-slate-50 hover:bg-slate-800 hover:border-slate-600 transition-colors"
+          className="p-2 rounded-lg text-slate-300 hover:text-slate-50 hover:bg-slate-800 transition-colors"
           onClick={() => setIsCalendarOpen(true)}
         >
-          📅
+          <Calendar className="h-5 w-5" />
         </button>
-        <button
-          type="button"
-          className="px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white text-sm font-semibold rounded-lg hover:shadow-lg hover:shadow-blue-500/30 transition-all"
-          onClick={() => setIsPoPanelOpen(true)}
-        >
-          📦 Product Orders ({purchaseOrders.length})
-        </button>
+        <div className="flex-1" />
       </div>
 
       {/* Toasts */}
       <div className="toast-container" aria-live="polite" aria-atomic="true">
-        {errorMessage && <div className="toast toast--error" role="status">⚠️ {errorMessage}</div>}
-        {successMessage && <div className="toast toast--success" role="status">✅ {successMessage}</div>}
+        {errorMessage && (
+          <div className="toast toast--error flex items-center gap-2" role="status">
+            <AlertTriangle className="h-4 w-4 shrink-0" /> {errorMessage}
+          </div>
+        )}
+        {successMessage && (
+          <div className="toast toast--success flex items-center gap-2" role="status">
+            <CheckCircle2 className="h-4 w-4 shrink-0" /> {successMessage}
+          </div>
+        )}
       </div>
 
       {/* Scanning overlay */}
       {isScanning && (
         <div className="scanning-overlay">
           <div className="scanner-laser"></div>
-          <div className="ocr-uploader__icon">📄</div>
+          <div className="ocr-uploader__icon"><Upload className="h-8 w-8" /></div>
           <div className="scanner-text">{scanMessage}</div>
           <div className="progress-bar-container">
             <div className="progress-bar-fill" style={{ width: `${scanProgress}%` }}></div>
           </div>
-          <div style={{ marginTop: '8px', fontSize: '12px', color: '#cbd5e1' }}>Scanning: {scanProgress}%</div>
+          <div style={{ marginTop: '8px', fontSize: '16px', color: '#cbd5e1' }}>Scanning: {scanProgress}%</div>
         </div>
       )}
 
@@ -634,55 +665,84 @@ export default function PurchaseRequestsPage() {
         {/* Left: Product Request side panel */}
         <aside className="w-[30%] shrink-0 border border-slate-800 rounded-lg bg-slate-900/40 overflow-hidden">
           <div className="flex items-center justify-between px-3 py-2.5 border-b border-slate-800">
-            <h2 className="text-sm font-bold text-slate-200 uppercase tracking-wide">
-              Product Request <span className="text-slate-500 font-normal">({purchaseRequests.length})</span>
+            <h2 className="text-[18px] font-bold text-slate-200 uppercase tracking-wide">
+              Product Request
             </h2>
             <div className="flex gap-1">
               <button
                 type="button"
                 title="Import PDF (OCR scan)"
-                className="p-1.5 text-slate-400 hover:text-slate-50 hover:bg-slate-800 rounded transition-colors text-sm"
+                className="p-1.5 text-slate-400 hover:text-slate-50 hover:bg-slate-800 rounded transition-colors"
                 onClick={handlePdfUploadClick}
                 disabled={isScanning}
               >
-                📂
+                <Upload className="h-4 w-4" />
               </button>
               <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept=".pdf" onChange={handlePdfFileChange} />
               <button
                 type="button"
                 title="Create manual Product Request"
-                className="p-1.5 text-slate-400 hover:text-slate-50 hover:bg-slate-800 rounded transition-colors text-sm"
+                className="p-1.5 text-slate-400 hover:text-slate-50 hover:bg-slate-800 rounded transition-colors"
                 onClick={() => setIsManualModalOpen(true)}
               >
-                ＋
+                <Plus className="h-4 w-4" />
               </button>
             </div>
           </div>
 
           <div className="max-h-[calc(100vh-220px)] overflow-y-auto divide-y divide-slate-800/70">
             {purchaseRequests.length === 0 ? (
-              <div className="p-6 text-center text-xs text-slate-500">No product requests yet.</div>
+              <div className="p-6 text-center text-[16px] text-slate-500">No product requests yet.</div>
             ) : (
-              purchaseRequests.map((pr) => (
-                <button
-                  key={pr.id}
-                  type="button"
-                  className="w-full text-left px-3 py-2.5 hover:bg-slate-800/50 transition-colors"
-                  onClick={() => setProposalPrId(pr.id)}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-blue-400">{pr.prNumber}</span>
-                    <span className="text-[10px] text-slate-500">{new Date(pr.requestDate).toLocaleDateString()}</span>
+              purchaseRequests.map((pr) => {
+                const isUnvisited = !visitedPrIds.has(pr.id);
+                const markVisited = () => {
+                  if (isUnvisited) {
+                    setVisitedPrIds((prev) => new Set(prev).add(pr.id));
+                  }
+                };
+                return (
+                  <div
+                    key={pr.id}
+                    role="button"
+                    tabIndex={0}
+                    className={`px-3 py-2.5 cursor-pointer transition-colors ${
+                      isUnvisited ? 'bg-slate-700/40 hover:bg-slate-700/60' : 'hover:bg-slate-800/50'
+                    }`}
+                    onClick={() => {
+                      markVisited();
+                      if (pr.billOfMaterial) setSelectedBomId(pr.billOfMaterial.id);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter' && e.key !== ' ') return;
+                      markVisited();
+                      if (pr.billOfMaterial) setSelectedBomId(pr.billOfMaterial.id);
+                    }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[18px] font-semibold text-blue-400">{pr.prNumber}</span>
+                      <span className="text-[14px] text-slate-500">{dateTimeFmt(pr.requestDate)}</span>
+                    </div>
+                    <div className="text-[16px] text-slate-300 mt-0.5">{pr.clientName}</div>
+                    {!pr.billOfMaterial && (
+                      <div className="flex justify-end mt-1.5">
+                        <button
+                          type="button"
+                          className="text-[14px] font-medium text-blue-400 hover:text-blue-300 transition-colors"
+                          disabled={isLoading}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            markVisited();
+                            handleSendToBom(pr.id);
+                          }}
+                        >
+                          Send to BOM
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <div className="text-xs text-slate-300 mt-0.5">{pr.clientName}</div>
-                  <div className="flex items-center justify-between mt-1">
-                    <span className="text-[11px] text-slate-500">{pr.items.length} item(s)</span>
-                    <span className="text-[10px] text-slate-500">
-                      {pr.billOfMaterial ? `BOM: ${pr.billOfMaterial.status}` : 'No BOM'}
-                    </span>
-                  </div>
-                </button>
-              ))
+                );
+              })
             )}
           </div>
         </aside>
@@ -690,17 +750,14 @@ export default function PurchaseRequestsPage() {
         {/* Right: BOM workspace */}
         <main className="flex-1 overflow-hidden">
           <div className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-800">
-            {selectedBom && (
-              <button
-                type="button"
-                className="text-xs text-slate-400 hover:text-slate-50 transition-colors whitespace-nowrap"
-                onClick={() => setSelectedBomId(null)}
-              >
-                ← All BOMs
-              </button>
-            )}
-            <h2 className="text-sm font-bold text-slate-200 uppercase tracking-wide">
-              Bill of Materials <span className="text-slate-500 font-normal">({bomEntries.length})</span>
+            <h2
+              className={`text-[18px] font-bold text-slate-200 uppercase tracking-wide ${
+                selectedBom ? 'cursor-pointer hover:text-slate-50 transition-colors' : ''
+              }`}
+              onClick={selectedBom ? () => setSelectedBomId(null) : undefined}
+              title={selectedBom ? 'Back to all BOMs' : undefined}
+            >
+              Bill of Materials
             </h2>
           </div>
 
@@ -708,8 +765,8 @@ export default function PurchaseRequestsPage() {
             /* BOM list */
             bomEntries.length === 0 ? (
               <div className="p-10 text-center">
-                <div className="text-3xl mb-2">⚙️</div>
-                <p className="text-sm text-slate-500">No BOMs yet. Open a product request and click "Send to BOM".</p>
+                <ClipboardList className="h-8 w-8 mx-auto mb-2 text-slate-600" />
+                <p className="text-[16px] text-slate-500">No BOMs yet. Open a product request and click "Send to BOM".</p>
               </div>
             ) : (
               <div className="divide-y divide-slate-800/70">
@@ -723,19 +780,22 @@ export default function PurchaseRequestsPage() {
                       className="w-full text-left px-4 py-3 hover:bg-slate-800/50 transition-colors flex items-center gap-4"
                       onClick={() => setSelectedBomId(bom.id)}
                     >
-                      <div className="flex-1">
-                        <span className="text-sm font-semibold text-blue-400">{bom.bomNumber}</span>
-                        <span className="text-xs text-slate-400 ml-3">{pr.clientName}</span>
-                        <span className="text-[11px] text-slate-600 ml-3">from {pr.prNumber}</span>
+                      {/* Left: BOM number over client name, stacked vertically */}
+                      <div className="flex-1 flex flex-col">
+                        <span className="text-[18px] font-semibold text-blue-400">{bom.bomNumber}</span>
+                        <span className="text-[15px] text-slate-400">{pr.clientName}</span>
                       </div>
-                      <span
-                        className={`text-xs font-medium ${
-                          readyCount === bom.items.length && bom.items.length > 0 ? 'text-emerald-400' : 'text-slate-400'
-                        }`}
-                      >
-                        {readyCount}/{bom.items.length} ready
-                      </span>
-                      <span className="text-xs text-slate-500 w-20 text-right">{bom.status}</span>
+                      {/* Right: ready count over status, stacked vertically */}
+                      <div className="flex flex-col items-end gap-0.5">
+                        <span
+                          className={`text-[15px] font-medium ${
+                            readyCount === bom.items.length && bom.items.length > 0 ? 'text-emerald-400' : 'text-slate-400'
+                          }`}
+                        >
+                          {readyCount}/{bom.items.length} ready
+                        </span>
+                        <span className="text-[14px] text-slate-500">{bom.status}</span>
+                      </div>
                     </button>
                   );
                 })}
@@ -746,15 +806,15 @@ export default function PurchaseRequestsPage() {
             <div className="p-4">
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <h3 className="text-lg font-bold text-slate-50">{selectedBom.bomNumber}</h3>
-                  <p className="text-xs text-slate-500">
+                  <h3 className="text-[22px] font-bold text-slate-50">{selectedBom.bomNumber}</h3>
+                  <p className="text-[16px] text-slate-500">
                     {selectedBomPr!.clientName} · from {selectedBomPr!.prNumber} · {selectedBom.status}
                   </p>
                 </div>
                 {canCreateProductOrder && (
                   <button
                     type="button"
-                    className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white text-sm font-semibold rounded-lg hover:shadow-lg hover:shadow-emerald-500/30 transition-all"
+                    className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white text-[18px] font-semibold rounded-lg hover:shadow-lg hover:shadow-emerald-500/30 transition-all"
                     disabled={isLoading}
                     onClick={() => handleCreateProductOrder(selectedBom.id)}
                   >
@@ -764,15 +824,15 @@ export default function PurchaseRequestsPage() {
               </div>
 
               <div className="overflow-x-auto rounded-lg border border-slate-800">
-                <table className="w-full text-sm">
+                <table className="w-full text-[16px]">
                   <thead>
                     <tr className="border-b border-slate-700 bg-slate-900/60">
-                      <th className="px-3 py-2 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wide">Item</th>
-                      <th className="px-3 py-2 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wide">Qty</th>
-                      <th className="px-3 py-2 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wide">Status</th>
-                      <th className="px-3 py-2 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wide">Delivery Date</th>
-                      <th className="px-3 py-2 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wide">Received</th>
-                      <th className="px-3 py-2 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wide">Remarks</th>
+                      <th className="px-3 py-2 text-left text-[14px] font-bold text-slate-300 uppercase tracking-wide">Item</th>
+                      <th className="px-3 py-2 text-left text-[14px] font-bold text-slate-300 uppercase tracking-wide">Qty</th>
+                      <th className="px-3 py-2 text-left text-[14px] font-bold text-slate-300 uppercase tracking-wide">Status</th>
+                      <th className="px-3 py-2 text-left text-[14px] font-bold text-slate-300 uppercase tracking-wide">Delivery Date</th>
+                      <th className="px-3 py-2 text-left text-[14px] font-bold text-slate-300 uppercase tracking-wide">Received</th>
+                      <th className="px-3 py-2 text-left text-[14px] font-bold text-slate-300 uppercase tracking-wide">Remarks</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -787,7 +847,7 @@ export default function PurchaseRequestsPage() {
                               : ''
                         }`}
                       >
-                        <td className="px-3 py-2 font-medium text-slate-50">{item.itemName}</td>
+                        <td className="px-3 py-2 font-medium text-slate-50">{formatProductName(item.itemName)}</td>
                         <td className="px-3 py-2 text-slate-300 whitespace-nowrap">
                           {item.requiredQuantity} {item.unit}
                         </td>
@@ -812,8 +872,14 @@ export default function PurchaseRequestsPage() {
                             onChange={(e) => persistBomItem(item, { deliveryDate: e.target.value || null })}
                           />
                         </td>
-                        <td className="px-3 py-2 text-xs text-emerald-400 whitespace-nowrap">
-                          {item.receivedAt ? `✓ ${dateFmt(item.receivedAt)}` : <span className="text-slate-600">—</span>}
+                        <td className="px-3 py-2 text-[16px] text-emerald-400 whitespace-nowrap">
+                          {item.receivedAt ? (
+                            <span className="flex items-center gap-1">
+                              <Check className="h-3.5 w-3.5" /> {dateFmt(item.receivedAt)}
+                            </span>
+                          ) : (
+                            <span className="text-slate-600">—</span>
+                          )}
                         </td>
                         <td className="px-3 py-2">
                           <input
@@ -833,7 +899,7 @@ export default function PurchaseRequestsPage() {
               </div>
 
               {!bomLocked && !allReady && (
-                <p className="mt-3 text-right text-[11px] text-slate-500">
+                <p className="mt-3 text-right text-[15px] text-slate-500">
                   Mark every item <span className="text-emerald-400 font-semibold">Ready</span> to unlock the Product Order button.
                 </p>
               )}
@@ -841,83 +907,6 @@ export default function PurchaseRequestsPage() {
           )}
         </main>
       </div>
-
-      {/* Proposal modal: products sent by sales, no labor */}
-      {proposalPr && (
-        <div
-          className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-6"
-          onClick={() => setProposalPrId(null)}
-        >
-          <div
-            className="bg-slate-900 border border-slate-700 rounded-lg shadow-2xl w-full max-w-xl max-h-[85vh] overflow-y-auto flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
-              <div>
-                <h3 className="text-lg font-bold text-slate-50">{proposalPr.prNumber}</h3>
-                <p className="text-xs text-slate-500">
-                  {proposalPr.clientName} · {new Date(proposalPr.requestDate).toLocaleDateString()}
-                </p>
-              </div>
-              <button
-                type="button"
-                className="p-2 text-slate-400 hover:text-slate-50 hover:bg-slate-800 rounded transition-colors"
-                onClick={() => setProposalPrId(null)}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="p-5">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-700">
-                    <th className="py-2 text-left text-[11px] font-bold text-slate-400 uppercase">Product</th>
-                    <th className="py-2 text-right text-[11px] font-bold text-slate-400 uppercase">Qty</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {proposalPr.items.map((item) => (
-                    <tr key={item.id} className="border-b border-slate-800/60">
-                      <td className="py-2 text-slate-50">{item.itemName}</td>
-                      <td className="py-2 text-right text-slate-300 whitespace-nowrap">
-                        {item.quantity} {item.unit}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {proposalPr.remarks && (
-                <p className="mt-3 text-xs text-slate-500 italic">{proposalPr.remarks}</p>
-              )}
-            </div>
-
-            <div className="flex justify-end gap-2 px-5 py-4 border-t border-slate-800 mt-auto">
-              {proposalPr.billOfMaterial ? (
-                <button
-                  type="button"
-                  className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm rounded-lg transition-colors"
-                  onClick={() => {
-                    setSelectedBomId(proposalPr.billOfMaterial!.id);
-                    setProposalPrId(null);
-                  }}
-                >
-                  Open BOM
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white text-sm font-semibold rounded-lg hover:shadow-lg hover:shadow-blue-500/30 transition-all"
-                  disabled={isLoading}
-                  onClick={() => handleSendToBom(proposalPr.id)}
-                >
-                  Send to BOM →
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Delivery calendar dialog */}
       {isCalendarOpen && <ArrivalsCalendarDialog prs={purchaseRequests} onClose={() => setIsCalendarOpen(false)} />}
@@ -927,13 +916,16 @@ export default function PurchaseRequestsPage() {
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-700 rounded-lg shadow-2xl w-full h-[92vh] flex flex-col overflow-hidden">
             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-800">
-              <h3 className="text-lg font-bold text-slate-50">📦 Product Orders</h3>
+              <h3 className="text-[22px] font-bold text-slate-50 flex items-center gap-2">
+                <Package className="h-5 w-5 text-slate-400" />
+                Product Orders
+              </h3>
               <button
                 type="button"
                 className="p-2 text-slate-400 hover:text-slate-50 hover:bg-slate-800 rounded transition-colors"
                 onClick={() => setIsPoPanelOpen(false)}
               >
-                ✕
+                <X className="h-4 w-4" />
               </button>
             </div>
 
@@ -941,7 +933,7 @@ export default function PurchaseRequestsPage() {
               {/* PO list */}
               <div className="w-72 shrink-0 border-r border-slate-800 overflow-y-auto divide-y divide-slate-800/70">
                 {purchaseOrders.length === 0 ? (
-                  <div className="p-6 text-center text-xs text-slate-500">
+                  <div className="p-6 text-center text-[16px] text-slate-500">
                     No product orders yet. Complete a BOM and click Product Order.
                   </div>
                 ) : (
@@ -955,11 +947,11 @@ export default function PurchaseRequestsPage() {
                       onClick={() => handleSelectPo(po)}
                     >
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-semibold text-blue-400">{po.poNumber}</span>
-                        <span className="text-[10px] text-slate-500">{po.status}</span>
+                        <span className="text-[18px] font-semibold text-blue-400">{po.poNumber}</span>
+                        <span className="text-[14px] text-slate-500">{po.status}</span>
                       </div>
-                      <div className="text-[11px] text-slate-500 mt-0.5 truncate">{po.shippingAddress}</div>
-                      <div className="text-xs text-slate-300 mt-0.5 font-medium">₱{po.grandTotal.toLocaleString()}</div>
+                      <div className="text-[15px] text-slate-500 mt-0.5 truncate">{po.shippingAddress}</div>
+                      <div className="text-[16px] text-slate-300 mt-0.5 font-medium">₱{po.grandTotal.toLocaleString()}</div>
                     </button>
                   ))
                 )}
@@ -971,29 +963,31 @@ export default function PurchaseRequestsPage() {
                   <form onSubmit={handleSavePO}>
                     <div className="flex items-center justify-between mb-4">
                       <div>
-                        <h3 className="text-lg font-bold text-slate-50">{editingPo.poNumber}</h3>
-                        <p className="text-xs text-slate-500">Ordered {new Date(editingPo.orderDate).toLocaleDateString()}</p>
+                        <h3 className="text-[22px] font-bold text-slate-50">{editingPo.poNumber}</h3>
+                        <p className="text-[16px] text-slate-500">Ordered {new Date(editingPo.orderDate).toLocaleDateString()}</p>
                       </div>
                       <div className="flex gap-2">
-                        <button className="btn" type="button" onClick={() => window.print()}>🖨️ Print</button>
+                        <button className="btn flex items-center gap-1.5" type="button" onClick={() => window.print()}>
+                          <Printer className="h-4 w-4" /> Print
+                        </button>
                         <button className="btn btn--primary" type="submit">Save</button>
                       </div>
                     </div>
 
                     <div className="overflow-x-auto rounded-lg border border-slate-800">
-                      <table className="w-full text-sm">
+                      <table className="w-full text-[16px]">
                         <thead>
                           <tr className="border-b border-slate-700 bg-slate-900/60">
-                            <th className="px-3 py-2 text-left text-[11px] font-bold text-slate-300 uppercase">Item</th>
-                            <th className="px-3 py-2 text-left text-[11px] font-bold text-slate-300 uppercase">Qty</th>
-                            <th className="px-3 py-2 text-left text-[11px] font-bold text-slate-300 uppercase">Unit Price (₱)</th>
-                            <th className="px-3 py-2 text-right text-[11px] font-bold text-slate-300 uppercase">Line Total</th>
+                            <th className="px-3 py-2 text-left text-[14px] font-bold text-slate-300 uppercase">Item</th>
+                            <th className="px-3 py-2 text-left text-[14px] font-bold text-slate-300 uppercase">Qty</th>
+                            <th className="px-3 py-2 text-left text-[14px] font-bold text-slate-300 uppercase">Unit Price (₱)</th>
+                            <th className="px-3 py-2 text-right text-[14px] font-bold text-slate-300 uppercase">Line Total</th>
                           </tr>
                         </thead>
                         <tbody>
                           {editingPo.items.map((item) => (
                             <tr key={item.id} className="border-b border-slate-800/60">
-                              <td className="px-3 py-2 text-slate-50">{item.itemName}</td>
+                              <td className="px-3 py-2 text-slate-50">{formatProductName(item.itemName)}</td>
                               <td className="px-3 py-2 text-slate-300 whitespace-nowrap">{item.quantity} {item.unit}</td>
                               <td className="px-3 py-2">
                                 <input
@@ -1042,8 +1036,8 @@ export default function PurchaseRequestsPage() {
                 ) : (
                   <div className="h-full flex items-center justify-center text-center">
                     <div>
-                      <div className="text-3xl mb-2">📦</div>
-                      <p className="text-sm text-slate-500">Select a Product Order to review pricing and delivery details.</p>
+                      <Package className="h-8 w-8 mx-auto mb-2 text-slate-600" />
+                      <p className="text-[16px] text-slate-500">Select a Product Order to review pricing and delivery details.</p>
                     </div>
                   </div>
                 )}
@@ -1062,10 +1056,10 @@ export default function PurchaseRequestsPage() {
               <button
                 className="btn-remove-item"
                 type="button"
-                style={{ fontSize: '20px', padding: '0' }}
+                style={{ padding: '0' }}
                 onClick={() => setIsManualModalOpen(false)}
               >
-                ✕
+                <X className="h-5 w-5" />
               </button>
             </div>
             <form onSubmit={handleCreateManualPR}>
@@ -1091,22 +1085,11 @@ export default function PurchaseRequestsPage() {
                   placeholder="e.g. Koronadal City"
                 />
               </div>
-              <div className="form-group">
-                <label>Remarks</label>
-                <textarea
-                  className="form-control"
-                  value={manualRemarks}
-                  onChange={(e) => setManualRemarks(e.target.value)}
-                  placeholder="Additional delivery instructions or notes..."
-                  rows={2}
-                />
-              </div>
-
               <h4 style={{ fontSize: '13px', fontWeight: 600, margin: '14px 0 8px 0', color: '#94a3b8' }}>Requested Items</h4>
 
               <datalist id="product-catalog-list">
                 {products.map((p) => (
-                  <option key={p.id} value={p.productName} />
+                  <option key={p.id} value={formatProductName(p.productName)} />
                 ))}
               </datalist>
 
@@ -1131,13 +1114,16 @@ export default function PurchaseRequestsPage() {
                             right: '8px',
                             top: '50%',
                             transform: 'translateY(-50%)',
-                            fontSize: '10px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontSize: '14px',
                             color: '#10b981',
                             fontWeight: 600,
                             pointerEvents: 'none'
                           }}
                         >
-                          ✔ Catalog
+                          <Check className="h-3.5 w-3.5" /> Catalog
                         </span>
                       )}
                     </div>
@@ -1159,7 +1145,7 @@ export default function PurchaseRequestsPage() {
                     onClick={() => handleRemoveManualItemRow(idx)}
                     disabled={manualItems.length <= 1}
                   >
-                    🗑️
+                    <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
               ))}

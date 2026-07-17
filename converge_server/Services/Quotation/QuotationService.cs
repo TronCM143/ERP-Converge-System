@@ -21,6 +21,8 @@ namespace converge_server.Services.Quotations
         private readonly IAuditService _auditService;
         private readonly ICacheService _cache;
         private readonly IEmailSender _emailSender;
+        private readonly IWonDealSheetService _wonDealSheetService;
+        private readonly IQuotationPdfService _pdfService;
 
         public QuotationService(
             AppDbContext context,
@@ -30,7 +32,9 @@ namespace converge_server.Services.Quotations
             INotificationDispatchService dispatchService,
             IAuditService auditService,
             ICacheService cache,
-            IEmailSender emailSender)
+            IEmailSender emailSender,
+            IWonDealSheetService wonDealSheetService,
+            IQuotationPdfService pdfService)
         {
             _context = context;
             _purchaseRequestService = purchaseRequestService;
@@ -40,6 +44,8 @@ namespace converge_server.Services.Quotations
             _auditService = auditService;
             _cache = cache;
             _emailSender = emailSender;
+            _wonDealSheetService = wonDealSheetService;
+            _pdfService = pdfService;
         }
 
         public async Task<Models.Entities.Quotation> CreateQuotationAsync(CreateQuotationDto dto)
@@ -365,7 +371,7 @@ namespace converge_server.Services.Quotations
             return purchaseRequest;
         }
 
-        public async Task ApproveAsync(int quotationId, string actorUsername)
+        public async Task<bool> ApproveAsync(int quotationId, string actorUsername)
         {
             var quotation = await _context.Quotations
                 .Include(q => q.Client)
@@ -390,6 +396,7 @@ namespace converge_server.Services.Quotations
 
             await _auditService.LogAsync("Quotation", quotation.Id.ToString(), "Approved", actorUsername, null, quotation.QuotationNumber);
 
+            var wonSheetSaved = false;
             if (result != null)
             {
                 await _auditService.LogAsync("Client", quotation.ClientId.ToString(), "StageChanged", actorUsername, result.OldStage.ToString(), result.NewStage.ToString(), $"Stage changed from {result.OldStage} to {result.NewStage}");
@@ -401,8 +408,16 @@ namespace converge_server.Services.Quotations
                         NotificationType.WonApproval,
                         $"🎉 Deal Won — {quotation.Client!.Name}",
                         $"<p>Quotation <strong>{quotation.QuotationNumber}</strong> from client <strong>{quotation.Client.Name}</strong> was already <strong>WON</strong>! 🎉</p>");
+
+                    wonSheetSaved = await _wonDealSheetService.AppendWonDealAsync(
+                        projectCode: quotation.QuotationNumber,
+                        clientName: quotation.Client!.Name,
+                        totalSales: quotation.GrandTotal,
+                        wonDate: DateTime.UtcNow);
                 }
             }
+
+            return wonSheetSaved;
         }
 
         public async Task RejectAsync(int quotationId, string actorUsername)
@@ -428,6 +443,60 @@ namespace converge_server.Services.Quotations
             await _cache.RemoveAsync(CacheKeys.Clients);
 
             await _auditService.LogAsync("Quotation", quotation.Id.ToString(), "Rejected", actorUsername, null, quotation.QuotationNumber);
+        }
+
+        public async Task<(byte[] Bytes, string FileName)> GenerateQuotationPdfAsync(int quotationId)
+        {
+            var quotation = await _context.Quotations
+                .Include(q => q.Client)
+                .Include(q => q.MaterialItems)
+                .Include(q => q.LaborItems)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(q => q.Id == quotationId);
+
+            if (quotation == null)
+            {
+                throw new KeyNotFoundException("Quotation not found.");
+            }
+
+            var bytes = await _pdfService.GeneratePdfAsync(quotation);
+            return (bytes, $"{quotation.QuotationNumber}.pdf");
+        }
+
+        public async Task<int> SendQuotationPdfAsync(int quotationId, List<string> emails, string actorUsername)
+        {
+            var (bytes, fileName) = await GenerateQuotationPdfAsync(quotationId);
+            var quotation = await _context.Quotations
+                .Include(q => q.Client)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(q => q.Id == quotationId);
+
+            if (quotation == null)
+            {
+                throw new KeyNotFoundException("Quotation not found.");
+            }
+
+            var subject = $"Quotation {quotation.QuotationNumber} — {quotation.Client?.Name}";
+            var body = $"<p>Please find attached quotation <strong>{quotation.QuotationNumber}</strong> for <strong>{quotation.Client?.Name}</strong>.</p>";
+            var attachment = new EmailAttachment(fileName, bytes, "application/pdf");
+
+            var sentCount = 0;
+            foreach (var email in emails.Where(e => !string.IsNullOrWhiteSpace(e)).Distinct())
+            {
+                try
+                {
+                    await _emailSender.SendAsync(email, subject, body, attachment);
+                    sentCount++;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Failed to email quotation PDF to {email}: {ex.Message}");
+                }
+            }
+
+            await _auditService.LogAsync("Quotation", quotationId.ToString(), "PdfSent", actorUsername, null, $"Sent to {sentCount} recipient(s)");
+
+            return sentCount;
         }
     }
 }

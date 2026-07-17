@@ -1,0 +1,12 @@
+# Environment files
+.env
+**/.env
+
+# Node
+node_modules/
+
+# .NET
+bin/
+obj/
+appsettings.json
+gen-lang-client-0042965006-49a453ea06dc.json

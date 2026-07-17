@@ -1,6 +1,7 @@
 import React from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { Inbox } from 'lucide-react';
 import { NewPurchaseRequestNotification } from './useNotificationHub';
 import './NewPrPopup.css';
 
@@ -31,7 +32,9 @@ export default function NewPrPopup({
             transition={{ type: 'spring', stiffness: 340, damping: 28 }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="pr-popup__icon">📥</div>
+            <div className="pr-popup__icon">
+              <Inbox className="h-8 w-8 mx-auto text-slate-400" />
+            </div>
             <div className="pr-popup__title">New Purchase Request</div>
             <div className="pr-popup__body">
               <strong>{notification.prNumber}</strong> from Sales for{' '}

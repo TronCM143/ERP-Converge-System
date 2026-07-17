@@ -197,7 +197,7 @@ namespace converge_server.Services.PurchaseOrders
                 await _userNotifications.AddAsync(
                     "quotation",
                     "PurchaseOrderSaved",
-                    $"📦 {po.PONumber} saved — from Quotation {quotationNumber ?? "—"}",
+                    $"📦 PO updated — {quotationNumber ?? po.PONumber}",
                     bom?.PurchaseRequest?.ClientName);
             }
             catch (Exception ex)

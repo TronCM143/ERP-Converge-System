@@ -20,7 +20,7 @@ namespace converge_server.Services.Notifications
             _logger = logger;
         }
 
-        public async Task SendAsync(string toEmail, string subject, string body)
+        public async Task SendAsync(string toEmail, string subject, string body, EmailAttachment? attachment = null)
         {
             var host = _configuration["Smtp:Host"];
             if (string.IsNullOrWhiteSpace(host))
@@ -42,7 +42,13 @@ namespace converge_server.Services.Notifications
                 message.From.Add(new MailboxAddress(fromName, fromAddress ?? "noreply@converge.local"));
                 message.To.Add(MailboxAddress.Parse(toEmail));
                 message.Subject = subject;
-                message.Body = new TextPart("html") { Text = body };
+
+                var bodyBuilder = new BodyBuilder { HtmlBody = body };
+                if (attachment != null)
+                {
+                    bodyBuilder.Attachments.Add(attachment.FileName, attachment.Content, ContentType.Parse(attachment.ContentType));
+                }
+                message.Body = bodyBuilder.ToMessageBody();
 
                 using (var client = new SmtpClient())
                 {
