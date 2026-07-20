@@ -14,13 +14,16 @@ namespace converge_server.Controllers
     {
         private readonly IPurchaseRequestService _purchaseRequestService;
         private readonly IBillOfMaterialService _billOfMaterialService;
+        private readonly IWebHostEnvironment _env;
 
         public PurchaseRequestController(
             IPurchaseRequestService purchaseRequestService,
-            IBillOfMaterialService billOfMaterialService)
+            IBillOfMaterialService billOfMaterialService,
+            IWebHostEnvironment env)
         {
             _purchaseRequestService = purchaseRequestService;
             _billOfMaterialService = billOfMaterialService;
+            _env = env;
         }
 
         [HttpGet]
@@ -36,6 +39,10 @@ namespace converge_server.Controllers
                 pr.RequestDate,
                 pr.Status,
                 pr.Remarks,
+                pr.Source,
+                pr.QuotationId,
+                pr.IsSeenByPurchasing,
+                pr.AttachmentPdfUrl,
                 pr.CreatedAt,
                 pr.UpdatedAt,
                 Items = pr.Items.Select(item => new
@@ -61,9 +68,12 @@ namespace converge_server.Controllers
                         bomItem.Unit,
                         bomItem.Status,
                         bomItem.QuantityToPurchase,
+                        bomItem.OrderDate,
                         bomItem.DeliveryDate,
                         bomItem.ReceivedAt,
-                        bomItem.Remarks
+                        bomItem.Remarks,
+                        bomItem.Supplier,
+                        bomItem.EvidenceImageUrl
                     }).ToList()
                 }
             });
@@ -103,6 +113,82 @@ namespace converge_server.Controllers
                 };
 
                 return CreatedAtAction(nameof(GetPurchaseRequestProcess), new { purchaseRequestId = purchaseRequest.Id }, response);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        [HttpPut("{purchaseRequestId:guid}")]
+        public async Task<IActionResult> UpdateRequestDetails(Guid purchaseRequestId, [FromBody] UpdatePurchaseRequestDto dto)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            try
+            {
+                var pr = await _purchaseRequestService.UpdateRequestDetailsAsync(purchaseRequestId, dto);
+                return Ok(new { pr.Id, pr.ClientName, pr.ShippingAddress, pr.Remarks });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { error = ex.Message });
+            }
+        }
+
+        [HttpPut("{purchaseRequestId:guid}/mark-seen")]
+        public async Task<IActionResult> MarkSeen(Guid purchaseRequestId)
+        {
+            try
+            {
+                var pr = await _purchaseRequestService.MarkSeenAsync(purchaseRequestId);
+                return Ok(new { pr.Id, pr.IsSeenByPurchasing });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { error = ex.Message });
+            }
+        }
+
+        // Whole-request supporting document (e.g. supplier quote). PDF only.
+        [HttpPost("{purchaseRequestId:guid}/attachment")]
+        public async Task<IActionResult> UploadRequestAttachment(Guid purchaseRequestId, IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+            {
+                return BadRequest(new { error = "No file uploaded." });
+            }
+
+            try
+            {
+                var pr = await _purchaseRequestService.SaveRequestAttachmentAsync(purchaseRequestId, file, _env.ContentRootPath);
+                return Ok(new { pr.Id, pr.AttachmentPdfUrl });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        [HttpPost("{purchaseRequestId:guid}/submit")]
+        public async Task<IActionResult> SubmitRequest(Guid purchaseRequestId)
+        {
+            try
+            {
+                var actor = User.Identity?.Name ?? "purchasing";
+                var pr = await _purchaseRequestService.SubmitRequestAsync(purchaseRequestId, actor);
+                return Ok(new { pr.Id, pr.Status });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { error = ex.Message });
             }
             catch (InvalidOperationException ex)
             {
@@ -219,6 +305,30 @@ namespace converge_server.Controllers
                     item.Remarks
                 })
             });
+        }
+
+        // Proof-of-transaction image (receipt / delivery photo) for one item.
+        [HttpPost("bill-of-material-items/{itemId:guid}/evidence")]
+        public async Task<IActionResult> UploadBillOfMaterialItemEvidence(Guid itemId, IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+            {
+                return BadRequest(new { error = "No file uploaded." });
+            }
+
+            try
+            {
+                var item = await _billOfMaterialService.SaveItemEvidenceAsync(itemId, file, _env.ContentRootPath);
+                return Ok(new { item.Id, item.EvidenceImageUrl });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
         }
 
         [HttpPut("bill-of-material-items/{itemId:guid}/status")]

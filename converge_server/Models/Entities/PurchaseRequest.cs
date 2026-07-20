@@ -37,6 +37,14 @@
             [MaxLength(20)]
             public string? Source { get; set; }
 
+            // Green-dot "unseen" indicator for sales-originated requests; cleared
+            // the first time purchasing opens the request.
+            public bool IsSeenByPurchasing { get; set; } = false;
+
+            // Whole-request supporting document uploaded by purchasing (e.g. a
+            // supplier quote), distinct from the auto-generated submission PDF.
+            public string? AttachmentPdfUrl { get; set; }
+
             public ICollection<PurchaseRequestItem> Items { get; set; } = new List<PurchaseRequestItem>();
             public BillOfMaterial? BillOfMaterial { get; set; }
         }

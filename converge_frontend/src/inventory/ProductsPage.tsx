@@ -6,7 +6,7 @@ import { queryCache, CACHE_KEYS } from '../shared/queryCache';
 import { formatProductName } from '../shared/formatProductName';
 import { useAuth } from '../app/AuthContext';
 import ProductFormModal from './ProductFormModal';
-import { ImageOff, Loader2, Plus, RefreshCw, Search, X } from 'lucide-react';
+import { AlertTriangle, ImageOff, Loader2, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
 
 // Matches ProductDetailDto — used for both the list (left panel only shows
 // the name) and the selected-product detail (right panel).
@@ -86,6 +86,8 @@ export default function ProductsPage() {
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Increments per request so late responses from superseded fetches
   // (fast typing, fast clicking between products) are ignored.
@@ -128,6 +130,12 @@ export default function ProductsPage() {
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery]);
+
+  useEffect(() => {
+    if (!deleteError) return;
+    const t = window.setTimeout(() => setDeleteError(null), 4000);
+    return () => window.clearTimeout(t);
+  }, [deleteError]);
 
   const categories = Array.from(new Set(products.map((p) => p.category).filter(Boolean))).sort((a, b) =>
     a.localeCompare(b)
@@ -194,6 +202,31 @@ export default function ProductsPage() {
     fetchProducts(searchQuery);
     if (selectedProductId === product.id) {
       setSelectedProduct(product);
+    }
+  };
+
+  const handleDeleteProduct = async () => {
+    if (!selectedProduct) return;
+    if (!window.confirm(`Delete "${formatProductName(selectedProduct.productName)}"? This can't be undone from here.`)) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      const res = await apiFetch(`/api/products/${selectedProduct.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to delete product.');
+      }
+      setProducts((prev) => prev.filter((p) => p.id !== selectedProduct.id));
+      queryCache.invalidate(CACHE_KEYS.products);
+      setSelectedProductId(null);
+      setSelectedProduct(null);
+      setImageUrl(null);
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Failed to delete product.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -372,16 +405,27 @@ export default function ProductsPage() {
                         {formatProductName(selectedProduct.productName)}
                       </h1>
                       {canModify && (
-                        <button
-                          type="button"
-                          className="shrink-0 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-slate-50 hover:bg-slate-800 border border-slate-700 rounded-lg transition-colors"
-                          onClick={() => {
-                            setEditingProduct(selectedProduct);
-                            setIsFormOpen(true);
-                          }}
-                        >
-                          Edit
-                        </button>
+                        <div className="shrink-0 flex gap-2">
+                          <button
+                            type="button"
+                            className="px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-slate-50 hover:bg-slate-800 border border-slate-700 rounded-lg transition-colors"
+                            onClick={() => {
+                              setEditingProduct(selectedProduct);
+                              setIsFormOpen(true);
+                            }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            title="Delete product"
+                            disabled={isDeleting}
+                            className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-950/30 border border-slate-700 hover:border-red-900 rounded-lg transition-colors disabled:opacity-50"
+                            onClick={handleDeleteProduct}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       )}
                     </div>
 
@@ -469,6 +513,14 @@ export default function ProductsPage() {
           onSaved={handleProductSaved}
         />
       )}
+
+      <div className="toast-container" aria-live="polite" aria-atomic="true">
+        {deleteError && (
+          <div className="toast toast--error flex items-center gap-2" role="status">
+            <AlertTriangle className="h-4 w-4 shrink-0" /> {deleteError}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

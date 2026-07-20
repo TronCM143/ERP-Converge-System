@@ -59,6 +59,15 @@ namespace converge_server.Controllers
             return product == null ? NotFound(new { error = "Product not found." }) : Ok(product);
         }
 
+        [HttpDelete("{productId:int}")]
+        [Authorize(Roles = "quotation,admin")]
+        public async Task<IActionResult> DeleteProduct(int productId)
+        {
+            var actor = User.Identity?.Name ?? "system";
+            var deleted = await _productService.DeleteProductAsync(productId, actor);
+            return deleted ? Ok(new { message = "Product deleted." }) : NotFound(new { error = "Product not found." });
+        }
+
         // Click-to-resolve: returns the cached image immediately if one exists,
         // otherwise searches once and caches the result (found or not).
         [HttpPost("{productId:int}/image")]

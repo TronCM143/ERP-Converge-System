@@ -32,7 +32,7 @@ namespace converge_server.Services.Notifications
             _logger = logger;
         }
 
-        public async Task DispatchAsync(NotificationType type, string subject, string body)
+        public async Task DispatchAsync(NotificationType type, string subject, string body, EmailAttachment? attachment = null)
         {
             try
             {
@@ -57,7 +57,7 @@ namespace converge_server.Services.Notifications
                     {
                         try
                         {
-                            await _emailSender.SendAsync(recipient.Email, subject, body);
+                            await _emailSender.SendAsync(recipient.Email, subject, body, attachment);
                             emailAttempted++;
                         }
                         catch (Exception ex)

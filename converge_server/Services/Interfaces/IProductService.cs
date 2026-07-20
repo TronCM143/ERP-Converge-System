@@ -8,6 +8,7 @@ namespace converge_server.Services.Interfaces
         Task<ProductDetailDto?> GetProductByIdAsync(int productId);
         Task<ProductDetailDto> CreateProductAsync(ProductUpsertDto dto, string actorUsername);
         Task<ProductDetailDto?> UpdateProductAsync(int productId, ProductUpsertDto dto, string actorUsername);
+        Task<bool> DeleteProductAsync(int productId, string actorUsername);
         Task<ProductImageResultDto> ResolveProductImageAsync(int productId, bool forceRefresh = false);
     }
 }

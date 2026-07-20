@@ -6,7 +6,7 @@ namespace converge_server.Services.Interfaces
 {
     public interface INotificationDispatchService
     {
-        Task DispatchAsync(NotificationType type, string subject, string body);
+        Task DispatchAsync(NotificationType type, string subject, string body, EmailAttachment? attachment = null);
 
         // Sends to an explicit, caller-supplied email list instead of looking
         // up NotificationRecipients — used when a user picks recipients ad hoc

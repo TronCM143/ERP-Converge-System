@@ -95,7 +95,8 @@ namespace converge_server.Services.Products
                 Specs = dto.Specs?.Trim() ?? string.Empty,
                 Price = dto.Price,
                 IsActive = dto.IsActive,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
             };
 
             _context.Products.Add(product);
@@ -134,6 +135,30 @@ namespace converge_server.Services.Products
             await _auditService.LogAsync("Product", product.Id.ToString(), "Updated", actorUsername, null, product.ProductName);
 
             return ToDetail(product);
+        }
+
+        // Soft delete: products can be referenced by historical quotations,
+        // purchase requests, and BOMs (ProductId FKs on those line items), so
+        // a hard delete risks a foreign-key violation or silently orphaning
+        // order history. Deactivating keeps that history intact while
+        // dropping the product off every active list (same flag the rest of
+        // the app already filters on).
+        public async Task<bool> DeleteProductAsync(int productId, string actorUsername)
+        {
+            var product = await _context.Products.FindAsync(productId);
+            if (product == null)
+            {
+                return false;
+            }
+
+            product.IsActive = false;
+            product.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+            await _cache.RemoveAsync(CacheKeys.Products);
+            await _auditService.LogAsync("Product", product.Id.ToString(), "Deleted", actorUsername, null, product.ProductName);
+
+            return true;
         }
 
         // The core click-to-resolve pipeline: reuse a cached image, skip a

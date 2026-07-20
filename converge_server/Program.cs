@@ -93,6 +93,7 @@ builder.Services.AddAuthorization();
 builder.Services.AddScoped<converge_server.Services.Interfaces.IPurchaseRequestService, converge_server.Services.PurchaseRequestService>();
 builder.Services.AddScoped<converge_server.Services.Interfaces.IBillOfMaterialService, converge_server.Services.BillOfMaterial.BillOfMaterialService>();
 builder.Services.AddScoped<converge_server.Services.Interfaces.IPurchaseOrderService, converge_server.Services.PurchaseOrders.PurchaseOrderService>();
+builder.Services.AddSingleton<converge_server.Services.Interfaces.IPurchaseRequestPdfService, converge_server.Services.PurchaseRequests.PurchaseRequestPdfService>();
 builder.Services.AddScoped<IAuthService, converge_server.Services.Auth.AuthService>();
 builder.Services.AddScoped<IQuotationService, converge_server.Services.Quotations.QuotationService>();
 builder.Services.AddSingleton<converge_server.Services.Interfaces.IQuotationPdfService, converge_server.Services.Quotations.QuotationPdfService>();

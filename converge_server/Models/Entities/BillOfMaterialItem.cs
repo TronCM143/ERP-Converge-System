@@ -45,6 +45,10 @@ namespace converge_server.Models.Entities
         [MaxLength(30)]
         public string Status { get; set; } = "Pending";
 
+        // Date this item was ordered from the supplier, editable independently
+        // of any generated Purchase Order.
+        public DateTime? OrderDate { get; set; }
+
         // Expected arrival date assigned by purchasing staff.
         public DateTime? DeliveryDate { get; set; }
 
@@ -52,5 +56,13 @@ namespace converge_server.Models.Entities
         public DateTime? ReceivedAt { get; set; }
 
         public string? Remarks { get; set; }
+
+        // Who this item is being purchased from.
+        [MaxLength(200)]
+        public string? Supplier { get; set; }
+
+        // Uploaded proof of the transaction backing the current status
+        // (receipt / delivery photo), e.g. "/images/evidence/{id}-{ticks}.jpg".
+        public string? EvidenceImageUrl { get; set; }
     }
 }

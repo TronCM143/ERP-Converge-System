@@ -2,18 +2,21 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using converge_server.Data;
 
 #nullable disable
 
-namespace converge_server.Migrations
+namespace converge_server.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260720062335_AddBomItemSupplierAndEvidence")]
+    partial class AddBomItemSupplierAndEvidence
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -128,9 +131,6 @@ namespace converge_server.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
-
-                    b.Property<DateTime?>("OrderDate")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("PurchaseRequestItemId")
                         .HasColumnType("uuid");
@@ -476,9 +476,6 @@ namespace converge_server.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<string>("AttachmentPdfUrl")
-                        .HasColumnType("text");
-
                     b.Property<string>("ClientName")
                         .IsRequired()
                         .HasMaxLength(150)
@@ -486,9 +483,6 @@ namespace converge_server.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("IsSeenByPurchasing")
-                        .HasColumnType("boolean");
 
                     b.Property<string>("PRNumber")
                         .IsRequired()

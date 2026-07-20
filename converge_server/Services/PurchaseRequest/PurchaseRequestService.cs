@@ -2,6 +2,7 @@ using converge_server.Data;
 using converge_server.Models.DTOs.PurchaseRequest;
 using converge_server.Models.Entities;
 using converge_server.Services.Interfaces;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using EntityBillOfMaterial = converge_server.Models.Entities.BillOfMaterial;
 
@@ -10,10 +11,26 @@ namespace converge_server.Services
     public class PurchaseRequestService : IPurchaseRequestService
     {
         private readonly AppDbContext _context;
+        private readonly IBillOfMaterialService _billOfMaterialService;
+        private readonly IPurchaseOrderService _purchaseOrderService;
+        private readonly IPurchaseRequestPdfService _pdfService;
+        private readonly INotificationDispatchService _notificationDispatchService;
+        private readonly IAuditService _auditService;
 
-        public PurchaseRequestService(AppDbContext context)
+        public PurchaseRequestService(
+            AppDbContext context,
+            IBillOfMaterialService billOfMaterialService,
+            IPurchaseOrderService purchaseOrderService,
+            IPurchaseRequestPdfService pdfService,
+            INotificationDispatchService notificationDispatchService,
+            IAuditService auditService)
         {
             _context = context;
+            _billOfMaterialService = billOfMaterialService;
+            _purchaseOrderService = purchaseOrderService;
+            _pdfService = pdfService;
+            _notificationDispatchService = notificationDispatchService;
+            _auditService = auditService;
         }
 
         public async Task<PurchaseRequest> CreatePurchaseRequestAsync(CreatePurchaseRequestDto dto, string source = "Manual", int? quotationId = null)
@@ -133,11 +150,25 @@ namespace converge_server.Services
                 CreatedAt = DateTime.UtcNow
             };
 
+            // If this request came from a quotation, carry the sales team's
+            // per-item note (stored on Specification) into the BOM item's note.
+            var quotationMaterialItems = purchaseRequest.QuotationId.HasValue
+                ? await _context.Quotations
+                    .Where(q => q.Id == purchaseRequest.QuotationId.Value)
+                    .SelectMany(q => q.MaterialItems)
+                    .AsNoTracking()
+                    .ToListAsync()
+                : new List<QuotationMaterialItem>();
+
             foreach (var item in purchaseRequest.Items)
             {
                 var product = item.ProductId.HasValue
                     ? await _context.Products.FindAsync(item.ProductId.Value)
                     : await _context.Products.FirstOrDefaultAsync(p => p.ProductName == item.ItemName);
+
+                var quotationItem = quotationMaterialItems.FirstOrDefault(mi =>
+                    (item.ProductId != null && mi.ProductId == item.ProductId) ||
+                    mi.ItemName.Equals(item.ItemName, StringComparison.OrdinalIgnoreCase));
 
                 var status = product != null ? "Waiting" : "Unavailable";
                 billOfMaterial.Items.Add(new BillOfMaterialItem
@@ -149,7 +180,7 @@ namespace converge_server.Services
                     Unit = item.Unit,
                     Status = status,
                     QuantityToPurchase = status == "Unavailable" ? item.Quantity : 0,
-                    Remarks = product != null ? "Matched existing product catalog." : "Item not found in product catalog."
+                    Remarks = string.IsNullOrWhiteSpace(quotationItem?.Specification) ? null : quotationItem.Specification
                 });
             }
 
@@ -186,6 +217,159 @@ namespace converge_server.Services
                     .ThenInclude(bom => bom!.Items)
                 .OrderByDescending(pr => pr.CreatedAt)
                 .ToListAsync();
+        }
+
+        public async Task<PurchaseRequest> UpdateRequestDetailsAsync(Guid purchaseRequestId, UpdatePurchaseRequestDto dto)
+        {
+            var purchaseRequest = await _context.PurchaseRequests.FirstOrDefaultAsync(pr => pr.Id == purchaseRequestId);
+            if (purchaseRequest == null)
+            {
+                throw new KeyNotFoundException("Purchase request not found.");
+            }
+
+            purchaseRequest.ClientName = dto.ClientName;
+            purchaseRequest.ShippingAddress = dto.ShippingAddress;
+            purchaseRequest.Remarks = dto.Remarks;
+            purchaseRequest.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+            return purchaseRequest;
+        }
+
+        public async Task<PurchaseRequest> MarkSeenAsync(Guid purchaseRequestId)
+        {
+            var purchaseRequest = await _context.PurchaseRequests.FirstOrDefaultAsync(pr => pr.Id == purchaseRequestId);
+            if (purchaseRequest == null)
+            {
+                throw new KeyNotFoundException("Purchase request not found.");
+            }
+
+            if (!purchaseRequest.IsSeenByPurchasing)
+            {
+                purchaseRequest.IsSeenByPurchasing = true;
+                await _context.SaveChangesAsync();
+            }
+
+            return purchaseRequest;
+        }
+
+        // Whole-request supporting document (e.g. a supplier quote), separate
+        // from the auto-generated submission PDF. PDF only.
+        public async Task<PurchaseRequest> SaveRequestAttachmentAsync(Guid purchaseRequestId, IFormFile file, string contentRootPath)
+        {
+            var purchaseRequest = await _context.PurchaseRequests.FirstOrDefaultAsync(pr => pr.Id == purchaseRequestId);
+            if (purchaseRequest == null)
+            {
+                throw new KeyNotFoundException("Purchase request not found.");
+            }
+
+            var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (extension != ".pdf")
+            {
+                throw new InvalidOperationException("Only PDF files are allowed.");
+            }
+            if (file.Length > 20 * 1024 * 1024)
+            {
+                throw new InvalidOperationException("Attachment must be under 20 MB.");
+            }
+
+            var directory = Path.Combine(contentRootPath, "wwwroot", "documents", "requests");
+            Directory.CreateDirectory(directory);
+
+            if (!string.IsNullOrEmpty(purchaseRequest.AttachmentPdfUrl))
+            {
+                try
+                {
+                    var oldPath = Path.Combine(contentRootPath, "wwwroot",
+                        purchaseRequest.AttachmentPdfUrl.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
+                    if (File.Exists(oldPath))
+                    {
+                        File.Delete(oldPath);
+                    }
+                }
+                catch
+                {
+                    // A stale orphaned file must never block the new upload.
+                }
+            }
+
+            var fileName = $"{purchaseRequest.Id}-{DateTime.UtcNow.Ticks}{extension}";
+            var filePath = Path.Combine(directory, fileName);
+            await using (var stream = new FileStream(filePath, FileMode.Create))
+            {
+                await file.CopyToAsync(stream);
+            }
+
+            purchaseRequest.AttachmentPdfUrl = $"/documents/requests/{fileName}";
+            purchaseRequest.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            await _auditService.LogAsync("PurchaseRequest", purchaseRequest.Id.ToString(), "AttachmentAdded", "purchasing", null, fileName);
+
+            return purchaseRequest;
+        }
+
+        // Finalizes the request: completes the BOM, auto-creates the priced
+        // Purchase Order from it, generates a PDF snapshot, and emails it to
+        // whichever recipients are configured for PurchaseRequestCompleted.
+        public async Task<PurchaseRequest> SubmitRequestAsync(Guid purchaseRequestId, string actorUsername)
+        {
+            var purchaseRequest = await _context.PurchaseRequests
+                .Include(pr => pr.BillOfMaterial)
+                    .ThenInclude(bom => bom!.Items)
+                .FirstOrDefaultAsync(pr => pr.Id == purchaseRequestId);
+
+            if (purchaseRequest == null)
+            {
+                throw new KeyNotFoundException("Purchase request not found.");
+            }
+
+            if (purchaseRequest.BillOfMaterial == null || !purchaseRequest.BillOfMaterial.Items.Any())
+            {
+                throw new InvalidOperationException("This request has no bill of materials to submit.");
+            }
+
+            if (purchaseRequest.Status == "Ordered")
+            {
+                throw new InvalidOperationException("This request has already been submitted.");
+            }
+
+            if (purchaseRequest.BillOfMaterial.Items.Any(i => i.Status != "Ready" && i.Status != "Cancelled"))
+            {
+                throw new InvalidOperationException("Every item must be Ready or Cancelled before submitting.");
+            }
+
+            await _billOfMaterialService.CompleteBillOfMaterialAsync(purchaseRequest.BillOfMaterial.Id);
+            await _purchaseOrderService.CreateFromBomAsync(purchaseRequest.BillOfMaterial.Id);
+
+            purchaseRequest.Status = "Ordered";
+            purchaseRequest.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            // Reload with everything the PDF needs.
+            var fullRequest = await _context.PurchaseRequests
+                .Include(pr => pr.BillOfMaterial)
+                    .ThenInclude(bom => bom!.Items)
+                .AsNoTracking()
+                .FirstAsync(pr => pr.Id == purchaseRequestId);
+
+            try
+            {
+                var pdfBytes = await _pdfService.GeneratePdfAsync(fullRequest);
+                await _notificationDispatchService.DispatchAsync(
+                    NotificationType.PurchaseRequestCompleted,
+                    $"Purchase Request {fullRequest.PRNumber} submitted — {fullRequest.ClientName}",
+                    $"<p>Purchase Request <strong>{fullRequest.PRNumber}</strong> for client <strong>{fullRequest.ClientName}</strong> has been submitted. The full request is attached as a PDF.</p>",
+                    new EmailAttachment($"{fullRequest.PRNumber}.pdf", pdfBytes, "application/pdf"));
+            }
+            catch (Exception ex)
+            {
+                // Email/PDF failure must never undo an already-submitted request.
+                Console.WriteLine($"Failed to generate/email purchase request PDF: {ex.Message}");
+            }
+
+            await _auditService.LogAsync("PurchaseRequest", purchaseRequest.Id.ToString(), "Submitted", actorUsername, null, purchaseRequest.PRNumber);
+
+            return fullRequest;
         }
 
         private static string GeneratePrNumber()
