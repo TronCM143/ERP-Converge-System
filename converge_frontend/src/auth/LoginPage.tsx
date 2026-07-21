@@ -32,7 +32,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden flex justify-end items-center p-[5vh_6vw] box-border max-[900px]:justify-center">
+    <div className="relative min-h-screen w-full overflow-hidden bg-slate-900">
       {/* Backs the panel's "backdrop-filter: url(#liquid-glass-distortion)" */}
       <svg style={{ position: 'absolute', width: 0, height: 0 }} aria-hidden="true">
         <defs>
@@ -50,41 +50,38 @@ export default function LoginPage() {
         [background:radial-gradient(ellipse_900px_700px_at_82%_50%,rgba(59,130,246,0.16),transparent_70%),linear-gradient(to_right,rgba(2,6,23,0.15)_0%,rgba(2,6,23,0.35)_100%),url('/pexels-photo-2881233.jpg')_center/cover_no-repeat]"
       />
 
-      {/* Logo */}
-      <img
-        src="/CSiLogo.png"
-        alt="Converge.IT Solutions Inc."
-        className="absolute top-10 left-10 z-[2] h-12 w-auto
-        drop-shadow-[0_2px_6px_rgba(2,6,23,0.35)]
-        max-[480px]:h-9 max-[480px]:top-6 max-[480px]:left-6"
-      />
-
-      {/* Liquid glass card */}
+      {/* Combined Liquid glass card (Stuck to Right, 15% from bottom, Left curves) */}
       <motion.div
-        className="relative z-[1] flex justify-center items-center
-        w-[42%] min-w-[400px] max-w-[460px] max-h-[90vh]
-        p-[64px_48px] box-border overflow-hidden rounded-[32px]
-        bg-white/55 border border-white/50
+        className="absolute right-0 bottom-[15vh] z-[1] flex flex-col justify-center items-center
+        w-[42%] min-w-[400px] max-w-[480px] h-auto
+        p-[56px_48px] box-border overflow-hidden rounded-l-[20px]
+        bg-white/55 border-y border-l border-white/50
         [-webkit-backdrop-filter:blur(20px)_saturate(160%)]
         [backdrop-filter:url(#liquid-glass-distortion)_blur(20px)_saturate(160%)]
-        [box-shadow:0_20px_60px_rgba(2,6,23,0.35),0_2px_8px_rgba(2,6,23,0.12),inset_0_1px_1px_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(255,255,255,0.15)]
+        [box-shadow:-20px_20px_60px_rgba(2,6,23,0.25),inset_1px_1px_1px_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(255,255,255,0.15)]
         before:content-[''] before:absolute before:inset-0 before:rounded-[inherit] before:p-px before:pointer-events-none
         before:[background:linear-gradient(135deg,rgba(255,255,255,0.95)_0%,rgba(255,255,255,0.15)_35%,rgba(255,255,255,0)_55%)]
         before:[-webkit-mask:linear-gradient(#fff_0_0)_content-box,linear-gradient(#fff_0_0)]
         before:[-webkit-mask-composite:xor] before:[mask-composite:exclude]
-        max-[900px]:w-full max-[900px]:min-w-0 max-[900px]:max-w-[480px]
-        max-[480px]:p-[48px_32px] max-[480px]:rounded-[24px]"
-        initial={{ opacity: 0, x: 40 }}
-        animate={{ opacity: 1, x: 0 }}
+        max-[900px]:w-full max-[900px]:min-w-0 max-[900px]:max-w-none max-[900px]:rounded-none max-[900px]:bottom-0
+        max-[480px]:p-[40px_32px]"
+        initial={{ opacity: 0, y: 40, x: 40 }}
+        animate={{ opacity: 1, y: 0, x: 0 }}
         transition={{ duration: 0.5, ease: "easeOut" }}
       >
-        <div className="relative z-[1] w-full max-w-[340px]">
+        <div className="relative z-[1] w-full max-w-[340px] flex flex-col items-center">
           
-          {/* Added Header for Visual Hierarchy */}
-          <div className="mb-8 text-center">
-            <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Welcome Back</h2>
-            <p className="text-sm text-slate-600 mt-1.5 font-medium">Please sign in to your account</p>
+          {/* Logo inside the container */}
+          <div className="mb-8 flex justify-center w-full">
+            <img
+              src="/CSiLogo.png"
+              alt="Converge.IT Solutions Inc."
+              className="h-20 w-auto  max-[480px]:h-2"
+            />
           </div>
+
+          {/* Header for Visual Hierarchy */}
+         
 
           <form onSubmit={handleSubmit} className="w-full">
             <div className="mb-4">
@@ -149,7 +146,7 @@ export default function LoginPage() {
               enabled:hover:bg-blue-700 enabled:hover:-translate-y-0.5 enabled:hover:shadow-[0_12px_24px_rgba(37,99,235,0.35)]
               disabled:opacity-60 disabled:cursor-not-allowed disabled:shadow-none"
             >
-              {isSubmitting ? 'Signing in...' : 'Sign In'}
+              {isSubmitting ? 'Signing in...' : 'Procese'}
             </motion.button>
           </form>
         </div>

@@ -86,6 +86,23 @@
           }
         }
       },
+      "Google.Apis.Gmail.v1/1.74.0.4162": {
+        "type": "package",
+        "dependencies": {
+          "Google.Apis": "1.74.0",
+          "Google.Apis.Auth": "1.74.0"
+        },
+        "compile": {
+          "lib/net6.0/Google.Apis.Gmail.v1.dll": {
+            "related": ".pdb;.xml"
+          }
+        },
+        "runtime": {
+          "lib/net6.0/Google.Apis.Gmail.v1.dll": {
+            "related": ".pdb;.xml"
+          }
+        }
+      },
       "Google.Apis.Sheets.v4/1.75.0.4178": {
         "type": "package",
         "dependencies": {
@@ -131,6 +148,22 @@
             "related": ".dll.config;.pdb;.xml"
           }
         }
+      },
+      "Microsoft.AspNetCore.Authentication.Google/10.0.10": {
+        "type": "package",
+        "compile": {
+          "lib/net10.0/Microsoft.AspNetCore.Authentication.Google.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net10.0/Microsoft.AspNetCore.Authentication.Google.dll": {
+            "related": ".xml"
+          }
+        },
+        "frameworkReferences": [
+          "Microsoft.AspNetCore.App"
+        ]
       },
       "Microsoft.AspNetCore.Authentication.JwtBearer/10.0.9": {
         "type": "package",
@@ -1311,6 +1344,28 @@
         "lib/netstandard2.0/Google.Apis.Core.xml"
       ]
     },
+    "Google.Apis.Gmail.v1/1.74.0.4162": {
+      "sha512": "mWOl7abza440WyyqTOW+9g2G2kphjCyRoKqHxHP4I6t2bglkhyvy35xjCw6pvj7ypBYCPKjmQrDO985e1sr39g==",
+      "type": "package",
+      "path": "google.apis.gmail.v1/1.74.0.4162",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "LICENSE",
+        "NuGetIcon.png",
+        "google.apis.gmail.v1.1.74.0.4162.nupkg.sha512",
+        "google.apis.gmail.v1.nuspec",
+        "lib/net462/Google.Apis.Gmail.v1.dll",
+        "lib/net462/Google.Apis.Gmail.v1.pdb",
+        "lib/net462/Google.Apis.Gmail.v1.xml",
+        "lib/net6.0/Google.Apis.Gmail.v1.dll",
+        "lib/net6.0/Google.Apis.Gmail.v1.pdb",
+        "lib/net6.0/Google.Apis.Gmail.v1.xml",
+        "lib/netstandard2.0/Google.Apis.Gmail.v1.dll",
+        "lib/netstandard2.0/Google.Apis.Gmail.v1.pdb",
+        "lib/netstandard2.0/Google.Apis.Gmail.v1.xml"
+      ]
+    },
     "Google.Apis.Sheets.v4/1.75.0.4178": {
       "sha512": "HR+C9tXM5a2hnAkZQr0Xef9UuxztJ8FkhWR7WzuWnAGN2glOaZkjF0wBtBVJpQ2iLdawKP+UMlwKr1AYoEs5SQ==",
       "type": "package",
@@ -1393,6 +1448,22 @@
         "lib/netstandard2.1/MailKit.xml",
         "mailkit.4.17.0.nupkg.sha512",
         "mailkit.nuspec"
+      ]
+    },
+    "Microsoft.AspNetCore.Authentication.Google/10.0.10": {
+      "sha512": "9jjUYgbZE7z9YSNpgYbU5L6cUHHhzfT6RUT00euTXA3HAxo5nJjqc2YTx1qj2Z+f30fVmjx9uG3YgISw5oMC2w==",
+      "type": "package",
+      "path": "microsoft.aspnetcore.authentication.google/10.0.10",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "Icon.png",
+        "PACKAGE.md",
+        "THIRD-PARTY-NOTICES.TXT",
+        "lib/net10.0/Microsoft.AspNetCore.Authentication.Google.dll",
+        "lib/net10.0/Microsoft.AspNetCore.Authentication.Google.xml",
+        "microsoft.aspnetcore.authentication.google.10.0.10.nupkg.sha512",
+        "microsoft.aspnetcore.authentication.google.nuspec"
       ]
     },
     "Microsoft.AspNetCore.Authentication.JwtBearer/10.0.9": {
@@ -3707,8 +3778,10 @@
     "net10.0": [
       "BCrypt.Net-Next >= 4.2.0",
       "DotNetEnv >= 3.2.0",
+      "Google.Apis.Gmail.v1 >= 1.74.0.4162",
       "Google.Apis.Sheets.v4 >= 1.75.0.4178",
       "MailKit >= 4.17.0",
+      "Microsoft.AspNetCore.Authentication.Google >= 10.0.10",
       "Microsoft.AspNetCore.Authentication.JwtBearer >= 10.0.9",
       "Microsoft.AspNetCore.OpenApi >= 10.0.9",
       "Microsoft.EntityFrameworkCore >= 10.0.9",
@@ -3781,6 +3854,10 @@
             "target": "Package",
             "version": "[3.2.0, )"
           },
+          "Google.Apis.Gmail.v1": {
+            "target": "Package",
+            "version": "[1.74.0.4162, )"
+          },
           "Google.Apis.Sheets.v4": {
             "target": "Package",
             "version": "[1.75.0.4178, )"
@@ -3788,6 +3865,10 @@
           "MailKit": {
             "target": "Package",
             "version": "[4.17.0, )"
+          },
+          "Microsoft.AspNetCore.Authentication.Google": {
+            "target": "Package",
+            "version": "[10.0.10, )"
           },
           "Microsoft.AspNetCore.Authentication.JwtBearer": {
             "target": "Package",

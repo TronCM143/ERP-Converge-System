@@ -6,6 +6,11 @@ import { apiFetch } from '../shared/api';
 import NotificationRecipientFormModal from './NotificationRecipientFormModal';
 import './AdminSettingsPage.css';
 
+interface GoogleStatusDto {
+  connected: boolean;
+  email: string | null;
+}
+
 interface NotificationPreferenceDto {
   type: string;
   emailEnabled: boolean;
@@ -41,6 +46,9 @@ export default function AdminSettingsPage() {
   const [departmentEmails, setDepartmentEmails] = useState<DepartmentEmailDto[]>([]);
   const [savingDept, setSavingDept] = useState<string | null>(null);
   const [deptSavedFlash, setDeptSavedFlash] = useState<string | null>(null);
+  const [googleStatus, setGoogleStatus] = useState<GoogleStatusDto | null>(null);
+  const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
+  const [googleToast, setGoogleToast] = useState<string | null>(null);
 
   const fetchDepartmentEmails = async () => {
     try {
@@ -91,10 +99,60 @@ export default function AdminSettingsPage() {
     }
   };
 
+  const fetchGoogleStatus = async () => {
+    try {
+      const res = await apiFetch('/api/admin/google/status');
+      if (res.ok) setGoogleStatus(await res.json());
+    } catch (err) {
+      console.error('Failed to load Google connection status:', err);
+    }
+  };
+
   useEffect(() => {
     fetchRecipients();
     fetchDepartmentEmails();
+    fetchGoogleStatus();
+
+    // Landed back here from the Google consent redirect.
+    const params = new URLSearchParams(window.location.search);
+    const googleResult = params.get('google');
+    if (googleResult) {
+      setGoogleToast(googleResult === 'connected' ? 'Google account connected.' : 'Google connection failed — try again.');
+      setTimeout(() => setGoogleToast(null), 4000);
+      window.history.replaceState({}, '', window.location.pathname);
+      fetchGoogleStatus();
+    }
   }, []);
+
+  const handleConnectGoogle = async () => {
+    try {
+      setIsConnectingGoogle(true);
+      const res = await apiFetch('/api/admin/google/connect-ticket', { method: 'POST' });
+      if (res.ok) {
+        const { url } = await res.json();
+        window.location.href = url;
+      } else {
+        setGoogleToast('Failed to start Google connection.');
+        setIsConnectingGoogle(false);
+      }
+    } catch (err) {
+      console.error('Failed to start Google connect flow:', err);
+      setGoogleToast('Failed to start Google connection.');
+      setIsConnectingGoogle(false);
+    }
+  };
+
+  const handleDisconnectGoogle = async () => {
+    if (!window.confirm('Disconnect this Google account? Gmail sending will stop until reconnected.')) return;
+    try {
+      const res = await apiFetch('/api/admin/google/disconnect', { method: 'POST' });
+      if (res.ok) {
+        setGoogleStatus({ connected: false, email: null });
+      }
+    } catch (err) {
+      console.error('Failed to disconnect Google account:', err);
+    }
+  };
 
   const handleDelete = async (recipientId: number) => {
     if (!window.confirm('Delete this recipient?')) return;
@@ -196,6 +254,49 @@ export default function AdminSettingsPage() {
             </table>
           </div>
         )}
+      </div>
+
+      <div className="card">
+        <div className="panel-header">
+          <h2>Google Account (Gmail Sending)</h2>
+        </div>
+
+        <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '16px' }}>
+          Connect a Google account to send notification emails (Purchase Request PDFs, deal-won
+          notices) through the Gmail API instead of the default provider. Requires{' '}
+          <code>Email__Provider=Gmail</code> set in the backend's <code>.env</code> to actually take effect.
+        </p>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {googleStatus?.connected ? (
+            <>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#e2e8f0' }}>
+                <Check className="h-4 w-4 text-emerald-400" /> Connected as {googleStatus.email}
+              </span>
+              <button className="btn btn--small" type="button" onClick={handleDisconnectGoogle}>
+                Disconnect
+              </button>
+            </>
+          ) : (
+            <button className="btn btn--primary" type="button" disabled={isConnectingGoogle} onClick={handleConnectGoogle}>
+              {isConnectingGoogle ? 'Redirecting…' : 'Connect Google Account'}
+            </button>
+          )}
+        </div>
+
+        <AnimatePresence>
+          {googleToast && (
+            <motion.div
+              className="toast toast--success"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+              style={{ marginTop: '16px' }}
+            >
+              {googleToast}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       <div className="card">

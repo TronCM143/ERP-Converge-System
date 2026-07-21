@@ -15,6 +15,6 @@ namespace converge_server.Services.Interfaces
         Task<PurchaseRequest> UpdateRequestDetailsAsync(Guid purchaseRequestId, UpdatePurchaseRequestDto dto);
         Task<PurchaseRequest> MarkSeenAsync(Guid purchaseRequestId);
         Task<PurchaseRequest> SaveRequestAttachmentAsync(Guid purchaseRequestId, IFormFile file, string contentRootPath);
-        Task<PurchaseRequest> SubmitRequestAsync(Guid purchaseRequestId, string actorUsername);
+        Task<PurchaseRequest> SubmitRequestAsync(Guid purchaseRequestId, string actorUsername, List<string>? notifyEmails = null);
     }
 }

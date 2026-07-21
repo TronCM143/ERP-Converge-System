@@ -135,12 +135,12 @@ namespace converge_server.Controllers
 
         [HttpPost("{quotationId:int}/approve")]
         [Authorize(Roles = "quotation")]
-        public async Task<IActionResult> Approve(int quotationId)
+        public async Task<IActionResult> Approve(int quotationId, [FromBody] SendQuotationPdfDto? dto)
         {
             try
             {
                 var actorUsername = User.Identity?.Name ?? "system";
-                var wonSheetSaved = await _quotationService.ApproveAsync(quotationId, actorUsername);
+                var wonSheetSaved = await _quotationService.ApproveAsync(quotationId, actorUsername, dto?.Emails);
                 var quotation = await _quotationService.GetQuotationAsync(quotationId);
                 return Ok(new { message = "Quotation approved.", quotation = MapToResponse(quotation!), wonSheetSaved });
             }

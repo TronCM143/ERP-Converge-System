@@ -17,6 +17,7 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Card } from '../../components/ui/card';
 import ActivityFeed from '../../shared/ActivityFeed';
+import PipelineTrendChart, { PipelineTrendPoint } from '../../shared/PipelineTrendChart';
 import { apiFetch } from '../../shared/api';
 import { queryCache, CACHE_KEYS } from '../../shared/queryCache';
 import ClientFormModal, { ClientSummary } from './ClientFormModal';
@@ -80,6 +81,23 @@ export default function CrmDashboardPage() {
   // Set once a real drag starts, so the click that fires after dropping
   // a card doesn't also navigate to the client profile.
   const suppressClickRef = useRef(false);
+  const [monthlyTrend, setMonthlyTrend] = useState<PipelineTrendPoint[]>([]);
+  const [weeklyTrend, setWeeklyTrend] = useState<PipelineTrendPoint[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [monthlyRes, weeklyRes] = await Promise.all([
+          apiFetch('/api/analytics/pipeline-stage-trend?granularity=month'),
+          apiFetch('/api/analytics/pipeline-stage-trend?granularity=week')
+        ]);
+        if (monthlyRes.ok) setMonthlyTrend(await monthlyRes.json());
+        if (weeklyRes.ok) setWeeklyTrend(await weeklyRes.json());
+      } catch (err) {
+        console.error('Failed to load pipeline trend analytics:', err);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     if (!toastMessage) return;
@@ -302,7 +320,7 @@ export default function CrmDashboardPage() {
             all stay locked in place while the board scrolls underneath. */}
         <div className="sticky top-0 z-30 bg-slate-950/95 backdrop-blur-sm">
           <div className="px-6 pt-6">
-            <div className="flex flex-col sm:flex-row sm:items-start gap-4 mb-4">
+            <div className="flex flex-col lg:flex-row lg:items-start gap-4 mb-6">
               <div className="flex items-center gap-3">
                 <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-blue-300 to-cyan-400 bg-clip-text text-transparent">
                   CRM
@@ -315,14 +333,14 @@ export default function CrmDashboardPage() {
                   className="gap-2 text-sm"
                 >
                   <Plus className="h-4 w-4" />
-                
+
                 </Button>
                 <Button
                   variant="outline"
                   onClick={() => navigate('/sales/quotations')}
                   className="gap-2 text-sm"
                 >
-                 
+
                   Quotation
                 </Button>
                 <Button
@@ -330,9 +348,26 @@ export default function CrmDashboardPage() {
                   onClick={() => navigate('/inventory')}
                   className="gap-2 text-sm"
                 >
-              
+
                   Inventory
                 </Button>
+              </div>
+            </div>
+
+            {/* Analytics: pipeline trend, full width — stretches across to the Activity Log panel.
+                Monthly and Weekly are two separate charts side by side, not a toggle. */}
+            <div className="mb-2 grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                  Pipeline Trend — Monthly
+                </p>
+                <PipelineTrendChart data={monthlyTrend} height={190} />
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                  Pipeline Trend — Weekly
+                </p>
+                <PipelineTrendChart data={weeklyTrend} height={190} />
               </div>
             </div>
           </div>
@@ -420,7 +455,7 @@ export default function CrmDashboardPage() {
 
       {/* Right: Activity Log side panel — flush to the right edge, no rounding */}
       <aside className="hidden lg:block w-80 shrink-0 sticky top-0 h-screen border-l border-slate-800 bg-slate-950/70">
-        <ActivityFeed />
+        <ActivityFeed onlyMine />
       </aside>
 
       <AnimatePresence>

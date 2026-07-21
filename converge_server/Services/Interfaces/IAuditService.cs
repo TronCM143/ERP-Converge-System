@@ -9,6 +9,6 @@ namespace converge_server.Services.Interfaces
     {
         Task LogAsync(string entityType, string entityId, string action, string changedBy, string? oldValue = null, string? newValue = null, string? details = null);
         Task<List<AuditLogResponseDto>> GetHistoryAsync(string entityType, string entityId);
-        Task<List<AuditLogResponseDto>> GetRecentAsync(int limit);
+        Task<List<AuditLogResponseDto>> GetRecentAsync(int limit, string? changedBy = null);
     }
 }

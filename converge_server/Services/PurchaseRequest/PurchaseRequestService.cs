@@ -311,7 +311,7 @@ namespace converge_server.Services
         // Finalizes the request: completes the BOM, auto-creates the priced
         // Purchase Order from it, generates a PDF snapshot, and emails it to
         // whichever recipients are configured for PurchaseRequestCompleted.
-        public async Task<PurchaseRequest> SubmitRequestAsync(Guid purchaseRequestId, string actorUsername)
+        public async Task<PurchaseRequest> SubmitRequestAsync(Guid purchaseRequestId, string actorUsername, List<string>? notifyEmails = null)
         {
             var purchaseRequest = await _context.PurchaseRequests
                 .Include(pr => pr.BillOfMaterial)
@@ -354,12 +354,23 @@ namespace converge_server.Services
 
             try
             {
-                var pdfBytes = await _pdfService.GeneratePdfAsync(fullRequest);
-                await _notificationDispatchService.DispatchAsync(
-                    NotificationType.PurchaseRequestCompleted,
-                    $"Purchase Request {fullRequest.PRNumber} submitted — {fullRequest.ClientName}",
-                    $"<p>Purchase Request <strong>{fullRequest.PRNumber}</strong> for client <strong>{fullRequest.ClientName}</strong> has been submitted. The full request is attached as a PDF.</p>",
-                    new EmailAttachment($"{fullRequest.PRNumber}.pdf", pdfBytes, "application/pdf"));
+                if (notifyEmails == null || notifyEmails.Count > 0)
+                {
+                    var pdfBytes = await _pdfService.GeneratePdfAsync(fullRequest);
+                    var subject = $"Purchase Request {fullRequest.PRNumber} submitted — {fullRequest.ClientName}";
+                    var body = $"<p>Purchase Request <strong>{fullRequest.PRNumber}</strong> for client <strong>{fullRequest.ClientName}</strong> has been submitted. The full request is attached as a PDF.</p>";
+                    var attachment = new EmailAttachment($"{fullRequest.PRNumber}.pdf", pdfBytes, "application/pdf");
+
+                    if (notifyEmails != null)
+                    {
+                        await _notificationDispatchService.DispatchToExplicitRecipientsAsync(NotificationType.PurchaseRequestCompleted, subject, body, notifyEmails, attachment);
+                    }
+                    else
+                    {
+                        await _notificationDispatchService.DispatchAsync(NotificationType.PurchaseRequestCompleted, subject, body, attachment);
+                    }
+                }
+                // else: notifyEmails is an empty (non-null) list — explicitly skipped by the user.
             }
             catch (Exception ex)
             {

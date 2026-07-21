@@ -14,15 +14,18 @@ namespace converge_server.Controllers
     {
         private readonly IPurchaseRequestService _purchaseRequestService;
         private readonly IBillOfMaterialService _billOfMaterialService;
+        private readonly IPurchaseRequestPdfService _pdfService;
         private readonly IWebHostEnvironment _env;
 
         public PurchaseRequestController(
             IPurchaseRequestService purchaseRequestService,
             IBillOfMaterialService billOfMaterialService,
+            IPurchaseRequestPdfService pdfService,
             IWebHostEnvironment env)
         {
             _purchaseRequestService = purchaseRequestService;
             _billOfMaterialService = billOfMaterialService;
+            _pdfService = pdfService;
             _env = env;
         }
 
@@ -177,13 +180,28 @@ namespace converge_server.Controllers
             }
         }
 
+        // Downloads a PDF snapshot of the request as it stands right now —
+        // available any time, not just after Submit.
+        [HttpGet("{purchaseRequestId:guid}/pdf")]
+        public async Task<IActionResult> DownloadPdf(Guid purchaseRequestId)
+        {
+            var purchaseRequest = await _purchaseRequestService.GetPurchaseRequestProcessAsync(purchaseRequestId);
+            if (purchaseRequest == null)
+            {
+                return NotFound();
+            }
+
+            var pdfBytes = await _pdfService.GeneratePdfAsync(purchaseRequest);
+            return File(pdfBytes, "application/pdf", $"{purchaseRequest.PRNumber}.pdf");
+        }
+
         [HttpPost("{purchaseRequestId:guid}/submit")]
-        public async Task<IActionResult> SubmitRequest(Guid purchaseRequestId)
+        public async Task<IActionResult> SubmitRequest(Guid purchaseRequestId, [FromBody] SubmitPurchaseRequestDto? dto)
         {
             try
             {
                 var actor = User.Identity?.Name ?? "purchasing";
-                var pr = await _purchaseRequestService.SubmitRequestAsync(purchaseRequestId, actor);
+                var pr = await _purchaseRequestService.SubmitRequestAsync(purchaseRequestId, actor, dto?.Emails);
                 return Ok(new { pr.Id, pr.Status });
             }
             catch (KeyNotFoundException ex)

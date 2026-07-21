@@ -100,7 +100,7 @@ namespace converge_server.Services.Notifications
             }
         }
 
-        public async Task DispatchToExplicitRecipientsAsync(NotificationType type, string subject, string body, List<string> emails)
+        public async Task DispatchToExplicitRecipientsAsync(NotificationType type, string subject, string body, List<string> emails, EmailAttachment? attachment = null)
         {
             try
             {
@@ -110,7 +110,7 @@ namespace converge_server.Services.Notifications
                 {
                     try
                     {
-                        await _emailSender.SendAsync(email, subject, body);
+                        await _emailSender.SendAsync(email, subject, body, attachment);
                         emailAttempted++;
                     }
                     catch (Exception ex)

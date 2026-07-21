@@ -23,6 +23,7 @@ namespace converge_server.Services.Quotations
         private readonly IEmailSender _emailSender;
         private readonly IWonDealSheetService _wonDealSheetService;
         private readonly IQuotationPdfService _pdfService;
+        private readonly IUserNotificationService _userNotificationService;
 
         public QuotationService(
             AppDbContext context,
@@ -34,7 +35,8 @@ namespace converge_server.Services.Quotations
             ICacheService cache,
             IEmailSender emailSender,
             IWonDealSheetService wonDealSheetService,
-            IQuotationPdfService pdfService)
+            IQuotationPdfService pdfService,
+            IUserNotificationService userNotificationService)
         {
             _context = context;
             _purchaseRequestService = purchaseRequestService;
@@ -46,6 +48,7 @@ namespace converge_server.Services.Quotations
             _emailSender = emailSender;
             _wonDealSheetService = wonDealSheetService;
             _pdfService = pdfService;
+            _userNotificationService = userNotificationService;
         }
 
         public async Task<Models.Entities.Quotation> CreateQuotationAsync(CreateQuotationDto dto)
@@ -344,6 +347,21 @@ namespace converge_server.Services.Quotations
                 QuotationNumber = quotation.QuotationNumber
             });
 
+            // Persisted + dropdown-visible version of the same event (the
+            // broadcast above only drives the ephemeral popup/bell-dot).
+            try
+            {
+                await _userNotificationService.AddAsync(
+                    "purchasing",
+                    "NewPurchaseRequest",
+                    $"📦 New PR {purchaseRequest.PRNumber} from {quotation.Client.Name}",
+                    $"{purchaseRequest.Items.Count} item(s)");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to store/broadcast purchasing notification: {ex.Message}");
+            }
+
             // Notify the purchasing department by email when an address is
             // configured in Settings. (PDF attachment: planned, not built yet.)
             try
@@ -371,10 +389,12 @@ namespace converge_server.Services.Quotations
             return purchaseRequest;
         }
 
-        public async Task<bool> ApproveAsync(int quotationId, string actorUsername)
+        public async Task<bool> ApproveAsync(int quotationId, string actorUsername, List<string>? notifyEmails = null)
         {
             var quotation = await _context.Quotations
                 .Include(q => q.Client)
+                .Include(q => q.MaterialItems)
+                .Include(q => q.LaborItems)
                 .FirstOrDefaultAsync(q => q.Id == quotationId);
 
             if (quotation == null)
@@ -404,10 +424,23 @@ namespace converge_server.Services.Quotations
 
                 if (result.EnteredWon)
                 {
-                    await _dispatchService.DispatchAsync(
-                        NotificationType.WonApproval,
-                        $"🎉 Deal Won — {quotation.Client!.Name}",
-                        $"<p>Quotation <strong>{quotation.QuotationNumber}</strong> from client <strong>{quotation.Client.Name}</strong> was already <strong>WON</strong>! 🎉</p>");
+                    var subject = $"🎉 Deal Won — {quotation.Client!.Name}";
+                    var body = $"<p>Quotation <strong>{quotation.QuotationNumber}</strong> from client <strong>{quotation.Client.Name}</strong> was approved and the deal is <strong>WON</strong>! 🎉 The quotation PDF is attached.</p>";
+                    var pdfBytes = await _pdfService.GeneratePdfAsync(quotation);
+                    var attachment = new EmailAttachment($"{quotation.QuotationNumber}.pdf", pdfBytes, "application/pdf");
+
+                    if (notifyEmails != null)
+                    {
+                        if (notifyEmails.Count > 0)
+                        {
+                            await _dispatchService.DispatchToExplicitRecipientsAsync(NotificationType.WonApproval, subject, body, notifyEmails, attachment);
+                        }
+                        // else: explicitly skipped, no email at all.
+                    }
+                    else
+                    {
+                        await _dispatchService.DispatchAsync(NotificationType.WonApproval, subject, body, attachment);
+                    }
 
                     wonSheetSaved = await _wonDealSheetService.AppendWonDealAsync(
                         projectCode: quotation.QuotationNumber,

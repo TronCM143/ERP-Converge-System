@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "0KDarWfMC7A=",
+  "dgSpecHash": "VcsaYQgIkgw=",
   "success": true,
   "projectFilePath": "C:\\Users\\tron\\source\\repos\\Converge\\converge_server\\converge_server.csproj",
   "expectedPackageFiles": [
@@ -10,9 +10,11 @@
     "C:\\Users\\tron\\.nuget\\packages\\google.apis\\1.75.0\\google.apis.1.75.0.nupkg.sha512",
     "C:\\Users\\tron\\.nuget\\packages\\google.apis.auth\\1.75.0\\google.apis.auth.1.75.0.nupkg.sha512",
     "C:\\Users\\tron\\.nuget\\packages\\google.apis.core\\1.75.0\\google.apis.core.1.75.0.nupkg.sha512",
+    "C:\\Users\\tron\\.nuget\\packages\\google.apis.gmail.v1\\1.74.0.4162\\google.apis.gmail.v1.1.74.0.4162.nupkg.sha512",
     "C:\\Users\\tron\\.nuget\\packages\\google.apis.sheets.v4\\1.75.0.4178\\google.apis.sheets.v4.1.75.0.4178.nupkg.sha512",
     "C:\\Users\\tron\\.nuget\\packages\\humanizer.core\\2.14.1\\humanizer.core.2.14.1.nupkg.sha512",
     "C:\\Users\\tron\\.nuget\\packages\\mailkit\\4.17.0\\mailkit.4.17.0.nupkg.sha512",
+    "C:\\Users\\tron\\.nuget\\packages\\microsoft.aspnetcore.authentication.google\\10.0.10\\microsoft.aspnetcore.authentication.google.10.0.10.nupkg.sha512",
     "C:\\Users\\tron\\.nuget\\packages\\microsoft.aspnetcore.authentication.jwtbearer\\10.0.9\\microsoft.aspnetcore.authentication.jwtbearer.10.0.9.nupkg.sha512",
     "C:\\Users\\tron\\.nuget\\packages\\microsoft.aspnetcore.openapi\\10.0.9\\microsoft.aspnetcore.openapi.10.0.9.nupkg.sha512",
     "C:\\Users\\tron\\.nuget\\packages\\microsoft.build.framework\\18.0.2\\microsoft.build.framework.18.0.2.nupkg.sha512",

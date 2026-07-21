@@ -26,6 +26,7 @@ namespace converge_server.Data
         public DbSet<NotificationPreference> NotificationPreferences { get; set; }
         public DbSet<DepartmentEmail> DepartmentEmails { get; set; }
         public DbSet<UserNotification> UserNotifications { get; set; }
+        public DbSet<GoogleOAuthCredential> GoogleOAuthCredentials { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

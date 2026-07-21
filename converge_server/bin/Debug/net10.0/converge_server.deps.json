@@ -10,8 +10,10 @@
         "dependencies": {
           "BCrypt.Net-Next": "4.2.0",
           "DotNetEnv": "3.2.0",
+          "Google.Apis.Gmail.v1": "1.74.0.4162",
           "Google.Apis.Sheets.v4": "1.75.0.4178",
           "MailKit": "4.17.0",
+          "Microsoft.AspNetCore.Authentication.Google": "10.0.10",
           "Microsoft.AspNetCore.Authentication.JwtBearer": "10.0.9",
           "Microsoft.AspNetCore.OpenApi": "10.0.9",
           "Microsoft.EntityFrameworkCore": "10.0.9",
@@ -88,6 +90,18 @@
           }
         }
       },
+      "Google.Apis.Gmail.v1/1.74.0.4162": {
+        "dependencies": {
+          "Google.Apis": "1.75.0",
+          "Google.Apis.Auth": "1.75.0"
+        },
+        "runtime": {
+          "lib/net6.0/Google.Apis.Gmail.v1.dll": {
+            "assemblyVersion": "1.74.0.4162",
+            "fileVersion": "1.74.0.4162"
+          }
+        }
+      },
       "Google.Apis.Sheets.v4/1.75.0.4178": {
         "dependencies": {
           "Google.Apis": "1.75.0",
@@ -116,6 +130,14 @@
           "lib/net10.0/MailKit.dll": {
             "assemblyVersion": "4.17.0.0",
             "fileVersion": "4.17.0.0"
+          }
+        }
+      },
+      "Microsoft.AspNetCore.Authentication.Google/10.0.10": {
+        "runtime": {
+          "lib/net10.0/Microsoft.AspNetCore.Authentication.Google.dll": {
+            "assemblyVersion": "10.0.10.0",
+            "fileVersion": "10.0.1026.32716"
           }
         }
       },
@@ -869,6 +891,13 @@
       "path": "google.apis.core/1.75.0",
       "hashPath": "google.apis.core.1.75.0.nupkg.sha512"
     },
+    "Google.Apis.Gmail.v1/1.74.0.4162": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-mWOl7abza440WyyqTOW+9g2G2kphjCyRoKqHxHP4I6t2bglkhyvy35xjCw6pvj7ypBYCPKjmQrDO985e1sr39g==",
+      "path": "google.apis.gmail.v1/1.74.0.4162",
+      "hashPath": "google.apis.gmail.v1.1.74.0.4162.nupkg.sha512"
+    },
     "Google.Apis.Sheets.v4/1.75.0.4178": {
       "type": "package",
       "serviceable": true,
@@ -889,6 +918,13 @@
       "sha512": "sha512-1nUAVLxM9fhT/78we6/AGsCesnpn5dRNLLeRqOfr52Wnk87pzVwo5YMTMyqnmoXrYc7piGhmayiMA/OgDluIjg==",
       "path": "mailkit/4.17.0",
       "hashPath": "mailkit.4.17.0.nupkg.sha512"
+    },
+    "Microsoft.AspNetCore.Authentication.Google/10.0.10": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-9jjUYgbZE7z9YSNpgYbU5L6cUHHhzfT6RUT00euTXA3HAxo5nJjqc2YTx1qj2Z+f30fVmjx9uG3YgISw5oMC2w==",
+      "path": "microsoft.aspnetcore.authentication.google/10.0.10",
+      "hashPath": "microsoft.aspnetcore.authentication.google.10.0.10.nupkg.sha512"
     },
     "Microsoft.AspNetCore.Authentication.JwtBearer/10.0.9": {
       "type": "package",

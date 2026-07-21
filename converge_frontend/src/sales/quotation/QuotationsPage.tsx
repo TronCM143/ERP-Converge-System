@@ -6,6 +6,23 @@ import { queryCache, CACHE_KEYS } from '../../shared/queryCache';
 import { useAuth } from '../../app/AuthContext';
 import { ClientSummary } from '../crm/ClientFormModal';
 import QuotationFormModal from './QuotationFormModal';
+import WonEmailDialog, { WonEmailCandidate } from '../crm/WonEmailDialog';
+
+interface NotificationRecipientPreference {
+  type: number;
+  emailEnabled: boolean;
+}
+
+interface NotificationRecipient {
+  id: number;
+  name: string;
+  email: string | null;
+  isActive: boolean;
+  preferences: NotificationRecipientPreference[];
+}
+
+// Matches the backend's NotificationType enum ordinal.
+const WON_APPROVAL_TYPE = 1;
 
 interface QuotationMaterialItem {
   id: number;
@@ -75,6 +92,12 @@ export default function QuotationsPage({
   // Quotation id awaiting "send to purchasing" confirmation.
   const [confirmSendId, setConfirmSendId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  // Pending "Approve -> Won" action, awaiting the recipient-picker dialog.
+  const [approveDialogState, setApproveDialogState] = useState<{
+    quotationId: number;
+    quotationName: string;
+    candidates: WonEmailCandidate[];
+  } | null>(null);
 
   useEffect(() => {
     if (!errorMessage && !successMessage) return;
@@ -160,6 +183,88 @@ export default function QuotationsPage({
     const id = confirmSendId;
     setConfirmSendId(null);
     await handleSendToPurchasing(id);
+  };
+
+  const performApprove = async (quotationId: number, emails: string[]) => {
+    try {
+      setIsLoading(true);
+      const res = await apiFetch(`/api/quotations/${quotationId}/approve`, {
+        method: 'POST',
+        body: JSON.stringify({ emails })
+      });
+      if (res.ok) {
+        setSuccessMessage(emails.length > 0 ? `Approved — email sent to ${emails.length} recipient(s).` : 'Approved.');
+        await fetchQuotations();
+        onQuotationChanged?.();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setErrorMessage(err.error || 'Failed to approve quotation.');
+      }
+    } catch (err) {
+      console.error(err);
+      setErrorMessage('Server connection error.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleApproveClick = async (q: Quotation) => {
+    let candidates: WonEmailCandidate[] = [];
+    try {
+      const res = await apiFetch('/api/admin/notification-recipients');
+      if (res.ok) {
+        const recipients: NotificationRecipient[] = await res.json();
+        candidates = recipients
+          .filter((r) => r.isActive && !!r.email)
+          .map((r) => {
+            const pref = r.preferences.find((p) => p.type === WON_APPROVAL_TYPE);
+            return {
+              id: r.id,
+              name: r.name,
+              email: r.email as string,
+              defaultChecked: pref?.emailEnabled ?? true
+            };
+          });
+      }
+    } catch (err) {
+      console.error('Failed to load notification recipients:', err);
+    }
+    setApproveDialogState({ quotationId: q.id, quotationName: q.quotationName, candidates });
+  };
+
+  const handleApproveConfirm = (emails: string[]) => {
+    if (!approveDialogState) return;
+    const { quotationId } = approveDialogState;
+    setApproveDialogState(null);
+    void performApprove(quotationId, emails);
+  };
+
+  const handleApproveSkip = () => {
+    if (!approveDialogState) return;
+    const { quotationId } = approveDialogState;
+    setApproveDialogState(null);
+    void performApprove(quotationId, []);
+  };
+
+  const handleReject = async (quotationId: number) => {
+    if (!window.confirm('Reject this quotation? The client stage will not change.')) return;
+    try {
+      setIsLoading(true);
+      const res = await apiFetch(`/api/quotations/${quotationId}/reject`, { method: 'POST' });
+      if (res.ok) {
+        setSuccessMessage('Quotation rejected.');
+        await fetchQuotations();
+        onQuotationChanged?.();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setErrorMessage(err.error || 'Failed to reject quotation.');
+      }
+    } catch (err) {
+      console.error(err);
+      setErrorMessage('Server connection error.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -282,6 +387,27 @@ export default function QuotationsPage({
                           >
                             Send to Purchase
                           </motion.button>
+                        ) : canManage && q.status === 'Sent' ? (
+                          <div className="flex items-center gap-1.5">
+                            <motion.button
+                              className="px-3 py-1 bg-emerald-600/80 hover:bg-emerald-600 text-white text-xs font-medium rounded transition-all"
+                              type="button"
+                              disabled={isLoading}
+                              onClick={() => void handleApproveClick(q)}
+                              whileTap={{ scale: 0.95 }}
+                            >
+                              Approve
+                            </motion.button>
+                            <motion.button
+                              className="px-3 py-1 bg-slate-700 hover:bg-red-600/70 text-slate-200 text-xs font-medium rounded transition-all"
+                              type="button"
+                              disabled={isLoading}
+                              onClick={() => void handleReject(q.id)}
+                              whileTap={{ scale: 0.95 }}
+                            >
+                              Reject
+                            </motion.button>
+                          </div>
                         ) : (
                           <span className="text-xs text-slate-600">—</span>
                         )}
@@ -348,6 +474,15 @@ export default function QuotationsPage({
               </div>
             </motion.div>
           </motion.div>
+        )}
+        {approveDialogState && (
+          <WonEmailDialog
+            clientName={approveDialogState.quotationName}
+            candidates={approveDialogState.candidates}
+            onConfirm={handleApproveConfirm}
+            onSkip={handleApproveSkip}
+            onCancel={() => setApproveDialogState(null)}
+          />
         )}
       </AnimatePresence>
     </div>

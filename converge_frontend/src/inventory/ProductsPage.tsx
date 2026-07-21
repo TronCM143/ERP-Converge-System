@@ -6,6 +6,7 @@ import { queryCache, CACHE_KEYS } from '../shared/queryCache';
 import { formatProductName } from '../shared/formatProductName';
 import { useAuth } from '../app/AuthContext';
 import ProductFormModal from './ProductFormModal';
+import MiniLineChart, { MiniLineChartPoint } from '../shared/MiniLineChart';
 import { AlertTriangle, ImageOff, Loader2, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
 
 // Matches ProductDetailDto — used for both the list (left panel only shows
@@ -88,6 +89,21 @@ export default function ProductsPage() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [weeklyPurchases, setWeeklyPurchases] = useState<MiniLineChartPoint[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiFetch('/api/analytics/products-bought-weekly?weeks=8');
+        if (res.ok) {
+          const data: { label: string; value: number }[] = await res.json();
+          setWeeklyPurchases(data.map((d) => ({ label: d.label, value: d.value })));
+        }
+      } catch (err) {
+        console.error('Failed to load products-bought analytics:', err);
+      }
+    })();
+  }, []);
 
   // Increments per request so late responses from superseded fetches
   // (fast typing, fast clicking between products) are ignored.
@@ -235,7 +251,7 @@ export default function ProductsPage() {
 
   return (
     <div className="h-[calc(100vh-65px)] bg-gradient-to-br from-slate-900 via-slate-950 to-black overflow-hidden">
-      <div className="h-full grid" style={{ gridTemplateColumns: '3fr 7fr' }}>
+      <div className="h-full grid" style={{ gridTemplateColumns: '3fr 6fr 3fr' }}>
         {/* Left: product list (3) */}
         <aside className="border-r border-slate-800 flex flex-col min-h-0">
           <div className="px-4 pt-4 pb-3 border-b border-slate-800 space-y-2.5">
@@ -484,6 +500,19 @@ export default function ProductsPage() {
             </div>
           )}
         </main>
+
+        {/* Right: analytics (3) */}
+        <aside className="border-l border-slate-800 flex flex-col min-h-0 overflow-y-auto">
+          <div className="px-4 pt-4 pb-3 border-b border-slate-800">
+            <h2 className="text-sm font-bold text-slate-200 uppercase tracking-wide">Analytics</h2>
+          </div>
+          <div className="p-4">
+            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-1">
+              Products Bought / Week
+            </p>
+            <MiniLineChart data={weeklyPurchases} height={140} />
+          </div>
+        </aside>
       </div>
 
       {/* Zoomed image lightbox */}

@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FileText, Package, RefreshCw, ShoppingCart, StickyNote, User } from 'lucide-react';
+import { FileText, Package, RefreshCw, Search, ShoppingCart, StickyNote, User } from 'lucide-react';
 import { apiFetch } from './api';
+import { useAuth } from '../app/AuthContext';
 import { formatRelativeTime } from './formatRelativeTime';
 import './ActivityFeed.css';
 
@@ -31,7 +32,11 @@ const ACTION_LABELS: Record<string, string> = {
   StageChanged: 'moved',
   Approved: 'approved',
   Rejected: 'rejected',
-  SentToPurchasing: 'sent to purchasing'
+  SentToPurchasing: 'sent to purchasing',
+  Received: 'received an item on',
+  EvidenceUploaded: 'uploaded evidence for',
+  AttachmentAdded: 'attached a document to',
+  Submitted: 'submitted'
 };
 
 function actorRole(changedBy: string): 'sales' | 'purchasing' | 'admin' | 'system' {
@@ -55,16 +60,20 @@ function summarize(entry: ActivityEntry): string {
   return `${action} ${entity}`;
 }
 
-export default function ActivityFeed() {
+export default function ActivityFeed({ onlyMine = false }: { onlyMine?: boolean }) {
   const navigate = useNavigate();
+  const { username } = useAuth();
   const [entries, setEntries] = useState<ActivityEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const fetchActivity = async (silent = false) => {
     try {
       if (!silent) setIsRefreshing(true);
-      const res = await apiFetch('/api/audit-logs/recent?limit=40');
+      const params = new URLSearchParams({ limit: '40' });
+      if (onlyMine && username) params.set('changedBy', username);
+      const res = await apiFetch(`/api/audit-logs/recent?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
         setEntries(Array.isArray(data) ? data : []);
@@ -81,13 +90,24 @@ export default function ActivityFeed() {
     fetchActivity(true);
     const interval = setInterval(() => fetchActivity(true), 30000);
     return () => clearInterval(interval);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onlyMine, username]);
 
   const handleEntryClick = (entry: ActivityEntry) => {
     if (entry.entityType === 'Client') {
       navigate(`/sales/clients/${entry.entityId}`);
     }
   };
+
+  const query = searchQuery.trim().toLowerCase();
+  const filteredEntries = query
+    ? entries.filter((entry) =>
+        entry.changedBy.toLowerCase().includes(query) ||
+        entry.entityType.toLowerCase().includes(query) ||
+        summarize(entry).toLowerCase().includes(query) ||
+        (entry.details ?? '').toLowerCase().includes(query)
+      )
+    : entries;
 
   return (
     <div className="activity-feed">
@@ -106,13 +126,24 @@ export default function ActivityFeed() {
         </button>
       </div>
 
+      <div className="activity-feed__search">
+        <Search className="activity-feed__search-icon h-3.5 w-3.5" />
+        <input
+          type="text"
+          className="activity-feed__search-input"
+          placeholder="Search activity…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+      </div>
+
       <div className="activity-feed__list">
         {isLoading ? (
           <div className="activity-feed__placeholder">Loading activity…</div>
-        ) : entries.length === 0 ? (
-          <div className="activity-feed__placeholder">No activity yet</div>
+        ) : filteredEntries.length === 0 ? (
+          <div className="activity-feed__placeholder">{query ? 'No matching activity' : 'No activity yet'}</div>
         ) : (
-          entries.map((entry, index) => {
+          filteredEntries.map((entry, index) => {
             const role = actorRole(entry.changedBy);
             const clickable = entry.entityType === 'Client';
             return (

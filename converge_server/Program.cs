@@ -1,10 +1,12 @@
 using System.Net.Http.Headers;
+using System.Security.Claims;
 using System.Text;
 using converge_server.Data;
 using converge_server.Hubs;
 using converge_server.Middleware;
 using converge_server.Models.Entities;
 using converge_server.Services.Interfaces;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -51,7 +53,7 @@ var jwtKey = builder.Configuration["Jwt:Key"]!;
 var jwtIssuer = builder.Configuration["Jwt:Issuer"];
 var jwtAudience = builder.Configuration["Jwt:Audience"];
 
-builder.Services.AddAuthentication(options =>
+var authBuilder = builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
     options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -87,6 +89,75 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
+// Google OAuth (Gmail send) — the app's normal auth stays JWT (DefaultAuthenticateScheme
+// above is untouched); this is a second, separate scheme only ever reached via an
+// explicit Challenge(..., GoogleDefaults.AuthenticationScheme) from GoogleOAuthController.
+// A temporary cookie carries the handshake state; OnTicketReceived persists the
+// resulting refresh token to GoogleOAuthCredentials and signs the cookie back out
+// immediately — there is no lasting Google-backed login session.
+var googleClientId = builder.Configuration["GoogleOAuth:ClientId"];
+var googleClientSecret = builder.Configuration["GoogleOAuth:ClientSecret"];
+if (!string.IsNullOrWhiteSpace(googleClientId) && !string.IsNullOrWhiteSpace(googleClientSecret))
+{
+    authBuilder
+        .AddCookie("GoogleOAuthCookie", options =>
+        {
+            options.Cookie.Name = "ConvergeGoogleOAuth";
+        })
+        .AddGoogle(options =>
+        {
+            options.ClientId = googleClientId;
+            options.ClientSecret = googleClientSecret;
+            options.SignInScheme = "GoogleOAuthCookie";
+            options.CallbackPath = "/signin-google";
+            options.AccessType = "offline";
+            options.SaveTokens = true;
+            options.Scope.Add("https://www.googleapis.com/auth/gmail.send");
+
+            // Forces Google to reissue a refresh_token even if this account
+            // already granted consent before — otherwise a reconnect after
+            // disconnecting silently comes back with no refresh_token.
+            options.Events.OnRedirectToAuthorizationEndpoint = context =>
+            {
+                context.Response.Redirect(context.RedirectUri + "&prompt=consent");
+                return Task.CompletedTask;
+            };
+
+            options.Events.OnTicketReceived = async context =>
+            {
+                var props = context.Properties!;
+                var accessToken = props.GetTokenValue("access_token");
+                var refreshToken = props.GetTokenValue("refresh_token");
+                var email = context.Principal?.FindFirstValue(ClaimTypes.Email);
+
+                var connected = !string.IsNullOrEmpty(refreshToken) && !string.IsNullOrEmpty(email);
+                if (connected)
+                {
+                    var db = context.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
+                    var existing = await db.GoogleOAuthCredentials.FirstOrDefaultAsync();
+                    if (existing == null)
+                    {
+                        existing = new GoogleOAuthCredential();
+                        db.GoogleOAuthCredentials.Add(existing);
+                    }
+                    existing.Email = email!;
+                    existing.RefreshToken = refreshToken!;
+                    existing.AccessToken = accessToken;
+                    existing.ConnectedAt = DateTime.UtcNow;
+                    await db.SaveChangesAsync();
+                }
+
+                props.RedirectUri = $"{props.RedirectUri}?connected={(connected ? "1" : "0")}";
+            };
+        });
+
+    Console.WriteLine("Google OAuth: configured (Gmail sending available once connected in Settings).");
+}
+else
+{
+    Console.WriteLine("Google OAuth: not configured (set GoogleOAuth:ClientId/ClientSecret) — Connect Google button will fail until it is.");
+}
+
 builder.Services.AddAuthorization();
 
 // Application services
@@ -101,10 +172,17 @@ builder.Services.AddScoped<converge_server.Services.Interfaces.IQuotationGenerat
 builder.Services.AddScoped<converge_server.Services.Interfaces.IClientService, converge_server.Services.Clients.ClientService>();
 builder.Services.AddScoped<converge_server.Services.Interfaces.IAuditService, converge_server.Services.Audit.AuditService>();
 builder.Services.AddScoped<converge_server.Services.Interfaces.INotificationRecipientService, converge_server.Services.Notifications.NotificationRecipientService>();
-// Email: Resend when RESEND_APIKEY is set in .env, otherwise the SMTP sender
-// (which itself no-ops without SMTP config).
+// Email: Gmail (via the OAuth connection above) when explicitly selected,
+// else Resend when RESEND_APIKEY is set, else the SMTP sender (which itself
+// no-ops without SMTP config).
+var emailProvider = builder.Configuration["Email:Provider"];
 var resendApiKey = builder.Configuration["Resend:ApiKey"] ?? builder.Configuration["RESEND_APIKEY"];
-if (!string.IsNullOrWhiteSpace(resendApiKey))
+if (string.Equals(emailProvider, "Gmail", StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddScoped<converge_server.Services.Interfaces.IEmailSender, converge_server.Services.Notifications.GmailEmailSender>();
+    Console.WriteLine("Email: using Gmail (requires a connected Google account in Settings).");
+}
+else if (!string.IsNullOrWhiteSpace(resendApiKey))
 {
     builder.Services.AddOptions();
     builder.Services.AddHttpClient<Resend.ResendClient>();

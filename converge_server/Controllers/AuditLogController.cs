@@ -30,12 +30,12 @@ namespace converge_server.Controllers
         }
 
         [HttpGet("recent")]
-        public async Task<IActionResult> GetRecent([FromQuery] int limit = 30)
+        public async Task<IActionResult> GetRecent([FromQuery] int limit = 30, [FromQuery] string? changedBy = null)
         {
             if (limit < 1) limit = 1;
             if (limit > 100) limit = 100;
 
-            var recent = await _auditService.GetRecentAsync(limit);
+            var recent = await _auditService.GetRecentAsync(limit, string.IsNullOrWhiteSpace(changedBy) ? null : changedBy);
             return Ok(recent);
         }
     }

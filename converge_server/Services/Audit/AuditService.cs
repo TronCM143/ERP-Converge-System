@@ -58,12 +58,14 @@ namespace converge_server.Services.Audit
                 .ToListAsync();
         }
 
-        public async Task<List<AuditLogResponseDto>> GetRecentAsync(int limit)
+        public async Task<List<AuditLogResponseDto>> GetRecentAsync(int limit, string? changedBy = null)
         {
             // Global activity feed: everything sales/purchasing did, minus notification-dispatch noise
+            // (or just one actor's own activity when changedBy is supplied).
             return await _context.AuditLogs
                 .AsNoTracking()
                 .Where(a => a.EntityType != "Notification")
+                .Where(a => changedBy == null || a.ChangedBy == changedBy)
                 .OrderByDescending(a => a.ChangedAt)
                 .Take(limit)
                 .Select(a => new AuditLogResponseDto

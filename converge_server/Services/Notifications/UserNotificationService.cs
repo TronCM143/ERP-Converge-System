@@ -57,14 +57,51 @@ namespace converge_server.Services.Notifications
             return notification;
         }
 
-        public Task<List<UserNotification>> GetForRoleAsync(string role, int limit = 30)
+        public async Task<List<UserNotification>> GetForRoleAsync(string role, int limit = 30)
         {
-            return _context.UserNotifications
+            var stored = await _context.UserNotifications
                 .AsNoTracking()
                 .Where(n => n.TargetRole == role)
                 .OrderByDescending(n => n.CreatedAt)
                 .Take(limit)
                 .ToListAsync();
+
+            if (role != "purchasing")
+            {
+                return stored;
+            }
+
+            var reminders = await GetDeliveryTodayRemindersAsync();
+            return reminders.Concat(stored).ToList();
+        }
+
+        // "Delivery today" isn't a one-time event, so it isn't stored — it's
+        // recomputed live from BOM items whenever purchasing loads their
+        // notifications, and merged into the same feed with negative ids so
+        // it never collides with a real, persisted row.
+        private async Task<List<UserNotification>> GetDeliveryTodayRemindersAsync()
+        {
+            var today = DateTime.UtcNow.Date;
+            var dueItems = await _context.BillOfMaterialItems
+                .AsNoTracking()
+                .Include(i => i.BillOfMaterial)
+                    .ThenInclude(b => b!.PurchaseRequest)
+                .Where(i => i.DeliveryDate.HasValue
+                    && i.DeliveryDate.Value.Date == today
+                    && i.Status != "Received"
+                    && i.Status != "Cancelled")
+                .ToListAsync();
+
+            return dueItems.Select((item, index) => new UserNotification
+            {
+                Id = -1 - index,
+                TargetRole = "purchasing",
+                Type = "DeliveryToday",
+                Title = $"🚚 {item.ItemName.Replace('_', ' ')} arriving today — {item.BillOfMaterial?.PurchaseRequest?.ClientName ?? "Unknown client"}",
+                Details = item.BillOfMaterial?.PurchaseRequest?.PRNumber,
+                IsRead = false,
+                CreatedAt = DateTime.UtcNow
+            }).ToList();
         }
 
         public async Task MarkAllReadAsync(string role)

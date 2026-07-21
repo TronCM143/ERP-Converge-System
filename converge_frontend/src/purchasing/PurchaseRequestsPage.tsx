@@ -2,16 +2,36 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
   Check,
   CheckCircle2,
+  Pencil,
+  Search,
   Trash2,
   Upload,
   X
 } from 'lucide-react';
 import { apiFetch } from '../shared/api';
 import { formatProductName } from '../shared/formatProductName';
-import ActivityFeed from '../shared/ActivityFeed';
+import EmailRecipientPickerDialog, { EmailCandidate } from '../shared/EmailRecipientPickerDialog';
 import './PurchasingDashboard.css';
+
+interface NotificationRecipientPreference {
+  type: number;
+  emailEnabled: boolean;
+}
+
+interface NotificationRecipient {
+  id: number;
+  name: string;
+  email: string | null;
+  isActive: boolean;
+  preferences: NotificationRecipientPreference[];
+}
+
+// Matches the backend's NotificationType enum ordinal.
+const PURCHASE_REQUEST_COMPLETED_TYPE = 2;
 
 interface Product {
   id: number;
@@ -75,12 +95,20 @@ const ITEM_STATUSES = ['Pending', 'Ordered', 'Received', 'Ready', 'Cancelled'];
 
 const isSalesSourced = (pr: PurchaseRequest) => pr.source === 'Quotation' || pr.quotationId != null;
 
-/* Full-month delivery calendar, embedded directly in the page. Hovering a
-   day with arrivals shows exactly which items are due that day. Days with
-   arrivals get a bright color wash instead of a marker/badge. */
+// Grow a note/notes textarea with its content instead of scrolling inside it.
+const autoGrow = (el: HTMLTextAreaElement | null) => {
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = `${el.scrollHeight}px`;
+};
+
+/* Full-month delivery calendar. Days with arrivals get a bright color wash
+   instead of a marker/badge; clicking such a day lists what's due below the
+   grid (no hover popover). */
 function ArrivalsCalendar({ prs }: { prs: PurchaseRequest[] }) {
   const now = new Date();
   const [cursor, setCursor] = useState(new Date(now.getFullYear(), now.getMonth(), 1));
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
 
   const arrivalsByDay = new Map<string, { label: string; received: boolean }[]>();
   prs.forEach((pr) => {
@@ -116,7 +144,10 @@ function ArrivalsCalendar({ prs }: { prs: PurchaseRequest[] }) {
             <button
               type="button"
               className="px-2 py-0.5 text-[18px] leading-none text-slate-400 hover:text-slate-50 hover:bg-slate-800 rounded transition-colors"
-              onClick={() => setCursor(new Date(year, month - 1, 1))}
+              onClick={() => {
+                setCursor(new Date(year, month - 1, 1));
+                setSelectedDay(null);
+              }}
             >
               ‹
             </button>
@@ -126,7 +157,10 @@ function ArrivalsCalendar({ prs }: { prs: PurchaseRequest[] }) {
             <button
               type="button"
               className="px-2 py-0.5 text-[18px] leading-none text-slate-400 hover:text-slate-50 hover:bg-slate-800 rounded transition-colors"
-              onClick={() => setCursor(new Date(year, month + 1, 1))}
+              onClick={() => {
+                setCursor(new Date(year, month + 1, 1));
+                setSelectedDay(null);
+              }}
             >
               ›
             </button>
@@ -172,35 +206,46 @@ function ArrivalsCalendar({ prs }: { prs: PurchaseRequest[] }) {
                 ? 'text-blue-300'
                 : 'text-slate-400';
 
+            const isSelected = Boolean(selectedDay && key === selectedDay.toDateString());
+
             return (
               <div
                 key={key}
-                className={`group relative h-16 rounded-md border p-1.5 ${borderCls} ${bgCls} ${
+                role={hasArrivals ? 'button' : undefined}
+                tabIndex={hasArrivals ? 0 : undefined}
+                onClick={hasArrivals ? () => setSelectedDay(isSelected ? null : d) : undefined}
+                onKeyDown={
+                  hasArrivals
+                    ? (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') setSelectedDay(isSelected ? null : d);
+                      }
+                    : undefined
+                }
+                className={`relative h-16 rounded-md border p-1.5 ${borderCls} ${bgCls} ${
                   hasArrivals ? 'cursor-pointer hover:brightness-110' : ''
-                }`}
+                } ${isSelected ? 'ring-2 ring-blue-400' : ''}`}
               >
                 <span className={`text-[16px] font-semibold ${dateTextCls}`}>
                   {d.getDate()}
                 </span>
-                {hasArrivals && (
-                  <div className="hidden group-hover:block absolute left-1/2 -translate-x-1/2 top-full mt-1 z-20 w-64 bg-slate-800 border border-slate-600 rounded-lg shadow-2xl p-3">
-                    <p className="text-[14px] font-bold text-slate-400 uppercase mb-1.5">
-                      Arriving {d.toLocaleDateString([], { month: 'short', day: 'numeric' })}
-                    </p>
-                    <ul className="space-y-1">
-                      {arrivals.map((a, i) => (
-                        <li key={i} className={`text-[16px] flex items-center gap-1.5 ${a.received ? 'text-emerald-400' : 'text-slate-200'}`}>
-                          {a.received ? <span className="shrink-0">✓</span> : <span className="h-1 w-1 rounded-full bg-slate-500 shrink-0" />}
-                          {a.label}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
               </div>
             );
           })}
         </div>
+
+        {selectedDay && (
+          <div className="mt-4 border-t border-slate-800 pt-3">
+          
+            <ul className="space-y-1.5 max-h-48 overflow-y-auto">
+              {(arrivalsByDay.get(selectedDay.toDateString()) ?? []).map((a, i) => (
+                <li key={i} className={`text-[15px] flex items-center gap-1.5 ${a.received ? 'text-emerald-400' : 'text-slate-200'}`}>
+                  {a.received ? <span className="shrink-0">✓</span> : <span className="h-1.5 w-1.5 rounded-full bg-slate-500 shrink-0" />}
+                  {a.label}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
     </div>
   );
 }
@@ -212,8 +257,18 @@ export default function PurchaseRequestsPage() {
 
   // Selection
   const [selectedPrId, setSelectedPrId] = useState<string | null>(null);
-  const [isSubmitConfirmOpen, setIsSubmitConfirmOpen] = useState(false);
+  // null = dialog closed; array (possibly empty) = open with these default candidates.
+  const [submitDialogCandidates, setSubmitDialogCandidates] = useState<EmailCandidate[] | null>(null);
   const [evidenceViewerUrl, setEvidenceViewerUrl] = useState<string | null>(null);
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+
+  // Bill of Materials list: search, stage filter, date sort direction.
+  const [listSearch, setListSearch] = useState('');
+  const [listStageFilter, setListStageFilter] = useState<'all' | 'request' | 'order'>('all');
+  const [listSortAsc, setListSortAsc] = useState(false);
+  // Per-item note visibility (pencil toggle) — undefined falls back to
+  // "open if it already has a note", matching the quotation item builder.
+  const [noteOpenMap, setNoteOpenMap] = useState<Record<string, boolean>>({});
 
   // UI
   const [isLoading, setIsLoading] = useState(false);
@@ -246,6 +301,14 @@ export default function PurchaseRequestsPage() {
   useEffect(() => {
     fetchProducts();
     fetchPurchaseRequests();
+  }, []);
+
+  // The trigger button lives in the global header (ERPLayout), not this
+  // page's own body, so it signals over a window event instead of a prop.
+  useEffect(() => {
+    const openCalendar = () => setIsCalendarOpen(true);
+    window.addEventListener('converge:open-delivery-calendar', openCalendar);
+    return () => window.removeEventListener('converge:open-delivery-calendar', openCalendar);
   }, []);
 
   const fetchProducts = async () => {
@@ -547,14 +610,40 @@ export default function PurchaseRequestsPage() {
   };
 
   // ----- Submit (completes the BOM, auto-creates the Product Order, emails the PDF) -----
-  const handleSubmitRequest = async () => {
+  // Downloads a PDF snapshot of the request as it stands right now.
+  const handleDownloadPdf = async (pr: PurchaseRequest) => {
+    try {
+      const res = await apiFetch(`/api/purchase-requests/${pr.id}/pdf`);
+      if (!res.ok) {
+        setErrorMessage('Failed to generate PDF.');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${pr.prNumber}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error downloading PDF:', err);
+      setErrorMessage('Failed to generate PDF.');
+    }
+  };
+
+  const performSubmit = async (emails: string[]) => {
     if (!selectedPr) return;
     try {
       setIsLoading(true);
-      const res = await apiFetch(`/api/purchase-requests/${selectedPr.id}/submit`, { method: 'POST' });
+      const res = await apiFetch(`/api/purchase-requests/${selectedPr.id}/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emails })
+      });
       if (res.ok) {
-        setSuccessMessage('Request submitted.');
-        setIsSubmitConfirmOpen(false);
+        setSuccessMessage(emails.length > 0 ? `Request submitted — email sent to ${emails.length} recipient(s).` : 'Request submitted.');
         await fetchPurchaseRequests();
       } else {
         const err = await res.json().catch(() => ({} as { error?: string }));
@@ -568,10 +657,43 @@ export default function PurchaseRequestsPage() {
     }
   };
 
+  const handleSubmitClick = async () => {
+    let candidates: EmailCandidate[] = [];
+    try {
+      const res = await apiFetch('/api/admin/notification-recipients');
+      if (res.ok) {
+        const recipients: NotificationRecipient[] = await res.json();
+        candidates = recipients
+          .filter((r) => r.isActive && !!r.email)
+          .map((r) => {
+            const pref = r.preferences.find((p) => p.type === PURCHASE_REQUEST_COMPLETED_TYPE);
+            return {
+              id: r.id,
+              name: r.name,
+              email: r.email as string,
+              defaultChecked: pref?.emailEnabled ?? true
+            };
+          });
+      }
+    } catch (err) {
+      console.error('Failed to load notification recipients:', err);
+    }
+    setSubmitDialogCandidates(candidates);
+  };
+
+  const handleSubmitConfirm = (emails: string[]) => {
+    setSubmitDialogCandidates(null);
+    void performSubmit(emails);
+  };
+
+  const handleSubmitSkip = () => {
+    setSubmitDialogCandidates(null);
+    void performSubmit([]);
+  };
+
   // Derived
   const selectedPr = purchaseRequests.find((pr) => pr.id === selectedPrId) ?? null;
   const selectedBom = selectedPr?.billOfMaterial ?? null;
-  const bomLocked = selectedBom?.status === 'Completed' || selectedBom?.status === 'Ordered' || selectedPr?.status === 'Ordered';
   const canSubmit = Boolean(
     selectedBom &&
       selectedBom.items.length > 0 &&
@@ -579,13 +701,25 @@ export default function PurchaseRequestsPage() {
       selectedPr?.status !== 'Ordered'
   );
 
-  // Unseen sales-originated requests float to the top; otherwise newest first.
-  const sortedRequests = [...purchaseRequests].sort((a, b) => {
-    const aUnseen = isSalesSourced(a) && !a.isSeenByPurchasing;
-    const bUnseen = isSalesSourced(b) && !b.isSeenByPurchasing;
-    if (aUnseen !== bUnseen) return aUnseen ? -1 : 1;
-    return new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime();
-  });
+  // Bill of Materials list: search by client/PR#, filter by stage (still a
+  // Product Request vs. already a Product Order), then sort by date.
+  // Unseen sales-originated requests always float to the top regardless of
+  // sort direction — that's a "needs attention" flag, not a date ordering.
+  const searchQuery = listSearch.trim().toLowerCase();
+  const sortedRequests = purchaseRequests
+    .filter((pr) => {
+      if (listStageFilter === 'order' && pr.status !== 'Ordered') return false;
+      if (listStageFilter === 'request' && pr.status === 'Ordered') return false;
+      if (!searchQuery) return true;
+      return pr.clientName.toLowerCase().includes(searchQuery) || pr.prNumber.toLowerCase().includes(searchQuery);
+    })
+    .sort((a, b) => {
+      const aUnseen = isSalesSourced(a) && !a.isSeenByPurchasing;
+      const bUnseen = isSalesSourced(b) && !b.isSeenByPurchasing;
+      if (aUnseen !== bUnseen) return aUnseen ? -1 : 1;
+      const diff = new Date(a.requestDate).getTime() - new Date(b.requestDate).getTime();
+      return listSortAsc ? diff : -diff;
+    });
 
   const MONTHS_ABBR = ['Jan.', 'Feb.', 'Mar.', 'Apr.', 'May', 'Jun.', 'Jul.', 'Aug.', 'Sep.', 'Oct.', 'Nov.', 'Dec.'];
   const dateTimeFmt = (v: string) => {
@@ -595,14 +729,13 @@ export default function PurchaseRequestsPage() {
     return `${time} | ${date}`;
   };
 
-  const inputCls =
-    'px-2 py-1 bg-slate-900/60 border border-slate-700 rounded text-slate-50 text-xs focus:border-blue-500 focus:outline-none';
-
-  const blended = Boolean(selectedPr);
-  const attachmentFileName = (url?: string | null) => (url ? url.split('/').pop() : null);
+  // Borderless — these fields stay editable regardless of request status,
+  // so they shouldn't look "locked into" a boxed input.
+  const borderlessInputCls =
+    'px-1 py-1 bg-transparent rounded text-slate-50 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-950 to-black p-4 space-y-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-950 to-black">
       {/* Toasts */}
       <div className="toast-container" aria-live="polite" aria-atomic="true">
         {errorMessage && (
@@ -635,48 +768,99 @@ export default function PurchaseRequestsPage() {
       <input type="file" ref={evidenceInputRef} style={{ display: 'none' }} accept="image/*" onChange={handleEvidenceFileChange} />
       <input type="file" ref={requestAttachmentInputRef} style={{ display: 'none' }} accept=".pdf" onChange={handleRequestAttachmentFileChange} />
 
-      {/* Main: Calendar+History | Request list | Request info */}
-      <div className="flex gap-3 items-start">
-        {/* Column A: embedded delivery calendar + history/transactions feed */}
-        <aside className="w-1/5 flex-none space-y-4">
-          <div className="border border-slate-800 rounded-lg bg-slate-900/40 p-4">
-            <ArrivalsCalendar prs={purchaseRequests} />
-          </div>
-
-          <div className="border border-slate-800 rounded-lg bg-slate-900/40 overflow-hidden h-80 flex flex-col">
-            <ActivityFeed />
-          </div>
-        </aside>
-
-        {/* Column B: merged request list */}
-        <aside
-          className={`w-1/5 flex-none border ${blended ? 'border-r-0 rounded-l-lg rounded-r-none' : 'rounded-lg'} border-slate-800 bg-slate-900/40 overflow-hidden flex flex-col`}
-        >
-          <div className="px-3 py-2.5 border-b border-slate-800 flex items-center justify-between gap-2">
-            <h2 className="text-[15px] font-bold text-slate-200 uppercase tracking-wide">Requests</h2>
-            <div className="flex items-center gap-1">
+      {/* Main: Request list (flush left sidebar) | Request info (padded) */}
+      <div className="flex items-stretch min-h-screen">
+        {/* Column A: merged request list — sticks to the left edge, full
+            height, square corners; sticky (not fixed) so it can never sit
+            above the app header. */}
+        <aside className="w-[30%] min-w-[200px] flex-none border-r border-slate-800 bg-slate-900/40 overflow-hidden flex flex-col sticky top-0">
+          <div className="px-3 py-2.5 border-b border-slate-800 flex items-center justify-between gap-2 shrink-0">
+            <h2 className="text-[15px] font-bold text-slate-200 uppercase tracking-wide">Bill of Materials</h2>
+            <div className="flex items-center gap-3">
               <button
                 type="button"
-                className="text-[13px] font-medium text-slate-400 hover:text-slate-50 transition-colors"
+                title="Import PDF"
+                aria-label="Import PDF"
+                className="text-slate-400 hover:text-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handlePdfUploadClick}
                 disabled={isScanning}
               >
-                Import PDF
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                </svg>
               </button>
-              <span className="text-slate-700">·</span>
+
               <button
                 type="button"
-                className="text-[13px] font-medium text-slate-400 hover:text-slate-50 transition-colors"
+                title="New Document"
+                aria-label="New Document"
+                className="text-slate-400 hover:text-slate-50 transition-colors"
                 onClick={() => setIsManualModalOpen(true)}
               >
-                + New
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                </svg>
               </button>
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto max-h-[calc(100vh-190px)] divide-y divide-slate-800/70">
+          {/* Search + stage filter + date sort — fixed, only the list below scrolls */}
+          <div className="px-3 py-2 border-b border-slate-800 space-y-2 shrink-0">
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
+              <input
+                type="text"
+                value={listSearch}
+                onChange={(e) => setListSearch(e.target.value)}
+                placeholder="Search client or PR#…"
+                className="w-full pl-7 pr-2 py-1.5 bg-slate-900/60 border border-slate-700 rounded text-slate-50 text-[13px] placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1">
+                {(['all', 'request', 'order'] as const).map((stage) => (
+                  <button
+                    key={stage}
+                    type="button"
+                    className={`px-2 py-1 rounded text-[12px] font-medium transition-colors ${
+                      listStageFilter === stage
+                        ? 'bg-blue-600 text-white'
+                        : 'text-slate-400 hover:text-slate-50 hover:bg-slate-800'
+                    }`}
+                    onClick={() => setListStageFilter(stage)}
+                  >
+                    {stage === 'all' ? 'All' : stage === 'request' ? 'Request' : 'Order'}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-0.5 shrink-0">
+                <button
+                  type="button"
+                  title="Oldest first"
+                  aria-label="Sort oldest first"
+                  className={`p-1 rounded transition-colors ${listSortAsc ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}
+                  onClick={() => setListSortAsc(true)}
+                >
+                  <ArrowUp className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  title="Newest first"
+                  aria-label="Sort newest first"
+                  className={`p-1 rounded transition-colors ${!listSortAsc ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}
+                  onClick={() => setListSortAsc(false)}
+                >
+                  <ArrowDown className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto divide-y divide-slate-800/70">
             {sortedRequests.length === 0 ? (
-              <p className="p-6 text-center text-[15px] text-slate-500">No product requests yet.</p>
+              <p className="p-6 text-center text-[15px] text-slate-500">
+                {purchaseRequests.length === 0 ? 'No product requests yet.' : 'No matches.'}
+              </p>
             ) : (
               sortedRequests.map((pr) => {
                 const unseen = isSalesSourced(pr) && !pr.isSeenByPurchasing;
@@ -710,152 +894,156 @@ export default function PurchaseRequestsPage() {
           </div>
         </aside>
 
-        {/* Column C: selected request's info + item tracking */}
-        <main
-          className={`w-3/5 flex-none border ${blended ? 'border-l-0 rounded-r-lg rounded-l-none' : 'rounded-lg'} border-slate-800 bg-slate-900/40 overflow-hidden`}
-        >
+        {/* Column B: selected request's info + item tracking — padded,
+            separate from the flush sidebar */}
+        <div className="flex-1 min-w-0 p-4">
+        <main className="  overflow-hidden">
           {!selectedPr ? (
             <div className="h-full min-h-[420px] flex items-center justify-center p-8">
               <p className="text-[16px] text-slate-500">Select a request from the list to view details.</p>
             </div>
           ) : (
             <div className="p-4">
-              {/* Top: Submit / ribbon */}
+              {/* Top: Download + Submit / ribbon — right-aligned, not full-width */}
+          <div className="flex items-start justify-between gap-4 mb-4 px-1">
+  {/* Read-only request information on the left */}
+ <div className="flex flex-col gap-y-1.5 text-[14px]">
+  <div className="grid grid-cols-[100px_1fr]"><span className="text-slate-500">PR Number:</span> <span className="text-slate-100 font-semibold">{selectedPr.prNumber}</span></div>
+  <div className="grid grid-cols-[100px_1fr]"><span className="text-slate-500">Client:</span> <span className="text-slate-100">{selectedPr.clientName}</span></div>
+  <div className="grid grid-cols-[100px_1fr]"><span className="text-slate-500">Address:</span> <span className="text-slate-300">{selectedPr.shippingAddress}</span></div>
+  <div className="grid grid-cols-[100px_1fr]"><span className="text-slate-500">Requested:</span> <span className="text-slate-300">{dateTimeFmt(selectedPr.requestDate)}</span></div>
+  <div className="grid grid-cols-[100px_1fr]"><span className="text-slate-500">Status:</span> <span className="text-slate-300">{selectedBom ? `${selectedBom.bomNumber} — ${selectedBom.status}` : selectedPr.status}</span></div>
+</div>
+
+  {/* Download button and Action button grouped horizontally on the right, aligned to the top */}
+  <div className="flex items-center gap-2 shrink-0">
+    <button
+      type="button"
+      title="Download PDF"
+      aria-label="Download PDF"
+      className="p-2 text-slate-300 hover:text-white transition-colors flex items-center justify-center"
+      onClick={() => handleDownloadPdf(selectedPr)}
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+      </svg>
+    </button>
+
+    {selectedPr.status === 'Ordered' ? (
+      <div className="px-6 py-2 bg-emerald-600 text-white text-center rounded-md font-semibold text-[15px]">
+        ✓ Product Ordered
+      </div>
+    ) : selectedBom ? (
+      <button
+        type="button"
+        className="px-6 py-2 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white text-[16px] font-semibold rounded-lg hover:shadow-lg hover:shadow-emerald-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
+        disabled={!canSubmit || isLoading}
+        onClick={() => void handleSubmitClick()}
+      >
+        Submit Request
+      </button>
+    ) : (
+      <button
+        type="button"
+        className="px-6 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white text-[16px] font-semibold rounded-lg hover:shadow-lg hover:shadow-blue-500/30 transition-all"
+        disabled={isLoading}
+        onClick={() => handleSendToBom(selectedPr.id)}
+      >
+        Send to BOM
+      </button>
+    )}
+  </div>
+</div>
+
+              {/* Notes — expandable, editable */}
               <div className="mb-3">
-                {selectedPr.status === 'Ordered' ? (
-                  <div className="px-4 py-2 bg-emerald-600 text-white text-center rounded-md font-semibold text-[15px]">
-                    ✓ Product Ordered
-                  </div>
-                ) : selectedBom ? (
-                  <button
-                    type="button"
-                    className="w-full px-4 py-2 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white text-[16px] font-semibold rounded-lg hover:shadow-lg hover:shadow-emerald-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
-                    disabled={!canSubmit || isLoading}
-                    onClick={() => setIsSubmitConfirmOpen(true)}
-                  >
-                    Submit Request
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="w-full px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white text-[16px] font-semibold rounded-lg hover:shadow-lg hover:shadow-blue-500/30 transition-all"
-                    disabled={isLoading}
-                    onClick={() => handleSendToBom(selectedPr.id)}
-                  >
-                    Send to BOM
-                  </button>
-                )}
-                {selectedBom && selectedPr.status !== 'Ordered' && !canSubmit && (
-                  <p className="mt-1.5 text-right text-[13px] text-slate-500">
-                    Every item must be <span className="text-emerald-400 font-semibold">Ready</span> or{' '}
-                    <span className="text-slate-400 font-semibold">Cancelled</span> to submit.
-                  </p>
-                )}
+                <textarea
+                  className="w-1/2 px-2.5 py-1.5 bg-slate-900/60  text-slate-50 text-[14px] focus:border-blue-500 focus:outline-none resize-none overflow-hidden"
+                  rows={2}
+                  ref={autoGrow}
+                  defaultValue={selectedPr.remarks || ''}
+                  placeholder="Add notes for this request…"
+                  onInput={(e) => autoGrow(e.currentTarget)}
+                  onBlur={(e) => {
+                    if ((selectedPr.remarks || '') !== e.target.value) {
+                      persistRequestDetails(selectedPr, { remarks: e.target.value });
+                    }
+                  }}
+                />
               </div>
 
-              <div className="mb-4">
-                <h3 className="text-[22px] font-bold text-slate-50">{selectedPr.prNumber}</h3>
-                <p className="text-[15px] text-slate-500">
-                  {dateTimeFmt(selectedPr.requestDate)} ·{' '}
-                  {selectedBom ? `${selectedBom.bomNumber} — ${selectedBom.status}` : selectedPr.status}
-                </p>
-              </div>
-
-              {/* Notes + Client Address */}
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                <div>
-                  <label className="block text-[12px] font-bold text-slate-400 uppercase tracking-wide mb-1">Notes</label>
-                  <textarea
-                    className="w-full px-2.5 py-1.5 bg-slate-900/60 border border-slate-700 rounded text-slate-50 text-[14px] focus:border-blue-500 focus:outline-none resize-none"
-                    rows={2}
-                    disabled={bomLocked}
-                    defaultValue={selectedPr.remarks || ''}
-                    placeholder="Add notes for this request…"
-                    onBlur={(e) => {
-                      if ((selectedPr.remarks || '') !== e.target.value) {
-                        persistRequestDetails(selectedPr, { remarks: e.target.value });
-                      }
-                    }}
-                  />
-                </div>
-                <div>
-                  <label className="block text-[12px] font-bold text-slate-400 uppercase tracking-wide mb-1">Client Address</label>
-                  <textarea
-                    className="w-full px-2.5 py-1.5 bg-slate-900/60 border border-slate-700 rounded text-slate-50 text-[14px] focus:border-blue-500 focus:outline-none resize-none"
-                    rows={2}
-                    disabled={bomLocked}
-                    defaultValue={selectedPr.shippingAddress}
-                    onBlur={(e) => {
-                      if (selectedPr.shippingAddress !== e.target.value) {
-                        persistRequestDetails(selectedPr, { shippingAddress: e.target.value });
-                      }
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Whole-request attachment (PDF only) */}
-              <div className="flex items-center gap-3 mb-4 px-3 py-2 border border-slate-800 rounded-lg bg-slate-950/30">
-                <span className="text-[13px] font-semibold text-slate-400 uppercase tracking-wide shrink-0">Attachment</span>
-                {selectedPr.attachmentPdfUrl ? (
-                  <a
-                    href={selectedPr.attachmentPdfUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[14px] text-blue-400 hover:text-blue-300 truncate"
-                  >
-                    {attachmentFileName(selectedPr.attachmentPdfUrl)}
-                  </a>
-                ) : (
-                  <span className="text-[14px] text-slate-600">No document attached</span>
-                )}
+              {/* Whole-request attachment (PDF only) — below notes, left-aligned */}
+              <div className="w-80 max-w-full mb-4">
                 <button
                   type="button"
-                  className="ml-auto text-[13px] font-medium text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50"
+                  className="text-[13px] font-medium text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50"
                   disabled={isLoading}
                   onClick={() => handleRequestAttachmentUploadClick(selectedPr.id)}
                 >
-                  {selectedPr.attachmentPdfUrl ? 'Replace' : 'Upload PDF'}
+                  {selectedPr.attachmentPdfUrl ? 'Replace Attachment' : 'Add Attachment'}
                 </button>
               </div>
 
-              <div className="overflow-x-auto rounded-lg border border-slate-800">
+              <div className="overflow-x-auto rounded-lg ">
                 <table className="w-full text-[16px]">
                   <thead>
                     <tr className="border-b border-slate-700 bg-slate-900/60">
-                      <th className="px-3 py-2 text-left text-[14px] font-bold text-slate-300 uppercase tracking-wide">Item</th>
-                      <th className="px-3 py-2 text-left text-[14px] font-bold text-slate-300 uppercase tracking-wide">Qty</th>
-                      <th className="px-3 py-2 text-left text-[14px] font-bold text-slate-300 uppercase tracking-wide">Supplier</th>
-                      <th className="px-3 py-2 text-left text-[14px] font-bold text-slate-300 uppercase tracking-wide">Note</th>
-                      <th className="px-3 py-2 text-left text-[14px] font-bold text-slate-300 uppercase tracking-wide">Order Date</th>
-                      <th className="px-3 py-2 text-left text-[14px] font-bold text-slate-300 uppercase tracking-wide">Delivery Date</th>
-                      <th className="px-3 py-2 text-left text-[14px] font-bold text-slate-300 uppercase tracking-wide">Status</th>
-                      <th className="px-3 py-2 text-left text-[14px] font-bold text-slate-300 uppercase tracking-wide">Evidence</th>
+                      <th className="px-3 py-2 text-left text-[14px]  text-slate-300 tracking-wide">Item</th>
+                      <th className="px-3 py-2 border-l border-slate-800/60 text-left text-[10px] text-slate-300 tracking-wide">Qty</th>
+                      <th className="px-3 py-2 border-l border-slate-800/60 text-left text-[10px] text-slate-300 tracking-wide">Supplier</th>
+                      <th className="px-3 py-2 border-l border-slate-800/60 text-left text-[10px] text-slate-300 tracking-wide">Order Date</th>
+                      <th className="px-3 py-2 border-l border-slate-800/60 text-left text-[10px] text-slate-300 tracking-wide">Delivery Date</th>
+                      <th className="px-3 py-2 border-l border-slate-800/60 text-left text-[10px] text-slate-300 tracking-wide">Status</th>
+                      <th className="px-3 py-2 border-l border-slate-800/60 text-left text-[10px] text-slate-300 tracking-wide">Proof</th>
                     </tr>
                   </thead>
                   <tbody>
                     {selectedBom
-                      ? selectedBom.items.map((item) => (
+                      ? selectedBom.items.map((item) => {
+                          const noteOpen = noteOpenMap[item.id] ?? Boolean(item.remarks);
+                          return (
                           <tr
                             key={item.id}
-                            className={`border-b border-slate-800/60 transition-colors ${
-                              item.status === 'Ready'
-                                ? 'bg-emerald-500/10'
-                                : item.status === 'Cancelled'
-                                  ? 'opacity-50'
-                                  : ''
-                            }`}
+                            className={`border-b border-slate-800/60 transition-colors ${item.status === 'Cancelled' ? 'opacity-50' : ''}`}
                           >
-                            <td className="px-3 py-2 font-medium text-slate-50">{formatProductName(item.itemName)}</td>
-                            <td className="px-3 py-2 text-slate-300 whitespace-nowrap">
+                            <td className="px-3 py-2 align-top">
+                              <div className="relative pr-6">
+                                <span className="font-medium text-slate-50">{formatProductName(item.itemName)}</span>
+                                <button
+                                  type="button"
+                                  className="absolute right-0 top-0.5 text-slate-400 hover:text-slate-200 transition-colors"
+                                  title="Add a note for this item"
+                                  onClick={() =>
+                                    setNoteOpenMap((prev) => ({ ...prev, [item.id]: !noteOpen }))
+                                  }
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                              {noteOpen && (
+                                <textarea
+                                  rows={1}
+                                  ref={autoGrow}
+                                  className="w-full mt-1 pt-1 border-t border-slate-700/60 bg-transparent text-slate-400 text-xs italic placeholder-slate-500 focus:outline-none resize-none overflow-hidden"
+                                  placeholder="add note…"
+                                  defaultValue={item.remarks || ''}
+                                  onInput={(e) => autoGrow(e.currentTarget)}
+                                  onBlur={(e) => {
+                                    if ((item.remarks || '') !== e.target.value) {
+                                      persistBomItem(item, { remarks: e.target.value });
+                                    }
+                                  }}
+                                />
+                              )}
+                            </td>
+                            <td className="px-3 py-2 border-l border-slate-800/60 text-slate-300 whitespace-nowrap">
                               {item.requiredQuantity} {item.unit}
                             </td>
-                            <td className="px-3 py-2">
+                            <td className="px-3 py-2 border-l border-slate-800/60">
                               <input
                                 type="text"
-                                className={`${inputCls} w-28`}
+                                className={`${borderlessInputCls} w-28`}
                                 defaultValue={item.supplier || ''}
-                                disabled={bomLocked}
                                 placeholder="Supplier…"
                                 onBlur={(e) => {
                                   if ((item.supplier || '') !== e.target.value) {
@@ -864,43 +1052,26 @@ export default function PurchaseRequestsPage() {
                                 }}
                               />
                             </td>
-                            <td className="px-3 py-2">
-                              <input
-                                type="text"
-                                className={`${inputCls} w-32`}
-                                defaultValue={item.remarks || ''}
-                                disabled={bomLocked}
-                                placeholder="Note…"
-                                onBlur={(e) => {
-                                  if ((item.remarks || '') !== e.target.value) {
-                                    persistBomItem(item, { remarks: e.target.value });
-                                  }
-                                }}
-                              />
-                            </td>
-                            <td className="px-3 py-2">
+                            <td className="px-3 py-2 border-l border-slate-800/60">
                               <input
                                 type="date"
-                                className={inputCls}
+                                className={borderlessInputCls}
                                 value={item.orderDate ? item.orderDate.split('T')[0] : ''}
-                                disabled={bomLocked}
                                 onChange={(e) => persistBomItem(item, { orderDate: e.target.value || null })}
                               />
                             </td>
-                            <td className="px-3 py-2">
+                            <td className="px-3 py-2 border-l border-slate-800/60">
                               <input
                                 type="date"
-                                className={inputCls}
+                                className={borderlessInputCls}
                                 value={item.deliveryDate ? item.deliveryDate.split('T')[0] : ''}
-                                disabled={bomLocked}
                                 onChange={(e) => persistBomItem(item, { deliveryDate: e.target.value || null })}
                               />
                             </td>
-                            <td className="px-3 py-2">
+                            <td className="px-3 py-2 border-l border-slate-800/60">
                               <select
-                                className={inputCls}
+                                className={borderlessInputCls}
                                 value={item.status}
-                                disabled={bomLocked}
                                 onChange={(e) => persistBomItem(item, { status: e.target.value })}
                               >
                                 {ITEM_STATUSES.map((s) => (
@@ -908,7 +1079,7 @@ export default function PurchaseRequestsPage() {
                                 ))}
                               </select>
                             </td>
-                            <td className="px-3 py-2">
+                            <td className="px-3 py-2 border-l border-slate-800/60">
                               <div className="flex items-center gap-2">
                                 {item.evidenceImageUrl && (
                                   <button
@@ -934,19 +1105,19 @@ export default function PurchaseRequestsPage() {
                               </div>
                             </td>
                           </tr>
-                        ))
+                          );
+                        })
                       : selectedPr.items.map((item) => (
                           <tr key={item.id} className="border-b border-slate-800/60">
                             <td className="px-3 py-2 font-medium text-slate-50">{formatProductName(item.itemName)}</td>
-                            <td className="px-3 py-2 text-slate-300 whitespace-nowrap">
+                            <td className="px-3 py-2 border-l border-slate-800/60 text-slate-300 whitespace-nowrap">
                               {item.quantity} {item.unit}
                             </td>
-                            <td className="px-3 py-2 text-slate-600">—</td>
-                            <td className="px-3 py-2 text-slate-600">—</td>
-                            <td className="px-3 py-2 text-slate-600">—</td>
-                            <td className="px-3 py-2 text-slate-600">—</td>
-                            <td className="px-3 py-2 text-slate-300">{item.status}</td>
-                            <td className="px-3 py-2 text-slate-600">—</td>
+                            <td className="px-3 py-2 border-l border-slate-800/60 text-slate-600">—</td>
+                            <td className="px-3 py-2 border-l border-slate-800/60 text-slate-600">—</td>
+                            <td className="px-3 py-2 border-l border-slate-800/60 text-slate-600">—</td>
+                            <td className="px-3 py-2 border-l border-slate-800/60 text-slate-300">{item.status}</td>
+                            <td className="px-3 py-2 border-l border-slate-800/60 text-slate-600">—</td>
                           </tr>
                         ))}
                   </tbody>
@@ -955,37 +1126,22 @@ export default function PurchaseRequestsPage() {
             </div>
           )}
         </main>
+        </div>
       </div>
 
-      {/* Submit confirmation */}
-      {isSubmitConfirmOpen && selectedPr && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-lg shadow-2xl w-full max-w-md p-6">
-            <h3 className="text-[19px] font-bold text-slate-50 mb-2">Submit {selectedPr.prNumber}?</h3>
-            <p className="text-[15px] text-slate-400 mb-5">
-              This finalizes the request, creates the Product Order, and emails a PDF copy of the request to the
-              configured recipients. This can't be undone.
-            </p>
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                className="btn"
-                disabled={isLoading}
-                onClick={() => setIsSubmitConfirmOpen(false)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn--primary"
-                disabled={isLoading}
-                onClick={handleSubmitRequest}
-              >
-                {isLoading ? 'Submitting…' : 'Confirm Submit'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Submit: pick who gets the PDF (or skip email entirely) before finalizing */}
+      {submitDialogCandidates && selectedPr && (
+        <EmailRecipientPickerDialog
+          icon={<span style={{ fontSize: '16px' }}>📦</span>}
+          title={`Submit ${selectedPr.prNumber}`}
+          candidates={submitDialogCandidates}
+          cancelLabel="Cancel"
+          skipLabel="Skip Email"
+          confirmLabel="Submit & Send"
+          onConfirm={handleSubmitConfirm}
+          onSkip={handleSubmitSkip}
+          onCancel={() => setSubmitDialogCandidates(null)}
+        />
       )}
 
       {/* Evidence image viewer — slides in from the right */}
@@ -999,6 +1155,33 @@ export default function PurchaseRequestsPage() {
             onClick={() => setEvidenceViewerUrl(null)}
           >
             <motion.div
+              className="fixed inset-y-0 right-0 w-[420px] "
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'tween', duration: 0.2 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              
+              <div className="flex-1 overflow-auto p-4 flex items-center justify-center">
+                <img src={evidenceViewerUrl} alt="Transaction evidence" className="max-w-full max-h-full rounded border border-slate-700" />
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Delivery calendar — slides in from the right, click outside collapses it */}
+      <AnimatePresence>
+        {isCalendarOpen && (
+          <motion.div
+            className="fixed inset-0 z-[60] bg-black/50"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIsCalendarOpen(false)}
+          >
+            <motion.div
               className="fixed inset-y-0 right-0 w-[420px] max-w-full bg-slate-900 border-l border-slate-700 shadow-2xl flex flex-col"
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
@@ -1006,18 +1189,12 @@ export default function PurchaseRequestsPage() {
               transition={{ type: 'tween', duration: 0.2 }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
-                <h3 className="text-[16px] font-bold text-slate-200">Transaction Evidence</h3>
-                <button
-                  type="button"
-                  className="p-1.5 text-slate-400 hover:text-slate-50 hover:bg-slate-800 rounded transition-colors"
-                  onClick={() => setEvidenceViewerUrl(null)}
-                >
-                  <X className="h-4 w-4" />
-                </button>
+              <div className="">
+                
+              
               </div>
-              <div className="flex-1 overflow-auto p-4 flex items-center justify-center">
-                <img src={evidenceViewerUrl} alt="Transaction evidence" className="max-w-full max-h-full rounded border border-slate-700" />
+              <div className="flex-1 overflow-y-auto p-4">
+                <ArrivalsCalendar prs={purchaseRequests} />
               </div>
             </motion.div>
           </motion.div>
