@@ -63,7 +63,7 @@ namespace converge_server.Services.Ai
 
         public async Task<GenerateQuotationDraftResponseDto> GenerateDraftAsync(string prompt)
         {
-            var extractedItems = await ExtractItemsAsync(prompt);
+            var (extractedItems, laborDays, laborPersons) = await ExtractItemsAsync(prompt);
 
             // Retrieve: scan the database BEFORE any catalog-aware generation.
             var catalog = await _context.Products
@@ -71,8 +71,26 @@ namespace converge_server.Services.Ai
                 .ToListAsync();
             var catalogById = catalog.ToDictionary(p => p.Id);
 
+            // Historical grounding: past prompts and which real products they
+            // actually resolved to. A colloquial term ("CCTV") may never
+            // appear in a formal catalog name/spec, but if a similar past
+            // customer request WAS matched to a specific product, that's
+            // real-world evidence the catalog text alone can't provide.
+            var pastQuotationData = await _context.Quotations
+                .Where(q => q.OriginalPrompt != null && q.OriginalPrompt != "")
+                .Select(q => new
+                {
+                    q.OriginalPrompt,
+                    ProductIds = q.MaterialItems.Where(mi => mi.ProductId != null).Select(mi => mi.ProductId!.Value).ToList()
+                })
+                .ToListAsync();
+            var pastPromptTokens = pastQuotationData
+                .Where(x => x.ProductIds.Count > 0)
+                .Select(x => (PromptTokens: Tokenize(x.OriginalPrompt!), x.ProductIds))
+                .ToList();
+
             var candidatesByItem = extractedItems
-                .Select((item, index) => (index, item, candidates: RetrieveCandidates(item.Description, catalog)))
+                .Select((item, index) => (index, item, candidates: RetrieveCandidates(item.Description, catalog, pastPromptTokens)))
                 .ToList();
 
             // Decide: only items with at least one lexical candidate are worth
@@ -120,25 +138,33 @@ namespace converge_server.Services.Ai
             return new GenerateQuotationDraftResponseDto
             {
                 OriginalPrompt = prompt,
-                Items = draftItems
+                Items = draftItems,
+                Labor = laborDays.HasValue || laborPersons.HasValue
+                    ? new GenerateQuotationLaborSuggestionDto { Days = laborDays, Persons = laborPersons }
+                    : null
             };
         }
 
-        private async Task<List<ExtractedItem>> ExtractItemsAsync(string prompt)
+        private async Task<(List<ExtractedItem> Items, int? LaborDays, int? LaborPersons)> ExtractItemsAsync(string prompt)
         {
             const string systemPrompt =
                 "You convert a plain-English purchase request into a strict JSON shopping list. " +
                 "Extract ONLY the physical products/materials the user explicitly mentions. " +
                 "Do not add accessories, tools, cables, mounts, or any item the user did not ask for, " +
                 "even if commonly needed for installation. Do not invent brands, models, or specs that " +
-                "were not stated. Ignore labor/service/installation actions - only list physical items. " +
-                "Correct obvious spelling and typing mistakes in product names, brands, and model numbers " +
-                "(e.g. \"dahau\" -> \"dahua\", \"camara\" -> \"camera\") while preserving the user's actual " +
-                "intent - never change a brand/model into a different real brand/model, only fix the spelling " +
-                "of what they clearly meant. For each item return: \"description\" (short phrase capturing " +
-                "what was asked, spelling-corrected, including any brand/model/spec keywords the user gave) " +
-                "and \"quantity\" (integer; default to 1 if not stated). Respond with ONLY valid JSON of this " +
-                "exact shape, no prose, no markdown fences: {\"items\":[{\"description\":\"...\",\"quantity\":1}]}";
+                "were not stated. Ignore labor/service/installation actions when listing items - only list " +
+                "physical items there. Correct obvious spelling and typing mistakes in product names, brands, " +
+                "and model numbers (e.g. \"dahau\" -> \"dahua\", \"camara\" -> \"camera\") while preserving the " +
+                "user's actual intent - never change a brand/model into a different real brand/model, only fix " +
+                "the spelling of what they clearly meant. For each item return: \"description\" (short phrase " +
+                "capturing what was asked, spelling-corrected, including any brand/model/spec keywords the user " +
+                "gave) and \"quantity\" (integer; default to 1 if not stated). Separately, also extract any " +
+                "labor/manpower/installation crew details mentioned: \"laborDays\" (integer number of days of " +
+                "work/installation, or null if not mentioned) and \"laborPersons\" (integer number of " +
+                "workers/people/manpower for that labor, or null if not mentioned) - these describe service " +
+                "duration and crew size, not a physical item, so never create an item entry for them. Respond " +
+                "with ONLY valid JSON of this exact shape, no prose, no markdown fences: " +
+                "{\"items\":[{\"description\":\"...\",\"quantity\":1}],\"laborDays\":null,\"laborPersons\":null}";
 
             var rawContent = await CallGroqAsync(systemPrompt, prompt);
 
@@ -155,18 +181,38 @@ namespace converge_server.Services.Ai
                 throw new InvalidOperationException("Could not understand the AI service's response.");
             }
 
-            return parsed?.Items?.Where(i => !string.IsNullOrWhiteSpace(i.Description)).ToList()
-                   ?? new List<ExtractedItem>();
+            var items = parsed?.Items?.Where(i => !string.IsNullOrWhiteSpace(i.Description)).ToList()
+                        ?? new List<ExtractedItem>();
+            return (items, parsed?.LaborDays, parsed?.LaborPersons);
         }
 
         // Lexical retrieval: rank the whole catalog by token overlap against
         // the item description and keep only the top few plausible options.
         // This is the piece that lets a 3000+ row catalog stay usable - the
         // LLM never sees more than a handful of real candidates per item.
-        private static List<Product> RetrieveCandidates(string description, List<Product> catalog)
+        // Also folds in historical grounding from past quotation prompts (see
+        // GenerateDraftAsync) so a colloquial phrasing that shares no tokens
+        // with the formal catalog text can still surface a real candidate.
+        private static List<Product> RetrieveCandidates(
+            string description,
+            List<Product> catalog,
+            List<(List<string> PromptTokens, List<int> ProductIds)> pastPromptTokens)
         {
             var tokens = Tokenize(description);
             if (tokens.Count == 0) return new List<Product>();
+
+            var historicalScoreByProductId = new Dictionary<int, int>();
+            foreach (var (promptTokens, productIds) in pastPromptTokens)
+            {
+                var overlap = promptTokens.Count(tokens.Contains);
+                if (overlap == 0) continue;
+                foreach (var id in productIds)
+                {
+                    historicalScoreByProductId[id] = historicalScoreByProductId.TryGetValue(id, out var existing)
+                        ? Math.Max(existing, overlap)
+                        : overlap;
+                }
+            }
 
             return catalog
                 .Select(p =>
@@ -175,9 +221,10 @@ namespace converge_server.Services.Ai
                     var brandHaystack = Normalize(p.Brand);
                     var matchedCount = tokens.Count(t => haystack.Contains(t));
                     var brandBonus = brandHaystack.Length > 0 && tokens.Any(brandHaystack.Contains) ? 1 : 0;
-                    return (product: p, score: matchedCount * 10 + brandBonus, matchedCount);
+                    var historicalBonus = historicalScoreByProductId.TryGetValue(p.Id, out var h) ? h : 0;
+                    return (product: p, score: matchedCount * 10 + brandBonus + historicalBonus * 3, matchedCount, historicalBonus);
                 })
-                .Where(x => x.matchedCount > 0)
+                .Where(x => x.matchedCount > 0 || x.historicalBonus > 0)
                 .OrderByDescending(x => x.score)
                 .Take(MaxCandidatesPerItem)
                 .Select(x => x.product)
@@ -322,6 +369,12 @@ namespace converge_server.Services.Ai
         {
             [JsonPropertyName("items")]
             public List<ExtractedItem>? Items { get; set; }
+
+            [JsonPropertyName("laborDays")]
+            public int? LaborDays { get; set; }
+
+            [JsonPropertyName("laborPersons")]
+            public int? LaborPersons { get; set; }
         }
 
         private class ExtractedItem

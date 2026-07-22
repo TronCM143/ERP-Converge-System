@@ -9,6 +9,7 @@ using converge_server.Models.Entities;
 using converge_server.Services.Caching;
 using converge_server.Services.Interfaces;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -198,6 +199,80 @@ namespace converge_server.Services.Products
             return new ProductImageResultDto { ImageUrl = localUrl, Found = localUrl != null };
         }
 
+        // Manual alternative to the auto-search: paste a URL, we fetch and
+        // cache it locally the same way a found search result would be.
+        public async Task<ProductImageResultDto> SetProductImageFromUrlAsync(int productId, string remoteUrl)
+        {
+            var product = await _context.Products.FindAsync(productId);
+            if (product == null)
+            {
+                throw new KeyNotFoundException("Product not found.");
+            }
+
+            if (!Uri.TryCreate(remoteUrl, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            {
+                throw new InvalidOperationException("Enter a valid image URL.");
+            }
+
+            var localUrl = await DownloadAndCacheAsync(product, remoteUrl);
+            if (localUrl == null)
+            {
+                throw new InvalidOperationException("Could not download an image from that URL.");
+            }
+
+            product.ImageUrl = localUrl;
+            product.ImageSearchAttempted = true;
+            product.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+            await _cache.RemoveAsync(CacheKeys.Products);
+
+            return new ProductImageResultDto { ImageUrl = localUrl, Found = true };
+        }
+
+        // Manual alternative to the auto-search: a real uploaded file instead
+        // of a URL, saved the same way (named after the SKU, so a re-upload
+        // just overwrites the previous image).
+        public async Task<ProductImageResultDto> UploadProductImageAsync(int productId, IFormFile file)
+        {
+            var product = await _context.Products.FindAsync(productId);
+            if (product == null)
+            {
+                throw new KeyNotFoundException("Product not found.");
+            }
+
+            if (file == null || file.Length == 0)
+            {
+                throw new InvalidOperationException("No file uploaded.");
+            }
+
+            var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+            var allowed = new[] { ".jpg", ".jpeg", ".png", ".webp", ".gif" };
+            if (!allowed.Contains(extension))
+            {
+                throw new InvalidOperationException("Only image files (.jpg, .png, .webp, .gif) are allowed.");
+            }
+            if (file.Length > 10 * 1024 * 1024)
+            {
+                throw new InvalidOperationException("Image must be under 10 MB.");
+            }
+
+            Directory.CreateDirectory(_imagesDirectory);
+            var fileName = $"{product.Sku}{extension}";
+            var filePath = Path.Combine(_imagesDirectory, fileName);
+            await using (var stream = new FileStream(filePath, FileMode.Create))
+            {
+                await file.CopyToAsync(stream);
+            }
+
+            product.ImageUrl = $"/images/products/{fileName}";
+            product.ImageSearchAttempted = true;
+            product.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+            await _cache.RemoveAsync(CacheKeys.Products);
+
+            return new ProductImageResultDto { ImageUrl = product.ImageUrl, Found = true };
+        }
+
         private async Task<string?> DownloadAndCacheAsync(Product product, string sourceUrl)
         {
             try
@@ -231,6 +306,89 @@ namespace converge_server.Services.Products
             }
         }
 
+        // Records a stock movement and updates the running quantity in one
+        // transaction. Out cannot drive stock negative — the operator is
+        // telling us what physically left the shelf, so an Out larger than
+        // what's on hand almost always means the on-hand count is stale and
+        // needs a real inventory check first, not just to be forced through.
+        public async Task<ProductDetailDto> AdjustStockAsync(int productId, AdjustStockDto dto, string actorUsername)
+        {
+            if (!Enum.TryParse<InventoryDirection>(dto.Direction, ignoreCase: true, out var direction))
+            {
+                throw new InvalidOperationException("Direction must be 'In' or 'Out'.");
+            }
+
+            var product = await _context.Products.FindAsync(productId);
+            if (product == null)
+            {
+                throw new KeyNotFoundException("Product not found.");
+            }
+
+            if (direction == InventoryDirection.Out && dto.Quantity > product.StockQuantity)
+            {
+                throw new InvalidOperationException($"Cannot pull out {dto.Quantity} — only {product.StockQuantity} on hand.");
+            }
+
+            var oldQuantity = product.StockQuantity;
+            product.StockQuantity += direction == InventoryDirection.In ? dto.Quantity : -dto.Quantity;
+            product.UpdatedAt = DateTime.UtcNow;
+
+            _context.InventoryTransactions.Add(new InventoryTransaction
+            {
+                ProductId = product.Id,
+                Direction = direction,
+                Quantity = dto.Quantity,
+                ResultingStock = product.StockQuantity,
+                Reason = string.IsNullOrWhiteSpace(dto.Reason) ? null : dto.Reason.Trim(),
+                PerformedBy = actorUsername,
+                OccurredAt = DateTime.UtcNow
+            });
+
+            await _context.SaveChangesAsync();
+            await _cache.RemoveAsync(CacheKeys.Products);
+            await _auditService.LogAsync(
+                "Product",
+                product.Id.ToString(),
+                "StockAdjusted",
+                actorUsername,
+                oldQuantity.ToString(),
+                product.StockQuantity.ToString(),
+                $"{direction} {dto.Quantity} — {product.ProductName}");
+
+            return ToDetail(product);
+        }
+
+        public async Task<List<InventoryTransactionResponseDto>> GetInventoryHistoryAsync(int? productId, int limit)
+        {
+            var query = _context.InventoryTransactions
+                .AsNoTracking()
+                .Include(t => t.Product)
+                .AsQueryable();
+
+            if (productId.HasValue)
+            {
+                query = query.Where(t => t.ProductId == productId.Value);
+            }
+
+            var rows = await query
+                .OrderByDescending(t => t.OccurredAt)
+                .Take(limit)
+                .ToListAsync();
+
+            return rows.Select(t => new InventoryTransactionResponseDto
+            {
+                Id = t.Id,
+                ProductId = t.ProductId,
+                ProductName = t.Product?.ProductName ?? "",
+                Direction = t.Direction.ToString(),
+                Quantity = t.Quantity,
+                ResultingStock = t.ResultingStock,
+                Reason = t.Reason,
+                PerformedBy = t.PerformedBy,
+                OccurredAt = t.OccurredAt
+            }).ToList();
+        }
+
         private static ProductDetailDto ToDetail(Product p) => new()
         {
             Id = p.Id,
@@ -246,7 +404,8 @@ namespace converge_server.Services.Products
             CreatedAt = p.CreatedAt,
             UpdatedAt = p.UpdatedAt,
             ImageUrl = p.ImageUrl,
-            ImageSearchAttempted = p.ImageSearchAttempted
+            ImageSearchAttempted = p.ImageSearchAttempted,
+            StockQuantity = p.StockQuantity
         };
     }
 }

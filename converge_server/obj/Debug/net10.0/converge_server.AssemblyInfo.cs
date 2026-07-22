@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("converge_server")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+3ca7cec888b0d75683db468ffac92ebdfc095fac")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+fa5717b7c417f2d996258edabdd0018b52bc076c")]
 [assembly: System.Reflection.AssemblyProductAttribute("converge_server")]
 [assembly: System.Reflection.AssemblyTitleAttribute("converge_server")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

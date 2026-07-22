@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { X } from 'lucide-react';
+import { Plus, Trash2, X } from 'lucide-react';
 import { apiFetch } from '../shared/api';
 import { Product } from './ProductsPage';
 
@@ -8,6 +8,8 @@ interface Props {
   onClose: () => void;
   onSaved: (product: Product) => void;
   product?: Product;
+  /** Prefills the Product Name field when creating a new product (ignored when editing). */
+  initialProductName?: string;
 }
 
 interface FormValues {
@@ -16,23 +18,59 @@ interface FormValues {
   brand: string;
   model: string;
   productName: string;
-  specs: string;
   price: string;
 }
 
-export default function ProductFormModal({ onClose, onSaved, product }: Props) {
+interface SpecRow {
+  key: string;
+  value: string;
+}
+
+// Specs are stored as one "key=value;key=value" string. Parsed here into
+// editable rows WITHOUT reformatting (no case/underscore changes — that's
+// display-only, done separately by parseSpecPairs) so re-saving round-trips
+// whatever was already there exactly, plus whatever the user added/removed.
+function parseSpecsRaw(specs: string): SpecRow[] {
+  const rows = specs
+    .split(';')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const sepIndex = part.search(/[=:]/);
+      if (sepIndex === -1) return { key: part, value: '' };
+      return { key: part.slice(0, sepIndex).trim(), value: part.slice(sepIndex + 1).trim() };
+    });
+  return rows.length > 0 ? rows : [{ key: '', value: '' }];
+}
+
+function serializeSpecs(rows: SpecRow[]): string {
+  return rows
+    .filter((r) => r.key.trim() || r.value.trim())
+    .map((r) => (r.value.trim() ? `${r.key.trim()}=${r.value.trim()}` : r.key.trim()))
+    .join(';');
+}
+
+export default function ProductFormModal({ onClose, onSaved, product, initialProductName }: Props) {
   const isEditing = !!product;
   const [values, setValues] = useState<FormValues>({
     category: product?.category ?? '',
     subcategory: product?.subcategory ?? '',
     brand: product?.brand ?? '',
     model: product?.model ?? '',
-    productName: product?.productName ?? '',
-    specs: product?.specs ?? '',
+    productName: product?.productName ?? initialProductName ?? '',
     price: product?.price.toString() ?? ''
   });
+  const [specRows, setSpecRows] = useState<SpecRow[]>(() => parseSpecsRaw(product?.specs ?? ''));
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const updateSpecRow = (index: number, field: keyof SpecRow, value: string) => {
+    setSpecRows((rows) => rows.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
+  };
+
+  const addSpecRow = () => setSpecRows((rows) => [...rows, { key: '', value: '' }]);
+
+  const removeSpecRow = (index: number) => setSpecRows((rows) => rows.filter((_, i) => i !== index));
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -56,7 +94,7 @@ export default function ProductFormModal({ onClose, onSaved, product }: Props) {
         brand: values.brand.trim(),
         model: values.model.trim() || null,
         productName: values.productName.trim(),
-        specs: values.specs.trim(),
+        specs: serializeSpecs(specRows),
         price: values.price ? parseFloat(values.price) : 0,
         isActive: true
       };
@@ -147,14 +185,44 @@ export default function ProductFormModal({ onClose, onSaved, product }: Props) {
 
           <div className="form-group">
             <label>Specifications</label>
-            <textarea
-              className="form-control"
-              name="specs"
-              value={values.specs}
-              onChange={handleChange}
-              placeholder="Format: device_type=ceiling_access_point;wifi_standard=wifi6"
-              rows={4}
-            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {specRows.map((row, index) => (
+                <div key={index} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    className="form-control"
+                    style={{ flex: 1 }}
+                    placeholder="key (e.g. wifi_standard)"
+                    value={row.key}
+                    onChange={(e) => updateSpecRow(index, 'key', e.target.value)}
+                  />
+                  <input
+                    type="text"
+                    className="form-control"
+                    style={{ flex: 1 }}
+                    placeholder="value (e.g. wifi6)"
+                    value={row.value}
+                    onChange={(e) => updateSpecRow(index, 'value', e.target.value)}
+                  />
+                  <button
+                    className="btn-remove-item"
+                    type="button"
+                    onClick={() => removeSpecRow(index)}
+                    disabled={specRows.length <= 1}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              className="btn"
+              type="button"
+              style={{ width: '100%', borderStyle: 'dashed', marginTop: '8px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+              onClick={addSpecRow}
+            >
+              <Plus className="h-3.5 w-3.5" /> Add Spec
+            </button>
           </div>
 
           <div className="form-group">

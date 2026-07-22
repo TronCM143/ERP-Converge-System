@@ -41,5 +41,11 @@ namespace converge_server.Models.Entities
         // regardless of outcome — prevents re-searching on every click when
         // nothing was found. Cleared only by an explicit manual refresh.
         public bool ImageSearchAttempted { get; set; }
+
+        // Current quantity on hand. Only ever changed through
+        // ProductService.AdjustStockAsync, which also writes the matching
+        // InventoryTransaction row — never edited directly elsewhere, so the
+        // two stay in sync.
+        public int StockQuantity { get; set; }
     }
 }

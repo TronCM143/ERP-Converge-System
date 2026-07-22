@@ -205,6 +205,7 @@ builder.Services.AddScoped<converge_server.Services.Interfaces.IWonDealSheetServ
 // the product service itself (also needs its own HttpClient to download the
 // image bytes once a source URL is found).
 builder.Services.AddHttpClient<converge_server.Services.Interfaces.IProductImageSearchService, converge_server.Services.Products.GoogleProductImageSearchService>();
+builder.Services.AddHttpClient<converge_server.Services.Interfaces.IProductSuggestionSearchService, converge_server.Services.Products.GoogleProductSuggestionSearchService>();
 builder.Services.AddHttpClient<converge_server.Services.Products.ProductService>();
 builder.Services.AddScoped<converge_server.Services.Interfaces.IProductService, converge_server.Services.Products.ProductService>();
 

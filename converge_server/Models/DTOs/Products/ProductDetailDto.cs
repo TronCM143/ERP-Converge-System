@@ -18,5 +18,6 @@ namespace converge_server.Models.DTOs.Products
         public DateTime? UpdatedAt { get; set; }
         public string? ImageUrl { get; set; }
         public bool ImageSearchAttempted { get; set; }
+        public int StockQuantity { get; set; }
     }
 }

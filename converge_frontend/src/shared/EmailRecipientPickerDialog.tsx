@@ -99,8 +99,7 @@ export default function EmailRecipientPickerDialog({
             </div>
             <div className="min-w-0">
               <h2 className="text-base font-bold text-slate-50 truncate">{title}</h2>
-              <p className="text-xs text-slate-400 mt-0.5">This only affects this send — nothing saved is changed.</p>
-            </div>
+             </div>
           </div>
           <button
             type="button"

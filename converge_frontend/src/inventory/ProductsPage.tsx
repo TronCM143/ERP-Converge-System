@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
+import { QRCodeCanvas } from 'qrcode.react';
 import { Input } from '../components/ui/input';
 import { apiFetch } from '../shared/api';
 import { queryCache, CACHE_KEYS } from '../shared/queryCache';
@@ -7,7 +7,7 @@ import { formatProductName } from '../shared/formatProductName';
 import { useAuth } from '../app/AuthContext';
 import ProductFormModal from './ProductFormModal';
 import MiniLineChart, { MiniLineChartPoint } from '../shared/MiniLineChart';
-import { AlertTriangle, ImageOff, Loader2, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Download, ImageOff, Link2, Loader2, Plus, RefreshCw, Search, Trash2, Upload, X } from 'lucide-react';
 
 // Matches ProductDetailDto — used for both the list (left panel only shows
 // the name) and the selected-product detail (right panel).
@@ -26,6 +26,19 @@ export interface Product {
   updatedAt?: string;
   imageUrl?: string | null;
   imageSearchAttempted: boolean;
+  stockQuantity: number;
+}
+
+export interface InventoryTransaction {
+  id: string;
+  productId: number;
+  productName: string;
+  direction: 'In' | 'Out';
+  quantity: number;
+  resultingStock: number;
+  reason?: string | null;
+  performedBy: string;
+  occurredAt: string;
 }
 
 // Parse the raw specs string ("key=value;key=value" or free text) into
@@ -59,6 +72,21 @@ const formatDate = (dateString: string) => {
   return `${d.toLocaleString('en-US', { month: 'short' })}. ${d.getDate()}, ${d.getFullYear()}`;
 };
 
+// Full product identity in the QR code, not just the SKU, so scanning it
+// alone is enough to identify the item without a lookup.
+function buildProductQrPayload(product: Product): string {
+  return JSON.stringify({
+    sku: product.sku,
+    name: formatProductName(product.productName),
+    category: product.category || undefined,
+    subcategory: product.subcategory || undefined,
+    brand: product.brand || undefined,
+    model: product.model || undefined,
+    price: product.price,
+    specs: product.specs || undefined
+  });
+}
+
 type SortOrder = 'newest' | 'oldest';
 
 export default function ProductsPage() {
@@ -84,12 +112,22 @@ export default function ProductsPage() {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isImageLoading, setIsImageLoading] = useState(false);
   const [isZoomOpen, setIsZoomOpen] = useState(false);
+  const productImageFileInputRef = useRef<HTMLInputElement>(null);
+  const [isRemoteUrlOpen, setIsRemoteUrlOpen] = useState(false);
+  const [remoteImageUrl, setRemoteImageUrl] = useState('');
+  const [imageActionError, setImageActionError] = useState<string | null>(null);
+  const qrCanvasRef = useRef<HTMLDivElement>(null);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [weeklyPurchases, setWeeklyPurchases] = useState<MiniLineChartPoint[]>([]);
+  const [inventoryHistory, setInventoryHistory] = useState<InventoryTransaction[]>([]);
+  const [adjustDirection, setAdjustDirection] = useState<'In' | 'Out'>('In');
+  const [adjustQuantity, setAdjustQuantity] = useState('');
+  const [isAdjusting, setIsAdjusting] = useState(false);
+  const [adjustError, setAdjustError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -104,6 +142,54 @@ export default function ProductsPage() {
       }
     })();
   }, []);
+
+  const fetchInventoryHistory = async () => {
+    try {
+      const res = await apiFetch('/api/products/inventory-transactions/recent?limit=30');
+      if (res.ok) setInventoryHistory(await res.json());
+    } catch (err) {
+      console.error('Failed to load inventory history:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchInventoryHistory();
+  }, []);
+
+  const handleAdjustStock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedProduct) return;
+    const quantity = parseInt(adjustQuantity, 10);
+    if (!quantity || quantity < 1) {
+      setAdjustError('Enter a quantity of at least 1.');
+      return;
+    }
+
+    setIsAdjusting(true);
+    setAdjustError(null);
+    try {
+      const res = await apiFetch(`/api/products/${selectedProduct.id}/inventory-transactions`, {
+        method: 'POST',
+        body: JSON.stringify({ direction: adjustDirection, quantity })
+      });
+      if (res.ok) {
+        const updated: Product = await res.json();
+        setSelectedProduct(updated);
+        setProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+        queryCache.invalidate(CACHE_KEYS.products);
+        setAdjustQuantity('');
+        await fetchInventoryHistory();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setAdjustError(err.error || 'Failed to adjust stock.');
+      }
+    } catch (err) {
+      console.error('Failed to adjust stock:', err);
+      setAdjustError('Server connection error.');
+    } finally {
+      setIsAdjusting(false);
+    }
+  };
 
   // Increments per request so late responses from superseded fetches
   // (fast typing, fast clicking between products) are ignored.
@@ -209,6 +295,85 @@ export default function ProductsPage() {
         setIsImageLoading(false);
       }
     }
+  };
+
+  const handleUploadImageClick = () => productImageFileInputRef.current?.click();
+
+  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !selectedProductId) return;
+
+    const selectionId = selectionIdRef.current;
+    const form = new FormData();
+    form.append('file', file);
+    setIsImageLoading(true);
+    setImageActionError(null);
+    try {
+      const res = await apiFetch(`/api/products/${selectedProductId}/image/upload`, {
+        method: 'POST',
+        body: form
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setImageActionError(data.error || 'Failed to upload image.');
+        return;
+      }
+      if (selectionId === selectionIdRef.current) {
+        setImageUrl(data.imageUrl ?? null);
+      }
+      queryCache.invalidate(CACHE_KEYS.products);
+    } catch (err) {
+      console.error('Failed to upload image:', err);
+      setImageActionError('Server connection error.');
+    } finally {
+      if (selectionId === selectionIdRef.current) {
+        setIsImageLoading(false);
+      }
+    }
+  };
+
+  const handleSetRemoteImageUrl = async () => {
+    if (!selectedProductId || !remoteImageUrl.trim()) return;
+    const selectionId = selectionIdRef.current;
+    setIsImageLoading(true);
+    setImageActionError(null);
+    try {
+      const res = await apiFetch(`/api/products/${selectedProductId}/image/remote`, {
+        method: 'POST',
+        body: JSON.stringify({ url: remoteImageUrl.trim() })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setImageActionError(data.error || 'Failed to set image from that URL.');
+        return;
+      }
+      if (selectionId === selectionIdRef.current) {
+        setImageUrl(data.imageUrl ?? null);
+      }
+      queryCache.invalidate(CACHE_KEYS.products);
+      setRemoteImageUrl('');
+      setIsRemoteUrlOpen(false);
+    } catch (err) {
+      console.error('Failed to set image from URL:', err);
+      setImageActionError('Server connection error.');
+    } finally {
+      if (selectionId === selectionIdRef.current) {
+        setIsImageLoading(false);
+      }
+    }
+  };
+
+  const handleDownloadQrCode = () => {
+    if (!selectedProduct) return;
+    const canvas = qrCanvasRef.current?.querySelector('canvas');
+    if (!canvas) return;
+    const link = document.createElement('a');
+    link.href = canvas.toDataURL('image/png');
+    link.download = `${selectedProduct.sku}-qr.png`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
   };
 
   const handleProductSaved = (product: Product) => {
@@ -393,16 +558,81 @@ export default function ProductsPage() {
   )}
 </div>
 
-              
+              {canModify && (
+                <div className="mt-2 flex items-center justify-center gap-1">
+                  <input
+                    type="file"
+                    ref={productImageFileInputRef}
+                    style={{ display: 'none' }}
+                    accept="image/*"
+                    onChange={handleImageFileChange}
+                  />
+                  <button
+                    type="button"
+                    title="Upload an image"
+                    className="p-1.5 text-slate-400 hover:text-slate-50 hover:bg-slate-800 rounded transition-colors"
+                    onClick={handleUploadImageClick}
+                  >
+                    <Upload className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    title="Use an image URL"
+                    className={`p-1.5 rounded transition-colors ${
+                      isRemoteUrlOpen ? 'text-blue-400 bg-slate-800' : 'text-slate-400 hover:text-slate-50 hover:bg-slate-800'
+                    }`}
+                    onClick={() => setIsRemoteUrlOpen((v) => !v)}
+                  >
+                    <Link2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {isRemoteUrlOpen && (
+                <div className="mt-2 flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    placeholder="https://…"
+                    value={remoteImageUrl}
+                    onChange={(e) => setRemoteImageUrl(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleSetRemoteImageUrl();
+                      }
+                    }}
+                    className="flex-1 min-w-0 px-2 py-1 bg-slate-900/60 border border-slate-700 rounded text-xs text-slate-50 placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    className="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded transition-colors"
+                    onClick={handleSetRemoteImageUrl}
+                  >
+                    Set
+                  </button>
+                </div>
+              )}
+
+              {imageActionError && <p className="mt-2 text-xs text-red-400 text-center">{imageActionError}</p>}
 
                {selectedProduct && (
-  <div className="mt-6 w-full  flex items-center justify-center p-6">
-    <QRCodeSVG
-      value={selectedProduct.sku}
-      size={240}
-      bgColor="transparent"
-      fgColor="#cbd5e1"
-    />
+  <div className="mt-6 w-full flex flex-col items-center gap-2 p-6">
+    <div ref={qrCanvasRef}>
+      <QRCodeCanvas
+        value={buildProductQrPayload(selectedProduct)}
+        size={240}
+        level="M"
+        bgColor="transparent"
+        fgColor="#cbd5e1"
+      />
+    </div>
+    <button
+      type="button"
+      onClick={handleDownloadQrCode}
+      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-slate-50 hover:bg-slate-800 border border-slate-700 rounded-lg transition-colors"
+    >
+      <Download className="h-3.5 w-3.5" /> Download QR
+    </button>
   </div>
 )}
               </div>
@@ -470,7 +700,54 @@ export default function ProductsPage() {
                         <dt className="text-[11px] text-slate-500 uppercase tracking-wide">Created</dt>
                         <dd className="text-sm text-slate-200 mt-0.5">{formatDate(selectedProduct.createdAt)}</dd>
                       </div>
+                      <div>
+                        <dt className="text-[11px] text-slate-500 uppercase tracking-wide">Stock on Hand</dt>
+                        <dd className={`text-sm font-semibold mt-0.5 ${selectedProduct.stockQuantity > 0 ? 'text-slate-200' : 'text-red-400'}`}>
+                          {selectedProduct.stockQuantity}
+                        </dd>
+                      </div>
                     </dl>
+
+                    {/* Adjust stock — logs an IN/OUT transaction and updates the running quantity */}
+                    <div className="mt-5 pb-5 border-b border-slate-800">
+                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">Adjust Stock</h3>
+                      <form onSubmit={handleAdjustStock} className="flex flex-wrap items-start gap-2">
+                        <div className="flex rounded-lg border border-slate-700 overflow-hidden shrink-0">
+                          {(['In', 'Out'] as const).map((dir) => (
+                            <button
+                              key={dir}
+                              type="button"
+                              className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
+                                adjustDirection === dir
+                                  ? dir === 'In'
+                                    ? 'bg-emerald-600 text-white'
+                                    : 'bg-amber-600 text-white'
+                                  : 'bg-slate-900/60 text-slate-400 hover:text-slate-200'
+                              }`}
+                              onClick={() => setAdjustDirection(dir)}
+                            >
+                              {dir}
+                            </button>
+                          ))}
+                        </div>
+                        <input
+                          type="number"
+                          min={1}
+                          placeholder="Qty"
+                          value={adjustQuantity}
+                          onChange={(e) => setAdjustQuantity(e.target.value)}
+                          className="w-20 px-2.5 py-1.5 bg-slate-900/60 border border-slate-700 rounded-lg text-sm text-slate-50 focus:border-blue-500 focus:outline-none"
+                        />
+                        <button
+                          type="submit"
+                          disabled={isAdjusting}
+                          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          {isAdjusting ? 'Saving…' : 'Log Transaction'}
+                        </button>
+                      </form>
+                      {adjustError && <p className="mt-2 text-xs text-red-400">{adjustError}</p>}
+                    </div>
 
                     <div className="mt-5">
                       <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">
@@ -502,7 +779,7 @@ export default function ProductsPage() {
         </main>
 
         {/* Right: analytics (3) */}
-        <aside className="border-l border-slate-800 flex flex-col min-h-0 overflow-y-auto">
+        <aside className="border-l border-slate-800 flex flex-col min-h-0">
           <div className="px-4 pt-4 pb-3 border-b border-slate-800">
             <h2 className="text-sm font-bold text-slate-200 uppercase tracking-wide">Analytics</h2>
           </div>
@@ -511,6 +788,39 @@ export default function ProductsPage() {
               Products Bought / Week
             </p>
             <MiniLineChart data={weeklyPurchases} height={140} />
+          </div>
+
+          {/* IN/OUT ledger — what's been pulled out and what's come back in */}
+          <div className="px-4 pb-4 flex-1 min-h-0 flex flex-col">
+            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-2">
+              Stock Activity
+            </p>
+            {inventoryHistory.length === 0 ? (
+              <p className="text-xs text-slate-500">No stock movements yet.</p>
+            ) : (
+              <div className="space-y-2 overflow-y-auto">
+                {inventoryHistory.map((tx) => (
+                  <div key={tx.id} className="flex items-start gap-2 text-xs">
+                    <span
+                      className={`shrink-0 mt-0.5 px-1.5 py-0.5 rounded font-bold ${
+                        tx.direction === 'In' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-400'
+                      }`}
+                    >
+                      {tx.direction === 'In' ? 'IN' : 'OUT'}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-slate-200 truncate">
+                        {formatProductName(tx.productName)} <span className="text-slate-500">× {tx.quantity}</span>
+                      </p>
+                      <p className="text-slate-500 truncate">
+                        {tx.performedBy} · {formatDate(tx.occurredAt)}
+                        {tx.reason ? ` · ${tx.reason}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </aside>
       </div>

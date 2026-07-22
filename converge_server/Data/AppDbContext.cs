@@ -27,6 +27,7 @@ namespace converge_server.Data
         public DbSet<DepartmentEmail> DepartmentEmails { get; set; }
         public DbSet<UserNotification> UserNotifications { get; set; }
         public DbSet<GoogleOAuthCredential> GoogleOAuthCredentials { get; set; }
+        public DbSet<InventoryTransaction> InventoryTransactions { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -45,6 +46,9 @@ namespace converge_server.Data
 
             modelBuilder.Entity<UserNotification>()
                 .HasIndex(n => new { n.TargetRole, n.IsRead });
+
+            modelBuilder.Entity<InventoryTransaction>()
+                .HasIndex(t => new { t.ProductId, t.OccurredAt });
         }
     }
 }

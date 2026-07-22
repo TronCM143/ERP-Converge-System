@@ -1,19 +1,29 @@
-import { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
-import { Pencil, Sparkles, X } from 'lucide-react';
-import { apiFetch } from '../../shared/api';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { History, Info, Pencil, Plus, Sparkles, SquarePen, X } from 'lucide-react';
+import { apiFetch, apiJson } from '../../shared/api';
 import { queryCache, CACHE_KEYS } from '../../shared/queryCache';
 import { formatProductName } from '../../shared/formatProductName';
 import { ClientSummary } from '../crm/ClientFormModal';
+import ProductFormModal from '../../inventory/ProductFormModal';
+import { Product as InventoryProduct } from '../../inventory/ProductsPage';
 
-interface Product {
-  id: number;
-  productName: string;
-  category: string;
-  brand: string;
-  model: string;
-  price: number;
-}
+// Reuse the full inventory Product shape directly (specs, subcategory, sku,
+// etc.) instead of a narrower duplicate - GET /api/products already returns
+// every one of these fields, and the hover-spec/edit-product feature below
+// needs specs, which the old narrow local interface didn't carry.
+type Product = InventoryProduct;
+
+const specPairsForDisplay = (specs: string): { key: string; value: string }[] =>
+  specs
+    .split(';')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const sepIndex = part.search(/[=:]/);
+      if (sepIndex === -1) return { key: part, value: '' };
+      return { key: part.slice(0, sepIndex).trim(), value: part.slice(sepIndex + 1).trim() };
+    });
 
 interface ProductDraftRow {
   productId: number | null;
@@ -32,6 +42,31 @@ interface GenerateDraftItem {
   matched: boolean;
   productId: number | null;
   unitPrice: number | null;
+}
+
+interface PastQuotationMaterialItem {
+  productId: number | null;
+  itemName: string;
+  note: string | null;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  taxPercent: number;
+}
+
+interface PastQuotationSummary {
+  id: number;
+  quotationNumber: string;
+  quotationName: string;
+  grandTotal: number;
+  createdAt: string;
+  materialItems: PastQuotationMaterialItem[];
+}
+
+interface ProductSuggestion {
+  title: string;
+  snippet: string;
+  link: string;
 }
 
 // Shape of an existing quotation passed in for editing (matches the API response).
@@ -129,11 +164,63 @@ export default function QuotationFormModal({
   const [originalPrompt, setOriginalPrompt] = useState(quotation?.originalPrompt ?? '');
   const [promptDraft, setPromptDraft] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [contactNumber, setContactNumber] = useState(client?.contactNumber ?? '');
+  const [email, setEmail] = useState(client?.email ?? '');
+  const [pastQuotations, setPastQuotations] = useState<PastQuotationSummary[]>([]);
+
+  // Unmatched ("not in catalog") rows: the "+" popover, its quick-add
+  // in-flight state, the "Add with specs" modal target row, and the
+  // debounced Google suggestion results per row.
+  const [addMenuRowIndex, setAddMenuRowIndex] = useState<number | null>(null);
+  const [isQuickAdding, setIsQuickAdding] = useState(false);
+  const [specModalRowIndex, setSpecModalRowIndex] = useState<number | null>(null);
+  const [suggestionsByRow, setSuggestionsByRow] = useState<Record<number, ProductSuggestion[]>>({});
+  const [suggestingRowIndex, setSuggestingRowIndex] = useState<number | null>(null);
+  const suggestionTimers = useRef<Record<number, number>>({});
+
+  // Matched-row spec hover popover: the product being edited from it.
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const productsById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(suggestionTimers.current).forEach((id) => window.clearTimeout(id));
+    };
+  }, []);
 
   const selectedClient =
     client ??
     clients.find((c) => c.name.toLowerCase() === clientQuery.trim().toLowerCase()) ??
     null;
+
+  // Re-seed the editable contact/email fields whenever the resolved client
+  // changes identity (client list finishes loading, or the user picks a
+  // different client) - but not on every render, so in-progress edits here
+  // aren't clobbered.
+  useEffect(() => {
+    if (selectedClient) {
+      setContactNumber(selectedClient.contactNumber ?? '');
+      setEmail(selectedClient.email ?? '');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClient?.id]);
+
+  // Past quotations for this client, surfaced next to the AI prompt box so
+  // a similar past order can fill the product list without regenerating.
+  useEffect(() => {
+    (async () => {
+      try {
+        const url = selectedClient ? `/api/quotations?clientId=${selectedClient.id}` : '/api/quotations';
+        const res = await apiFetch(url);
+        if (res.ok) {
+          const data: PastQuotationSummary[] = await res.json();
+          setPastQuotations(data);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    })();
+  }, [selectedClient?.id]);
 
   useEffect(() => {
     (async () => {
@@ -179,7 +266,11 @@ export default function QuotationFormModal({
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || 'Failed to generate from prompt.');
       }
-      const draft: { originalPrompt: string; items: GenerateDraftItem[] } = await res.json();
+      const draft: {
+        originalPrompt: string;
+        items: GenerateDraftItem[];
+        labor?: { persons: number | null; days: number | null } | null;
+      } = await res.json();
 
       // Every extracted item becomes a real row, matched or not - an
       // unmatched item still shows up (with its corrected description as
@@ -214,6 +305,12 @@ export default function QuotationFormModal({
       setProductRows(rows.length > 0 ? rows : [emptyProductRow()]);
       setOriginalPrompt(draft.originalPrompt);
 
+      // Labor mentioned in the prompt itself (e.g. "installation for 2 days
+      // 3 people") maps to the Labor section, not a product row - only
+      // overwrite fields the prompt actually specified.
+      if (draft.labor?.persons != null) setLaborPersons(draft.labor.persons);
+      if (draft.labor?.days != null) setLaborDays(draft.labor.days);
+
       if (rows.length === 0) {
         setErrorMessage('Could not find any items in that prompt. Try being more specific.');
       }
@@ -222,6 +319,46 @@ export default function QuotationFormModal({
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  // Excludes the quotation currently being edited, and narrows to whatever
+  // the user's typed in the prompt box once they've started typing -
+  // matching against each past item's name, spec/note, AND quantity (a
+  // word-by-word match, not just "is the whole prompt a substring") so
+  // "5 CCTV 2MP analog camera" can surface a past line item named
+  // differently but specced the same, or quoted at the same quantity.
+  // Otherwise shows the most recent few for this client.
+  const filteredPastQuotations = pastQuotations
+    .filter((q) => !quotation || q.id !== quotation.id)
+    .filter((q) => {
+      const needle = promptDraft.trim().toLowerCase();
+      if (!needle) return true;
+      if (q.quotationName.toLowerCase().includes(needle) || q.quotationNumber.toLowerCase().includes(needle)) {
+        return true;
+      }
+      const tokens = needle.split(/\s+/).filter(Boolean);
+      return q.materialItems.some((mi) => {
+        const itemName = mi.itemName.toLowerCase();
+        const note = (mi.note || '').toLowerCase();
+        if (itemName.includes(needle) || note.includes(needle)) return true;
+        return tokens.some((t) => itemName.includes(t) || note.includes(t) || t === String(mi.quantity));
+      });
+    })
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 5);
+
+  const handleUsePastQuotation = (q: PastQuotationSummary) => {
+    const rows: ProductDraftRow[] = q.materialItems.map((mi) => ({
+      productId: mi.productId,
+      productLabel: formatProductName(mi.itemName),
+      quantity: mi.quantity,
+      unit: mi.unit || 'pcs',
+      unitPrice: mi.unitPrice,
+      taxPercent: mi.taxPercent || 0,
+      note: mi.note || '',
+      showNote: Boolean(mi.note)
+    }));
+    setProductRows(rows.length > 0 ? rows : [emptyProductRow()]);
   };
 
   const handleProductChange = (idx: number, rawValue: string) => {
@@ -240,6 +377,111 @@ export default function QuotationFormModal({
           : row
       )
     );
+
+    // Debounced Google-search suggestions: only worth firing once the text
+    // has stopped resolving to a catalog match and looks like a real query.
+    setSuggestionsByRow((prev) => (prev[idx]?.length ? { ...prev, [idx]: [] } : prev));
+    if (suggestionTimers.current[idx]) {
+      window.clearTimeout(suggestionTimers.current[idx]);
+      delete suggestionTimers.current[idx];
+    }
+    if (matched || rawValue.trim().length < 3) return;
+
+    suggestionTimers.current[idx] = window.setTimeout(async () => {
+      try {
+        setSuggestingRowIndex(idx);
+        const res = await apiFetch(`/api/products/suggestions?q=${encodeURIComponent(rawValue.trim())}`);
+        if (res.ok) {
+          const data: ProductSuggestion[] = await res.json();
+          setSuggestionsByRow((prev) => ({ ...prev, [idx]: data }));
+        }
+      } catch (err) {
+        console.error('Failed to fetch product suggestions:', err);
+      } finally {
+        setSuggestingRowIndex((cur) => (cur === idx ? null : cur));
+      }
+    }, 500);
+  };
+
+  // Fills the search text with a cleaned-up suggestion title (strips a
+  // trailing "- Store Name" / "| Site" suffix common in search results) -
+  // the row stays "unavailable" until the user explicitly adds it via "+".
+  const handlePickSuggestion = (idx: number, suggestion: ProductSuggestion) => {
+    const cleaned = suggestion.title.split(/\s[|\-–]\s/)[0].trim() || suggestion.title;
+    setProductRows((rows) => rows.map((r, i) => (i === idx ? { ...r, productLabel: cleaned, productId: null } : r)));
+    setSuggestionsByRow((prev) => ({ ...prev, [idx]: [] }));
+  };
+
+  const addProductToCatalog = (product: InventoryProduct) => {
+    setProducts((prev) => [...prev, product]);
+    queryCache.set(CACHE_KEYS.products, [...(queryCache.get<Product[]>(CACHE_KEYS.products) ?? []), product]);
+    return product;
+  };
+
+  // "Add" — bare-minimum generic entry, no navigation to Inventory needed.
+  const handleQuickAddProduct = async (idx: number) => {
+    const name = productRows[idx]?.productLabel.trim();
+    if (!name) return;
+    try {
+      setIsQuickAdding(true);
+      const created = await apiJson<InventoryProduct>('/api/products', {
+        method: 'POST',
+        body: JSON.stringify({
+          category: 'Uncategorized',
+          brand: 'Generic',
+          productName: name,
+          price: productRows[idx]?.unitPrice ?? 0
+        })
+      });
+      const asRow = addProductToCatalog(created);
+      setProductRows((rows) =>
+        rows.map((r, i) =>
+          i === idx ? { ...r, productId: asRow.id, productLabel: formatProductName(asRow.productName), unitPrice: asRow.price } : r
+        )
+      );
+      setAddMenuRowIndex(null);
+      setSuggestionsByRow((prev) => ({ ...prev, [idx]: [] }));
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Failed to add product.');
+    } finally {
+      setIsQuickAdding(false);
+    }
+  };
+
+  // "Add with specs" — opens the same product form Inventory uses, prefilled
+  // with the typed name, so specs can be encoded before it's saved.
+  const handleOpenSpecsModal = (idx: number) => {
+    setSpecModalRowIndex(idx);
+    setAddMenuRowIndex(null);
+  };
+
+  const handleSpecsProductSaved = (product: InventoryProduct) => {
+    const idx = specModalRowIndex;
+    setSpecModalRowIndex(null);
+    if (idx === null) return;
+    const asRow = addProductToCatalog(product);
+    setProductRows((rows) =>
+      rows.map((r, i) =>
+        i === idx ? { ...r, productId: asRow.id, productLabel: formatProductName(asRow.productName), unitPrice: asRow.price } : r
+      )
+    );
+    setSuggestionsByRow((prev) => ({ ...prev, [idx]: [] }));
+  };
+
+  // Saved from the spec-hover popover's edit icon - refreshes any row
+  // already pointing at this product in case its name/price changed.
+  const handleProductEdited = (updated: Product) => {
+    setProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+    const cached = queryCache.get<Product[]>(CACHE_KEYS.products) ?? [];
+    queryCache.set(CACHE_KEYS.products, cached.map((p) => (p.id === updated.id ? updated : p)));
+    setProductRows((rows) =>
+      rows.map((r) =>
+        r.productId === updated.id
+          ? { ...r, productLabel: formatProductName(updated.productName), unitPrice: updated.price }
+          : r
+      )
+    );
+    setEditingProduct(null);
   };
 
   const toggleProductNote = (idx: number) => {
@@ -271,6 +513,40 @@ export default function QuotationFormModal({
 
     try {
       setIsSubmitting(true);
+
+      // Contact/email are edited here but live on the Client record itself
+      // (the quotation has no snapshot of its own) - push the change through
+      // the existing client update endpoint before saving the quotation.
+      const trimmedContact = contactNumber.trim();
+      const trimmedEmail = email.trim();
+      if (trimmedContact !== (selectedClient.contactNumber ?? '') || trimmedEmail !== (selectedClient.email ?? '')) {
+        try {
+          const clientRes = await apiFetch(`/api/clients/${selectedClient.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({
+              name: selectedClient.name,
+              address: selectedClient.address,
+              contactPerson: selectedClient.contactPerson || null,
+              contactNumber: trimmedContact || null,
+              email: trimmedEmail || null,
+              notes: selectedClient.notes || null
+            })
+          });
+          if (clientRes.ok) {
+            const updatedClient: ClientSummary = await clientRes.json();
+            setClients((prev) => prev.map((c) => (c.id === updatedClient.id ? updatedClient : c)));
+            const cached = queryCache.get<ClientSummary[]>(CACHE_KEYS.clients);
+            if (cached) {
+              queryCache.set(
+                CACHE_KEYS.clients,
+                cached.map((c) => (c.id === updatedClient.id ? updatedClient : c))
+              );
+            }
+          }
+        } catch (err) {
+          console.error('Failed to update client contact/email:', err);
+        }
+      }
 
       const laborItems =
         laborPersons && laborDays
@@ -385,16 +661,22 @@ export default function QuotationFormModal({
                 ? <span className="text-slate-300">{selectedClient.address}</span>
                 : <span className="text-slate-500">Address</span>}
             </div>
-            <div className="px-3 py-2 bg-slate-900/50 border border-slate-700 rounded">
-              {selectedClient?.contactNumber
-                ? <span className="text-slate-300">{selectedClient.contactNumber}</span>
-                : <span className="text-slate-500">Contact</span>}
-            </div>
-            <div className="px-3 py-2 bg-slate-900/50 border border-slate-700 rounded">
-              {selectedClient?.email
-                ? <span className="text-slate-300">{selectedClient.email}</span>
-                : <span className="text-slate-500">Email</span>}
-            </div>
+            <input
+              type="text"
+              className="w-full px-3 py-2 bg-slate-900/50 border border-slate-600 rounded text-slate-50 placeholder-slate-500 focus:border-blue-500 focus:outline-none transition-colors disabled:opacity-60"
+              placeholder="Contact"
+              value={contactNumber}
+              disabled={!selectedClient}
+              onChange={(e) => setContactNumber(e.target.value)}
+            />
+            <input
+              type="email"
+              className="w-full px-3 py-2 bg-slate-900/50 border border-slate-600 rounded text-slate-50 placeholder-slate-500 focus:border-blue-500 focus:outline-none transition-colors disabled:opacity-60"
+              placeholder="Email"
+              value={email}
+              disabled={!selectedClient}
+              onChange={(e) => setEmail(e.target.value)}
+            />
 
             <textarea
               className="w-full px-3 py-2 bg-slate-900/50 border border-slate-600 rounded text-slate-50 text-sm placeholder-slate-500 focus:border-blue-500 focus:outline-none transition-colors resize-none overflow-hidden"
@@ -432,6 +714,40 @@ export default function QuotationFormModal({
                 )}
               </motion.button>
             </div>
+
+            {filteredPastQuotations.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
+                  <History className="h-3 w-3" /> Past Quotations
+                </p>
+                <div className="space-y-1 max-h-44 overflow-y-auto pr-0.5">
+                  {filteredPastQuotations.map((q) => (
+                    <button
+                      key={q.id}
+                      type="button"
+                      title="Fill the product list from this quotation"
+                      onClick={() => handleUsePastQuotation(q)}
+                      className="w-full text-left px-2.5 py-1.5 bg-slate-900/50 border border-slate-700 rounded hover:border-blue-500 hover:bg-slate-900 transition-colors"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-medium text-slate-200 truncate">
+                          {q.quotationName || q.quotationNumber}
+                        </span>
+                        <span className="text-[11px] text-slate-500 shrink-0">{peso(q.grandTotal)}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 mt-0.5">
+                        <span className="text-[10px] text-slate-500">
+                          {q.quotationNumber} · {q.materialItems.length} item(s)
+                        </span>
+                        <span className="text-[10px] text-slate-500">
+                          {new Date(q.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Middle column: product rows */}
@@ -480,11 +796,72 @@ export default function QuotationFormModal({
                       <input
                         type="text"
                         list="quotation-product-list"
-                        className="w-full px-3 py-2 pr-8 bg-transparent text-slate-50 text-sm placeholder-slate-500 focus:outline-none"
+                        className={`w-full px-3 py-2 bg-transparent text-slate-50 text-sm placeholder-slate-500 focus:outline-none ${
+                          isUnavailable || row.productId ? 'pr-14' : 'pr-8'
+                        }`}
                         placeholder="search..."
                         value={row.productLabel}
                         onChange={(e) => handleProductChange(idx, e.target.value)}
                       />
+                      {isUnavailable && (
+                        <button
+                          type="button"
+                          className="absolute right-8 top-1/2 -translate-y-1/2 text-slate-400 hover:text-emerald-400 transition-colors"
+                          title="Add this item to Inventory"
+                          onClick={() => setAddMenuRowIndex((cur) => (cur === idx ? null : idx))}
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      {row.productId && (
+                        <div className="absolute right-8 top-1/2 -translate-y-1/2 group/spec">
+                          <Info className="h-3.5 w-3.5 text-slate-400 hover:text-blue-400 transition-colors cursor-help" />
+                          <div className="hidden group-hover/spec:block absolute right-0 top-full mt-2 w-72 z-20 bg-slate-800 border border-slate-600 rounded-lg shadow-xl p-3">
+                            {(() => {
+                              const product = productsById.get(row.productId!);
+                              if (!product) {
+                                return <p className="text-xs text-slate-400">Product details unavailable.</p>;
+                              }
+                              const specPairs = specPairsForDisplay(product.specs);
+                              return (
+                                <>
+                                  <div className="flex items-start justify-between gap-2 mb-2">
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-semibold text-slate-50 truncate">
+                                        {formatProductName(product.productName)}
+                                      </p>
+                                      <p className="text-[11px] text-slate-400 truncate">
+                                        {product.brand}
+                                        {product.model ? ` · ${product.model}` : ''} · {product.category}
+                                      </p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      title="Edit this product"
+                                      className="p-1 text-slate-400 hover:text-blue-400 hover:bg-slate-700/60 rounded transition-colors shrink-0"
+                                      onClick={() => setEditingProduct(product)}
+                                    >
+                                      <SquarePen className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                  {specPairs.length > 0 ? (
+                                    <dl className="space-y-0.5 max-h-40 overflow-y-auto">
+                                      {specPairs.map((sp, si) => (
+                                        <div key={si} className="flex justify-between gap-2 text-[11px]">
+                                          <dt className="text-slate-500 capitalize shrink-0">{sp.key.replace(/_/g, ' ')}</dt>
+                                          <dd className="text-slate-300 text-right truncate">{sp.value || '—'}</dd>
+                                        </div>
+                                      ))}
+                                    </dl>
+                                  ) : (
+                                    <p className="text-[11px] text-slate-500 italic">No specs recorded.</p>
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      )}
                       <button
                         type="button"
                         className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-300 transition-colors text-sm"
@@ -494,6 +871,48 @@ export default function QuotationFormModal({
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
                     </div>
+
+                    {addMenuRowIndex === idx && (
+                      <div className="flex items-center gap-1.5 px-2 py-1.5 border-t border-slate-700/60 bg-slate-900/70">
+                        <span className="text-[10px] text-slate-500 mr-auto">Add to Inventory:</span>
+                        <button
+                          type="button"
+                          className="px-2 py-1 text-[11px] rounded bg-slate-700 text-slate-200 hover:bg-slate-600 transition-colors disabled:opacity-50"
+                          disabled={isQuickAdding}
+                          onClick={() => handleQuickAddProduct(idx)}
+                        >
+                          {isQuickAdding ? 'Adding…' : 'Add'}
+                        </button>
+                        <button
+                          type="button"
+                          className="px-2 py-1 text-[11px] rounded bg-blue-600 text-white hover:bg-blue-500 transition-colors"
+                          onClick={() => handleOpenSpecsModal(idx)}
+                        >
+                          Add with specs
+                        </button>
+                      </div>
+                    )}
+
+                    {suggestionsByRow[idx]?.length > 0 && (
+                      <div className="border-t border-slate-700/60 max-h-32 overflow-y-auto">
+                        {suggestionsByRow[idx].map((s, si) => (
+                          <button
+                            key={si}
+                            type="button"
+                            title={s.snippet}
+                            className="w-full text-left px-3 py-1.5 text-[11px] text-slate-300 hover:bg-slate-800 transition-colors border-b border-slate-800/60 last:border-b-0 truncate"
+                            onClick={() => handlePickSuggestion(idx, s)}
+                          >
+                            {s.title}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {suggestingRowIndex === idx && !suggestionsByRow[idx]?.length && (
+                      <div className="px-3 py-1 text-[10px] text-slate-500 border-t border-slate-700/60">Searching…</div>
+                    )}
+
                     {row.showNote && (
                       <textarea
                         rows={1}
@@ -679,6 +1098,26 @@ export default function QuotationFormModal({
           </div>
         </form>
       </motion.div>
+
+      <AnimatePresence>
+        {specModalRowIndex !== null && (
+          <ProductFormModal
+            initialProductName={productRows[specModalRowIndex]?.productLabel.trim()}
+            onClose={() => setSpecModalRowIndex(null)}
+            onSaved={handleSpecsProductSaved}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {editingProduct && (
+          <ProductFormModal
+            product={editingProduct}
+            onClose={() => setEditingProduct(null)}
+            onSaved={handleProductEdited}
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

@@ -29,34 +29,65 @@ export default function ClientFormFields({
   const set = (key: keyof ClientFormValues) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     onChange({ ...values, [key]: e.target.value });
 
+  const noRing = 'focus-visible:ring-0 focus-visible:ring-offset-0';
+
   return (
     <div className="space-y-4">
       <div>
         <label className="text-xs font-semibold text-slate-400 uppercase">Company Name</label>
-        <Input type="text" value={values.name} onChange={set('name')} placeholder="e.g. Acme Corp" className="mt-1" />
-      </div>
-      <div>
-        <label className="text-xs font-semibold text-slate-400 uppercase">Address</label>
-        <Input type="text" value={values.address} onChange={set('address')} placeholder="Client address" className="mt-1" />
-      </div>
-      <div>
-        <label className="text-xs font-semibold text-slate-400 uppercase">Contact Person</label>
         <Input
           type="text"
-          value={values.contactPerson}
-          onChange={set('contactPerson')}
-          placeholder="Name of the point of contact"
-          className="mt-1"
+          value={values.name}
+          onChange={set('name')}
+          placeholder="e.g. Acme Corp"
+          className={`mt-1 ${noRing}`}
         />
       </div>
       <div>
-        <label className="text-xs font-semibold text-slate-400 uppercase">Contact Number</label>
-        <Input type="text" value={values.contactNumber} onChange={set('contactNumber')} placeholder="Phone number" className="mt-1" />
+        <label className="text-xs font-semibold text-slate-400 uppercase">Address</label>
+        <Input
+          type="text"
+          value={values.address}
+          onChange={set('address')}
+          placeholder="Client address"
+          className={`mt-1 ${noRing}`}
+        />
       </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="text-xs font-semibold text-slate-400 uppercase">Contact Person</label>
+          <Input
+            type="text"
+            value={values.contactPerson}
+            onChange={set('contactPerson')}
+            placeholder="Point of contact"
+            className={`mt-1 ${noRing}`}
+          />
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-slate-400 uppercase">Contact Number</label>
+          <Input
+            type="text"
+            value={values.contactNumber}
+            onChange={set('contactNumber')}
+            placeholder="Phone number"
+            className={`mt-1 ${noRing}`}
+          />
+        </div>
+      </div>
+
       <div>
         <label className="text-xs font-semibold text-slate-400 uppercase">Email</label>
-        <Input type="text" value={values.email} onChange={set('email')} placeholder="Email address" className="mt-1" />
+        <Input
+          type="text"
+          value={values.email}
+          onChange={set('email')}
+          placeholder="Email address"
+          className={`mt-1 ${noRing}`}
+        />
       </div>
+
       <div>
         <label className="text-xs font-semibold text-slate-400 uppercase">Note</label>
         <textarea
@@ -64,7 +95,7 @@ export default function ClientFormFields({
           onChange={set('notes')}
           placeholder="Any additional notes about this client"
           rows={3}
-          className="mt-1 flex w-full rounded-md border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="mt-1 flex w-full rounded-md border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:border-slate-500"
         />
       </div>
     </div>
