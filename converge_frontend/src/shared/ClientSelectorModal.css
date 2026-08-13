@@ -19,8 +19,8 @@
   gap: 12px;
   padding: 12px 14px;
   border: 1px solid var(--border);
-  border-radius: 6px;
-  background: white;
+  border-radius: 0;
+  background: #27272a;
   cursor: pointer;
   font-size: 13px;
   text-align: left;
@@ -28,9 +28,9 @@
 }
 
 .client-selector__row:hover {
-  background: #f0f7ff;
+  background: #27272a;
   border-color: var(--primary);
-  box-shadow: 0 1px 3px rgba(38, 100, 142, 0.08);
+  box-shadow: 0 1px 3px rgba(82, 82, 91, 0.08);
 }
 
 .client-selector__empty {
@@ -38,4 +38,5 @@
   text-align: center;
   color: var(--muted);
   font-size: 13px;
+  font-style: italic;
 }

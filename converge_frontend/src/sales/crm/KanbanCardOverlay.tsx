@@ -1,5 +1,4 @@
 import React from 'react';
-import { FileText, GripVertical } from 'lucide-react';
 import { GlassMorphCard } from '../../components/ui/glass-morph-card';
 import { ClientSummary } from './ClientFormModal';
 
@@ -7,41 +6,32 @@ interface KanbanCardOverlayProps {
   client: ClientSummary;
 }
 
-const STAGE_GLOW: Record<string, 'cyan' | 'purple' | 'blue' | 'pink' | 'green'> = {
-  Leads: 'cyan',
-  Quote: 'pink',
-  Proposal: 'green',
-  Won: 'purple'
-};
-
+// The lifted card shown while dragging — kept visually identical to KanbanCard
+// (same raised tone, fixed height, type sizes, truncated name, count pinned
+// bottom-right) so the drag preview matches the board exactly.
 export default function KanbanCardOverlay({ client }: KanbanCardOverlayProps) {
   return (
-    <GlassMorphCard
-      glowColor={STAGE_GLOW[client.stage] ?? 'cyan'}
-      tone="dark"
-      radius="md"
-      glow={false}
-      disabled
-      className="rotate-3 w-80 shadow-2xl"
-    >
-      <div className="p-4">
-        <div className="flex items-start justify-between gap-2 mb-2">
-          <h4 className="font-semibold text-slate-50 flex-1">
-            {client.name}
-          </h4>
-          <GripVertical className="h-4 w-4 text-slate-400" />
-        </div>
+    <GlassMorphCard tone="raised" radius="md" disabled className="rotate-3 w-60 shadow-2xl">
+      <div className="p-3 h-[90px] flex flex-col">
+        <h4 className="min-w-0 truncate text-[17px] leading-tight font-light text-zinc-200">
+          {client.name}
+        </h4>
 
         {client.contactPerson && (
-          <p className="text-xs text-slate-300 mb-2">{client.contactPerson}</p>
+          <p className="truncate text-[15px] leading-tight font-light text-zinc-400/80 mt-0.5">
+            {client.contactPerson}
+          </p>
         )}
 
-        <div className="flex items-center justify-between text-xs text-slate-300">
-          <span className="flex items-center gap-1">
-            <FileText className="h-3.5 w-3.5" /> {client.quotationCount}
-          </span>
-          <span>
+        <div className="mt-auto flex items-end justify-between gap-2 text-[14px] leading-tight font-light text-zinc-500">
+          <span className="shrink-0">
             {new Date(client.lastUpdated).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+          </span>
+          {client.stage === 'Lost' && client.lossReason && (
+            <span className="truncate text-rose-300/70">{client.lossReason}</span>
+          )}
+          <span className="shrink-0 ml-auto text-zinc-400 tabular-nums">
+            {client.quotationCount}
           </span>
         </div>
       </div>

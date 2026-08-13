@@ -1,28 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FileSearch, FileText } from 'lucide-react';
+import { CircleCheck, CloudUpload, FileSearch, FileText, Plus, Search, ShoppingCart, Trash2 } from 'lucide-react';
 import { apiFetch } from '../../shared/api';
 import { queryCache, CACHE_KEYS } from '../../shared/queryCache';
 import { useAuth } from '../../app/AuthContext';
 import { ClientSummary } from '../crm/ClientFormModal';
 import QuotationFormModal from './QuotationFormModal';
-import WonEmailDialog, { WonEmailCandidate } from '../crm/WonEmailDialog';
-
-interface NotificationRecipientPreference {
-  type: number;
-  emailEnabled: boolean;
-}
-
-interface NotificationRecipient {
-  id: number;
-  name: string;
-  email: string | null;
-  isActive: boolean;
-  preferences: NotificationRecipientPreference[];
-}
-
-// Matches the backend's NotificationType enum ordinal.
-const WON_APPROVAL_TYPE = 1;
 
 interface QuotationMaterialItem {
   id: number;
@@ -33,6 +16,9 @@ interface QuotationMaterialItem {
   quantity: number;
   unitPrice: number;
   taxPercent: number;
+  // Flat peso discount per line - required by EditableQuotation, which this
+  // shape is passed into when opening the edit form.
+  discountAmount: number;
   lineTotal: number;
 }
 
@@ -51,6 +37,7 @@ interface Quotation {
   quotationName: string;
   originalPrompt: string | null;
   notes: string | null;
+  salesPerson: string | null;
   clientId: number;
   clientName: string;
   status: string;
@@ -64,6 +51,20 @@ interface Quotation {
 }
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+// Subtle status pill tints — quiet by default, colour only where it means something.
+const statusClass = (s: string) => {
+  switch (s) {
+    case 'Approved':
+      return 'bg-emerald-500/10 text-emerald-300';
+    case 'Sent':
+      return 'bg-zinc-800 text-zinc-200';
+    case 'Rejected':
+      return 'bg-rose-500/10 text-rose-300';
+    default:
+      return 'bg-zinc-700/40 text-zinc-400';
+  }
+};
 
 export default function QuotationsPage({
   client,
@@ -79,6 +80,13 @@ export default function QuotationsPage({
   const { role } = useAuth();
   // Admin gets read-only oversight; only sales staff can create or act on quotations.
   const canManage = role === 'quotation';
+
+  /* One column template shared by the header and every row — the only way the
+     two stay aligned. The Actions column exists only when the user can manage,
+     so read-only viewers get five columns, not an empty gutter. */
+  const gridCols = canManage
+    ? 'grid grid-cols-[110px_minmax(0,1fr)_100px_120px_88px_104px]'
+    : 'grid grid-cols-[110px_minmax(0,1fr)_100px_120px_88px]';
   // Seeded from the session cache so revisiting a client's profile shows
   // their quotations instantly.
   const [quotations, setQuotations] = useState<Quotation[]>(
@@ -91,13 +99,14 @@ export default function QuotationsPage({
   const [editingQuotation, setEditingQuotation] = useState<Quotation | null>(null);
   // Quotation id awaiting "send to purchasing" confirmation.
   const [confirmSendId, setConfirmSendId] = useState<number | null>(null);
+  // Quotation awaiting delete confirmation.
+  const [confirmDelete, setConfirmDelete] = useState<Quotation | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  // Pending "Approve -> Won" action, awaiting the recipient-picker dialog.
-  const [approveDialogState, setApproveDialogState] = useState<{
-    quotationId: number;
-    quotationName: string;
-    candidates: WonEmailCandidate[];
-  } | null>(null);
+  // Which quotation PDFs (by lowercased filename) already live in the client's
+  // Drive folder — drives the ✓ / save-to-Drive indicator per row.
+  const [driveFiles, setDriveFiles] = useState<Set<string>>(new Set());
+  const [driveConfigured, setDriveConfigured] = useState(false);
+  const [savingDriveId, setSavingDriveId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!errorMessage && !successMessage) return;
@@ -114,6 +123,7 @@ export default function QuotationsPage({
     // the fresh fetch replaces them.
     setQuotations(queryCache.get<Quotation[]>(CACHE_KEYS.quotationsForClient(client.id)) ?? []);
     fetchQuotations();
+    fetchDriveFiles();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client.id]);
 
@@ -140,6 +150,46 @@ export default function QuotationsPage({
     }
   };
 
+  // The set of PDF filenames present in this client's Drive folder, so each row
+  // can show whether its quotation is already archived there.
+  const fetchDriveFiles = async () => {
+    try {
+      const res = await apiFetch(`/api/drive/clients/${client.id}/quotations`);
+      if (res.ok) {
+        const data = await res.json();
+        setDriveConfigured(Boolean(data.configured));
+        const names = (Array.isArray(data.files) ? data.files : []).map((f: { name?: string }) =>
+          (f.name || '').toLowerCase()
+        );
+        setDriveFiles(new Set<string>(names));
+      }
+    } catch {
+      // best-effort; the indicator just stays in its default state
+    }
+  };
+
+  const handleSaveToDrive = async (q: Quotation) => {
+    setSavingDriveId(q.id);
+    setErrorMessage(null);
+    try {
+      const res = await apiFetch(`/api/quotations/${q.id}/save-to-drive`, { method: 'POST' });
+      if (res.ok) {
+        setSuccessMessage('Saved to Drive.');
+        await fetchDriveFiles();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setErrorMessage(err.error || 'Failed to save to Drive.');
+      }
+    } catch (err) {
+      console.error(err);
+      setErrorMessage('Server connection error.');
+    } finally {
+      setSavingDriveId(null);
+    }
+  };
+
+  const isInDrive = (q: Quotation) => driveFiles.has(`${q.quotationNumber}.pdf`.toLowerCase());
+
   const filteredQuotations = quotations.filter((q) => {
     const needle = searchQuery.trim().toLowerCase();
     if (!needle) return true;
@@ -156,6 +206,10 @@ export default function QuotationsPage({
     setEditingQuotation(null);
     await fetchQuotations();
     onQuotationChanged?.();
+    // The PDF auto-uploads to Drive in the background — poll so the ✓ appears
+    // without a manual refresh.
+    fetchDriveFiles();
+    window.setTimeout(fetchDriveFiles, 6000);
   };
 
   const handleSendToPurchasing = async (quotationId: number) => {
@@ -185,20 +239,27 @@ export default function QuotationsPage({
     await handleSendToPurchasing(id);
   };
 
-  const performApprove = async (quotationId: number, emails: string[]) => {
+
+
+
+
+  // Advances the client to the Proposal stage (the "→" quick action). All
+  // quotations here belong to this one client, so it's a client-level move.
+
+  const handleConfirmDelete = async () => {
+    if (!confirmDelete) return;
+    const quotationId = confirmDelete.id;
+    setConfirmDelete(null);
     try {
       setIsLoading(true);
-      const res = await apiFetch(`/api/quotations/${quotationId}/approve`, {
-        method: 'POST',
-        body: JSON.stringify({ emails })
-      });
+      const res = await apiFetch(`/api/quotations/${quotationId}`, { method: 'DELETE' });
       if (res.ok) {
-        setSuccessMessage(emails.length > 0 ? `Approved — email sent to ${emails.length} recipient(s).` : 'Approved.');
+        setSuccessMessage('Quotation deleted.');
         await fetchQuotations();
         onQuotationChanged?.();
       } else {
         const err = await res.json().catch(() => ({}));
-        setErrorMessage(err.error || 'Failed to approve quotation.');
+        setErrorMessage(err.error || 'Failed to delete quotation.');
       }
     } catch (err) {
       console.error(err);
@@ -208,94 +269,44 @@ export default function QuotationsPage({
     }
   };
 
-  const handleApproveClick = async (q: Quotation) => {
-    let candidates: WonEmailCandidate[] = [];
-    try {
-      const res = await apiFetch('/api/admin/notification-recipients');
-      if (res.ok) {
-        const recipients: NotificationRecipient[] = await res.json();
-        candidates = recipients
-          .filter((r) => r.isActive && !!r.email)
-          .map((r) => {
-            const pref = r.preferences.find((p) => p.type === WON_APPROVAL_TYPE);
-            return {
-              id: r.id,
-              name: r.name,
-              email: r.email as string,
-              defaultChecked: pref?.emailEnabled ?? true
-            };
-          });
-      }
-    } catch (err) {
-      console.error('Failed to load notification recipients:', err);
-    }
-    setApproveDialogState({ quotationId: q.id, quotationName: q.quotationName, candidates });
-  };
-
-  const handleApproveConfirm = (emails: string[]) => {
-    if (!approveDialogState) return;
-    const { quotationId } = approveDialogState;
-    setApproveDialogState(null);
-    void performApprove(quotationId, emails);
-  };
-
-  const handleApproveSkip = () => {
-    if (!approveDialogState) return;
-    const { quotationId } = approveDialogState;
-    setApproveDialogState(null);
-    void performApprove(quotationId, []);
-  };
-
-  const handleReject = async (quotationId: number) => {
-    if (!window.confirm('Reject this quotation? The client stage will not change.')) return;
-    try {
-      setIsLoading(true);
-      const res = await apiFetch(`/api/quotations/${quotationId}/reject`, { method: 'POST' });
-      if (res.ok) {
-        setSuccessMessage('Quotation rejected.');
-        await fetchQuotations();
-        onQuotationChanged?.();
-      } else {
-        const err = await res.json().catch(() => ({}));
-        setErrorMessage(err.error || 'Failed to reject quotation.');
-      }
-    } catch (err) {
-      console.error(err);
-      setErrorMessage('Server connection error.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   return (
-    <div>
-      {/* Compact header: title + count + search + action in one row */}
-     <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-  <h2 className="text-xl font-bold text-slate-50">
-    Quotations
-  </h2>
+    <div className="flex flex-col h-full min-h-0">
+      {/* Header: title + count on the left, search + New on the right. Static. */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4 shrink-0">
+        <div className="flex items-center gap-2">
+          <h2 className="text-xl font-semibold text-zinc-100 tracking-[0.02em]">Quotations</h2>
+          {quotations.length > 0 && (
+            <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-[11px] font-medium text-zinc-400 tabular-nums">
+              {quotations.length}
+            </span>
+          )}
+        </div>
 
-  <div className="flex items-center gap-5">
-    <input
-      type="text"
-      className="px-10 py-2 text-sm bg-slate-900/50 border border-slate-700 rounded-lg text-slate-50 placeholder-slate-500 focus:border-blue-500 focus:outline-none w-full max-w-[220px] transition-colors"
-      placeholder="Search quotations…"
-      value={searchQuery}
-      onChange={(e) => setSearchQuery(e.target.value)}
-    />
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500 pointer-events-none" />
+            <input
+              type="text"
+              className="w-[200px] pl-9 pr-3 py-1.5 text-sm bg-zinc-900/50 border border-zinc-800 rounded-lg text-zinc-100 placeholder-zinc-600 focus:border-zinc-400 focus:outline-none transition-colors"
+              placeholder="Search…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
 
-    {canManage && (
-      <motion.button
-        className="px-5 py-2 text-sm bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-lg hover:shadow-lg hover:shadow-blue-500/20 transition-all font-semibold"
-        type="button"
-        whileTap={{ scale: 0.90 }}
-        onClick={() => setIsModalOpen(true)}
-      >
-        + 
-      </motion.button>
-    )}
-  </div>
-</div>
+          {canManage && (
+            <motion.button
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-zinc-100 hover:bg-white text-zinc-950 rounded-lg transition-colors font-medium"
+              type="button"
+              whileTap={{ scale: 0.94 }}
+              onClick={() => setIsModalOpen(true)}
+            >
+              <Plus className="h-4 w-4" /> New Quotation
+            </motion.button>
+          )}
+        </div>
+      </div>
 
       <div aria-live="polite">
         <AnimatePresence>
@@ -322,102 +333,127 @@ export default function QuotationsPage({
         </AnimatePresence>
       </div>
 
-      <div>
+      <div className="flex-1 min-h-0 flex flex-col">
         {quotations.length === 0 && !isLoading ? (
           <div className="text-center py-10">
-            <FileText className="h-9 w-9 mx-auto mb-3 text-slate-600" />
-            <p className="text-slate-400 text-sm">No quotations yet.</p>
+            <FileText className="h-9 w-9 mx-auto mb-3 text-zinc-600" />
+            <p className="text-zinc-400 text-sm italic">No quotations yet.</p>
           </div>
         ) : filteredQuotations.length === 0 ? (
           <div className="text-center py-10">
-            <FileSearch className="h-9 w-9 mx-auto mb-3 text-slate-600" />
-            <p className="text-slate-400 text-sm">No quotations match "{searchQuery}".</p>
+            <FileSearch className="h-9 w-9 mx-auto mb-3 text-zinc-600" />
+            <p className="text-zinc-400 text-sm italic">No quotations match "{searchQuery}".</p>
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-slate-800">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-700 bg-slate-900/60">
-                  <th className="px-3 py-2.5 text-left text-xs font-bold text-slate-300 uppercase tracking-wide">Quotation #</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-bold text-slate-300 uppercase tracking-wide">Name</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-bold text-slate-300 uppercase tracking-wide">Grand Total</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-bold text-slate-300 uppercase tracking-wide">Actions</th>
-                  <th className="px-3 py-2.5"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredQuotations.map((q) => (
-                  <React.Fragment key={q.id}>
-                    <tr
-                      className="border-b border-slate-800 hover:bg-slate-800/40 cursor-pointer transition-all duration-200"
-                      onClick={() => {
-                        // Drafts open in the quotation editor pre-filled; anything
-                        // already sent onward opens the read-only detail view.
-                        if (canManage && q.status === 'Draft') {
-                          setEditingQuotation(q);
-                        } else {
-                          onQuotationSelect?.(q.id);
-                        }
-                      }}
-                    >
-                      <td className="px-3 py-3">
+          <div className="flex flex-col min-h-0 flex-1">
+            {/* Header and rows share ONE grid template (see gridCols), including
+                the Actions column. Previously the header was a 5-column grid plus
+                a 140px spacer while each row carried a 104px action group on the
+                LEFT and an 80px one on the right — so no column ever lined up
+                with its heading. */}
+            <div className={`${gridCols} gap-3 mb-1.5 shrink-0 px-3 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider`}>
+              <span>Quotation #</span>
+              <span>Name</span>
+              <span>Date</span>
+              <span className="text-right">Amount</span>
+              <span className="text-right">Status</span>
+              {canManage && <span className="text-right">Actions</span>}
+            </div>
+
+            {/* Only this list scrolls. */}
+            <div className="flex-1 min-h-0 overflow-y-auto space-y-1.5 pr-1">
+              {filteredQuotations.map((q) => (
+                /* One row, one grid — no side gutters. The Approve (✓), Reject (×)
+                   and Move-to-Proposal (→) controls that used to sit on the left
+                   are gone: those advance the deal, which is CRM's job, and
+                   duplicating them here meant two places could change a client's
+                   stage. Actions now holds record-level actions only. */
+                <div
+                  key={q.id}
+                  className={`${gridCols} gap-3 items-center border-y border-zinc-800 bg-zinc-900/40 px-3 py-2.5 cursor-pointer hover:bg-zinc-800/40 transition-colors`}
+                  onClick={() => {
+                    // Drafts open in the quotation editor pre-filled; anything
+                    // already sent onward opens the read-only detail view.
+                    if (canManage && q.status === 'Draft') {
+                      setEditingQuotation(q);
+                    } else {
+                      onQuotationSelect?.(q.id);
+                    }
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="quotation-number-link font-semibold text-zinc-100 hover:text-white text-left truncate"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onQuotationSelect?.(q.id);
+                    }}
+                  >
+                    {q.quotationNumber}
+                  </button>
+                  <span className="text-zinc-300 truncate">{q.quotationName}</span>
+                  <span className="text-xs text-zinc-500 whitespace-nowrap">
+                    {new Date(q.createdAt).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' })}
+                  </span>
+                  <span className="text-right font-semibold text-zinc-100 tabular-nums whitespace-nowrap">
+                    {peso(q.grandTotal)}
+                  </span>
+                  <div className="flex justify-end">
+                    <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${statusClass(q.status)}`}>
+                      {q.status}
+                    </span>
+                  </div>
+
+                  {canManage && (
+                    <div className="flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
+                      {/* Kept deliberately, unlike ✓ / × / →: this hands the
+                          quotation to the purchasing module, and CRM has no
+                          equivalent — dropping it would leave no way at all to
+                          raise a purchase request from a quotation. */}
+                      {q.status === 'Draft' && client.stage === 'Proposal' && (
                         <button
                           type="button"
-                          className="quotation-number-link font-bold text-blue-400 hover:text-blue-300"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onQuotationSelect?.(q.id);
-                          }}
+                          title="Send to Purchasing"
+                          disabled={isLoading}
+                          onClick={() => setConfirmSendId(q.id)}
+                          className="p-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors disabled:opacity-50"
                         >
-                          {q.quotationNumber}
+                          <ShoppingCart className="h-4 w-4" />
                         </button>
-                      </td>
-                      <td className="px-3 py-3 font-medium text-slate-50">{q.quotationName}</td>
-                      <td className="px-3 py-3 font-semibold text-slate-200">{peso(q.grandTotal)}</td>
-                      <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                        {/* Sending to purchasing is only offered once the client
-                            has reached the Proposal stage of the pipeline. */}
-                        {canManage && q.status === 'Draft' && client.stage === 'Proposal' ? (
-                          <motion.button
-                            className="px-3 py-1 bg-blue-600/80 hover:bg-blue-600 text-white text-xs font-medium rounded transition-all"
-                            type="button"
-                            disabled={isLoading}
-                            onClick={() => setConfirmSendId(q.id)}
-                            whileTap={{ scale: 0.95 }}
-                          >
-                            Send to Purchase
-                          </motion.button>
-                        ) : canManage && q.status === 'Sent' ? (
-                          <div className="flex items-center gap-1.5">
-                            <motion.button
-                              className="px-3 py-1 bg-emerald-600/80 hover:bg-emerald-600 text-white text-xs font-medium rounded transition-all"
-                              type="button"
-                              disabled={isLoading}
-                              onClick={() => void handleApproveClick(q)}
-                              whileTap={{ scale: 0.95 }}
-                            >
-                              Approve
-                            </motion.button>
-                            <motion.button
-                              className="px-3 py-1 bg-slate-700 hover:bg-red-600/70 text-slate-200 text-xs font-medium rounded transition-all"
-                              type="button"
-                              disabled={isLoading}
-                              onClick={() => void handleReject(q.id)}
-                              whileTap={{ scale: 0.95 }}
-                            >
-                              Reject
-                            </motion.button>
-                          </div>
+                      )}
+                      {/* Drive status: a check when the PDF is already archived in
+                          Drive, otherwise a one-click "save to Drive". Both are
+                          record actions on the quotation file, not workflow. */}
+                      {driveConfigured &&
+                        (isInDrive(q) ? (
+                          <span title="Saved to Google Drive" className="p-1.5 text-emerald-400">
+                            <CircleCheck className="h-4 w-4" />
+                          </span>
                         ) : (
-                          <span className="text-xs text-slate-600">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-3 text-right text-xs text-slate-400">{q.status}</td>
-                    </tr>
-                  </React.Fragment>
-                ))}
-              </tbody>
-            </table>
+                          <button
+                            type="button"
+                            title="Save to Google Drive"
+                            disabled={savingDriveId === q.id}
+                            onClick={() => void handleSaveToDrive(q)}
+                            className="p-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors disabled:opacity-50"
+                          >
+                            <CloudUpload className="h-4 w-4" />
+                          </button>
+                        ))}
+                      <button
+                        type="button"
+                        title="Delete quotation (also removes its PDF from Drive)"
+                        disabled={isLoading}
+                        onClick={() => setConfirmDelete(q)}
+                        className="p-1.5 rounded text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -447,25 +483,25 @@ export default function QuotationsPage({
             onClick={() => setConfirmSendId(null)}
           >
             <motion.div
-              className="bg-slate-800 border border-slate-700 rounded-lg shadow-2xl p-6 w-full max-w-sm"
+              className="bg-zinc-800 border border-zinc-700 rounded-lg shadow-2xl p-6 w-full max-w-sm"
               initial={{ opacity: 0, y: 12, scale: 0.97 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 8, scale: 0.97 }}
               onClick={(e) => e.stopPropagation()}
             >
-              <h3 className="text-lg font-bold text-slate-50 mb-2">Send to Purchasing?</h3>
+              <h3 className="text-lg font-bold text-zinc-50 mb-2">Send to Purchasing?</h3>
              
               <div className="flex gap-2 justify-end">
                 <button
                   type="button"
-                  className="px-4 py-2 text-sm bg-slate-700 text-slate-300 hover:bg-slate-600 rounded transition-colors"
+                  className="px-4 py-2 text-sm bg-zinc-700 text-zinc-300 hover:bg-zinc-600 rounded transition-colors"
                   onClick={() => setConfirmSendId(null)}
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  className="px-4 py-2 text-sm bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded hover:shadow-lg hover:shadow-blue-500/20 transition-all disabled:opacity-50"
+                  className="px-4 py-2 text-sm bg-zinc-100 text-zinc-950 rounded hover:shadow-[0_0_20px_rgba(255,255,255,0.15)] transition-all disabled:opacity-50"
                   disabled={isLoading}
                   onClick={handleConfirmSend}
                 >
@@ -475,14 +511,44 @@ export default function QuotationsPage({
             </motion.div>
           </motion.div>
         )}
-        {approveDialogState && (
-          <WonEmailDialog
-            clientName={approveDialogState.quotationName}
-            candidates={approveDialogState.candidates}
-            onConfirm={handleApproveConfirm}
-            onSkip={handleApproveSkip}
-            onCancel={() => setApproveDialogState(null)}
-          />
+        {confirmDelete && (
+          <motion.div
+            className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setConfirmDelete(null)}
+          >
+            <motion.div
+              className="bg-zinc-800 border border-zinc-700 rounded-lg shadow-2xl p-6 w-full max-w-sm"
+              initial={{ opacity: 0, y: 12, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.97 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-lg font-bold text-zinc-50 mb-2">Delete {confirmDelete.quotationNumber}?</h3>
+              <p className="text-sm text-zinc-400 mb-4">
+                This removes the quotation from the system and deletes its PDF from Google Drive. This can't be undone.
+              </p>
+              <div className="flex gap-2 justify-end">
+                <button
+                  type="button"
+                  className="px-4 py-2 text-sm bg-zinc-700 text-zinc-300 hover:bg-zinc-600 rounded transition-colors"
+                  onClick={() => setConfirmDelete(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="px-4 py-2 text-sm bg-gradient-to-r from-red-600 to-red-500 text-white rounded hover:shadow-lg hover:shadow-red-500/20 transition-all disabled:opacity-50"
+                  disabled={isLoading}
+                  onClick={handleConfirmDelete}
+                >
+                  Delete
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

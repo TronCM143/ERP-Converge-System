@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FileText, Package, RefreshCw, Search, ShoppingCart, StickyNote, User } from 'lucide-react';
+import { RefreshCw, Search } from 'lucide-react';
 import { apiFetch } from './api';
 import { useAuth } from '../app/AuthContext';
 import { formatRelativeTime } from './formatRelativeTime';
@@ -19,13 +19,6 @@ interface ActivityEntry {
   details?: string;
 }
 
-const ENTITY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  Client: User,
-  Quotation: FileText,
-  PurchaseRequest: ShoppingCart,
-  Product: Package
-};
-
 const ACTION_LABELS: Record<string, string> = {
   Created: 'created',
   Updated: 'updated',
@@ -38,14 +31,6 @@ const ACTION_LABELS: Record<string, string> = {
   AttachmentAdded: 'attached a document to',
   Submitted: 'submitted'
 };
-
-function actorRole(changedBy: string): 'sales' | 'purchasing' | 'admin' | 'system' {
-  const user = changedBy.toLowerCase();
-  if (user.includes('sales')) return 'sales';
-  if (user.includes('purchas')) return 'purchasing';
-  if (user.includes('admin')) return 'admin';
-  return 'system';
-}
 
 function summarize(entry: ActivityEntry): string {
   const action = ACTION_LABELS[entry.action] ?? entry.action.toLowerCase();
@@ -93,10 +78,16 @@ export default function ActivityFeed({ onlyMine = false }: { onlyMine?: boolean 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onlyMine, username]);
 
+  // One entry open at a time — the point of collapsing is to keep the panel
+  // scannable, which expanding several at once would undo.
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+
   const handleEntryClick = (entry: ActivityEntry) => {
-    if (entry.entityType === 'Client') {
-      navigate(`/sales/clients/${entry.entityId}`);
-    }
+    setExpandedId((cur) => (cur === entry.id ? null : entry.id));
+  };
+
+  const handleOpenClient = (entry: ActivityEntry) => {
+    navigate(`/sales/clients/${entry.entityId}`);
   };
 
   const query = searchQuery.trim().toLowerCase();
@@ -144,31 +135,60 @@ export default function ActivityFeed({ onlyMine = false }: { onlyMine?: boolean 
           <div className="activity-feed__placeholder">{query ? 'No matching activity' : 'No activity yet'}</div>
         ) : (
           filteredEntries.map((entry, index) => {
-            const role = actorRole(entry.changedBy);
-            const clickable = entry.entityType === 'Client';
+            const isExpanded = expandedId === entry.id;
+            const canOpenClient = entry.entityType === 'Client';
+            // Old/new are already folded into the summary for a stage move, so
+            // repeating them below would just restate the line above.
+            const showsValues = entry.action !== 'StageChanged' && (entry.oldValue || entry.newValue);
+            const hasDetail = Boolean(entry.details) || showsValues || canOpenClient;
+
             return (
               <motion.div
                 key={entry.id}
-                className={`activity-feed__entry ${clickable ? 'activity-feed__entry--clickable' : ''}`}
+                className={`activity-feed__entry ${hasDetail ? 'activity-feed__entry--clickable' : ''}`}
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: Math.min(index * 0.02, 0.3) }}
-                onClick={clickable ? () => handleEntryClick(entry) : undefined}
-                role={clickable ? 'button' : undefined}
-                title={entry.details || undefined}
+                onClick={hasDetail ? () => handleEntryClick(entry) : undefined}
+                role={hasDetail ? 'button' : undefined}
+                aria-expanded={hasDetail ? isExpanded : undefined}
               >
-                <div className={`activity-feed__icon activity-feed__icon--${entry.entityType.toLowerCase()}`}>
-                  {(() => {
-                    const Icon = ENTITY_ICONS[entry.entityType] ?? StickyNote;
-                    return <Icon className="h-3.5 w-3.5" />;
-                  })()}
-                </div>
                 <div className="activity-feed__body">
+                  {/* Content and time only — the actor column was dropped. This
+                      feed is already filtered to the signed-in user (onlyMine),
+                      so it printed the same name on every row. */}
                   <div className="activity-feed__line">
-                    <span className={`activity-feed__actor activity-feed__actor--${role}`}>{entry.changedBy}</span>{' '}
                     <span className="activity-feed__summary">{summarize(entry)}</span>
                   </div>
-                  {entry.details && <div className="activity-feed__details">{entry.details}</div>}
+
+                  {/* Collapsed by default: the details line mostly restated the
+                      summary ("Stage changed from Leads to Quote" under "moved
+                      client Leads → Quote"), which doubled the height of every
+                      row for no new information. */}
+                  {isExpanded && (
+                    <div className="activity-feed__detail-panel">
+                      {entry.details && <div className="activity-feed__details">{entry.details}</div>}
+                      {showsValues && (
+                        <div className="activity-feed__details">
+                          {entry.oldValue ? `${entry.oldValue} → ` : ''}
+                          {entry.newValue ?? ''}
+                        </div>
+                      )}
+                      {canOpenClient && (
+                        <button
+                          type="button"
+                          className="activity-feed__open"
+                          onClick={(e) => {
+                            // The row's own handler would collapse this again.
+                            e.stopPropagation();
+                            handleOpenClient(entry);
+                          }}
+                        >
+                          Open client →
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="activity-feed__time">{formatRelativeTime(entry.changedAt)}</div>
               </motion.div>

@@ -12,35 +12,91 @@ html {
     color-scheme: dark;
   }
 
+  /* Wallpaper, heavily darkened. Two stacked backgrounds: a near-opaque zinc
+     wash over the photo, so it reads as texture rather than a picture. Drop the
+     0.94/0.90 alphas toward 0.8 to make it more visible, raise them to hide it. */
   body {
-    @apply bg-gradient-to-br from-slate-900 via-slate-950 to-black text-slate-50;
+    @apply text-zinc-50;
+    background-color: #09090b;
+    background-image:
+      linear-gradient(rgba(9, 9, 11, 0.94), rgba(9, 9, 11, 0.9)),
+      url('/wallpaper.jpg');
+    background-size: cover;
+    background-position: center center;
+    /* Fixed so every surface using .app-surface lines up with the same image
+       instead of each one starting its own copy. */
+    background-attachment: fixed;
+    background-repeat: no-repeat;
   }
 
-  /* Beautiful dark colors */
   * {
     @apply transition-colors duration-200;
   }
+
+  /* Tailwind Preflight's default placeholder is a blue-tinted grey
+     (#9ca3af) - the last stray hue in the build. Override it globally and
+     make placeholders italic, matching the hint/annotation voice below. */
+  input::placeholder,
+  textarea::placeholder {
+    @apply italic text-zinc-600;
+  }
 }
 
-/* Scrollbar styling for dark mode */
+/* Scrollbar: squared-off grey, no pill thumb */
 ::-webkit-scrollbar {
   @apply w-2 h-2;
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-slate-900/50;
+  @apply bg-zinc-900/50;
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-slate-700 hover:bg-slate-600 rounded-full;
+  @apply bg-zinc-700 hover:bg-zinc-600;
 }
 
-/* Selection color */
+/* Selection: inverted monochrome instead of a blue wash */
 ::selection {
-  @apply bg-blue-600 text-white;
+  @apply bg-zinc-200 text-zinc-950;
 }
 
 /* Smooth scrolling */
 html {
   scroll-behavior: smooth;
 }
+
+/* Page shells and the full-screen quotation panel. They used to paint an opaque
+   zinc gradient, which sat on top of the body and hid the wallpaper entirely.
+   Same treatment as body, and `background-attachment: fixed` keeps them all
+   aligned to one continuous image rather than tiling a copy per surface. */
+.app-surface {
+  background-color: #09090b;
+  background-image:
+    linear-gradient(rgba(9, 9, 11, 0.94), rgba(9, 9, 11, 0.9)),
+    url('/wallpaper.jpg');
+  background-size: cover;
+  background-position: center center;
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+}
+
+/* Pipeline trend chart: each series' hover target is a transparent circle on
+   its data points, but later series' area fills are painted over earlier ones
+   and would take the pointer first. Recharts binds its own mouse handlers to
+   the wrapper div (not to these paths), so dropping pointer events here costs
+   nothing and lets the per-point targets win. */
+.pipeline-trend .recharts-area-area,
+.pipeline-trend .recharts-area-curve,
+.pipeline-trend .recharts-cartesian-grid,
+.pipeline-trend .recharts-cartesian-axis {
+  pointer-events: none;
+}
+
+/* ── Italic highlight convention ──────────────────────────────────────────
+   A monochrome UI has no accent color left to lean on, so emphasis is carried
+   by weight and style instead. Italic marks the "secondary / annotated" voice
+   — notes, hints, placeholders, empty and loading states, card/dialog
+   descriptions — so it reads as distinct from primary data without
+   introducing another color. Applied with Tailwind's `italic` utility (or
+   `font-style: italic` in the legacy stylesheets), extending the italic that
+   quotation/PR notes already used. */

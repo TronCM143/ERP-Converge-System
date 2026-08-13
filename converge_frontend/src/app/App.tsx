@@ -3,8 +3,10 @@ import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import ERPLayout from '../layouts/ERPLayout';
 import LoginPage from '../auth/LoginPage';
 import PurchaseRequestsPage from '../purchasing/PurchaseRequestsPage';
+import PurchaseOrderDetailPage from '../purchasing/PurchaseOrderDetailPage';
 import CrmDashboardPage from '../sales/crm/CrmDashboardPage';
 import ClientProfilePage from '../sales/crm/ClientProfilePage';
+import SalesHistoryPage from '../sales/SalesHistoryPage';
 import QuotationsListPage from '../sales/quotation/QuotationsListPage';
 import ProductsPage from '../inventory/ProductsPage';
 import AdminSettingsPage from '../admin/AdminSettingsPage';
@@ -59,6 +61,17 @@ export default function App() {
           }
         />
 
+        {/* Detailed sales reporting, split off the CRM dashboard so that page
+            can stay a workspace. Reached from the "Sales this month" monitor. */}
+        <Route
+          path="/sales/history"
+          element={
+            <RequireRole role={['quotation', 'admin']}>
+              <SalesHistoryPage />
+            </RequireRole>
+          }
+        />
+
         {/* Inventory: viewable by every role; editing is gated to sales + admin in the UI/API */}
         <Route
           path="/inventory"
@@ -75,6 +88,16 @@ export default function App() {
           element={
             <RequireRole role="purchasing">
               <PurchaseRequestsPage />
+            </RequireRole>
+          }
+        />
+        {/* One order's products. Ranked below the static /create redirect by
+            React Router, so that legacy path still wins over this param. */}
+        <Route
+          path="/purchasing/purchase-requests/:purchaseRequestId"
+          element={
+            <RequireRole role="purchasing">
+              <PurchaseOrderDetailPage />
             </RequireRole>
           }
         />

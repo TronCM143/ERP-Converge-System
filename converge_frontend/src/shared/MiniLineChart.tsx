@@ -15,7 +15,7 @@ interface Props {
 // Borderless trend line — no axis box, just the line + a recessive baseline,
 // with a hover crosshair + tooltip. Single series, so no legend: the
 // heading the caller places above it names what's being shown.
-export default function MiniLineChart({ data, color = '#38bdf8', height = 96, valueFormatter }: Props) {
+export default function MiniLineChart({ data, color = '#d4d4d8', height = 96, valueFormatter }: Props) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
   const width = 320;
@@ -63,7 +63,7 @@ export default function MiniLineChart({ data, color = '#38bdf8', height = 96, va
         onMouseMove={handleMove}
         onMouseLeave={() => setHoverIndex(null)}
       >
-        <line x1={padX} y1={padTop + plotH} x2={width - padX} y2={padTop + plotH} stroke="#334155" strokeWidth={1} />
+        <line x1={padX} y1={padTop + plotH} x2={width - padX} y2={padTop + plotH} stroke="#3f3f46" strokeWidth={1} />
 
         {hovered && (
           <line
@@ -71,7 +71,7 @@ export default function MiniLineChart({ data, color = '#38bdf8', height = 96, va
             y1={padTop}
             x2={hovered.x}
             y2={padTop + plotH}
-            stroke="#475569"
+            stroke="#52525b"
             strokeWidth={1}
             strokeDasharray="3 3"
           />
@@ -87,7 +87,7 @@ export default function MiniLineChart({ data, color = '#38bdf8', height = 96, va
             cx={p.x}
             cy={p.y}
             r={hoverIndex === i ? 4 : 2.5}
-            fill={hoverIndex === i ? color : '#0f172a'}
+            fill={hoverIndex === i ? color : '#18181b'}
             stroke={color}
             strokeWidth={1.5}
           />
@@ -97,7 +97,7 @@ export default function MiniLineChart({ data, color = '#38bdf8', height = 96, va
           const isLast = i === points.length - 1;
           if (i % labelStep !== 0 && !isLast) return null;
           return (
-            <text key={i} x={p.x} y={height - 4} fontSize={9} fill="#64748b" textAnchor="middle">
+            <text key={i} x={p.x} y={height - 4} fontSize={9} fill="#71717a" textAnchor="middle">
               {p.label}
             </text>
           );
@@ -106,11 +106,11 @@ export default function MiniLineChart({ data, color = '#38bdf8', height = 96, va
 
       {hovered && (
         <div
-          className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-[calc(100%+8px)] bg-slate-800 border border-slate-700 rounded px-2 py-1 text-[11px] text-slate-100 shadow-lg whitespace-nowrap"
+          className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-[calc(100%+8px)] bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-100 shadow-lg whitespace-nowrap"
           style={{ left: `${(hovered.x / width) * 100}%`, top: `${(hovered.y / height) * 100}%` }}
         >
           <div className="font-semibold">{format(hovered.value)}</div>
-          <div className="text-slate-400">{hovered.label}</div>
+          <div className="text-zinc-400">{hovered.label}</div>
         </div>
       )}
     </div>

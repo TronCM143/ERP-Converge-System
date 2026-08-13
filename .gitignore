@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+converge_server/gen-lang-client-0042965006-49a453ea06dc.json
+converge_server/.env
+converge_server/appsettings.json
+converge_frontend/appsettings.json
+
+converge_frontend/node_modules/
+converge_frontend/dist/
+converge_frontend/.vite/

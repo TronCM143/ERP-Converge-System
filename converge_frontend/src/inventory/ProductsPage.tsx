@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { QRCodeCanvas } from 'qrcode.react';
+import Barcode from 'react-barcode';
 import { Input } from '../components/ui/input';
 import { apiFetch } from '../shared/api';
 import { queryCache, CACHE_KEYS } from '../shared/queryCache';
@@ -7,7 +7,9 @@ import { formatProductName } from '../shared/formatProductName';
 import { useAuth } from '../app/AuthContext';
 import ProductFormModal from './ProductFormModal';
 import MiniLineChart, { MiniLineChartPoint } from '../shared/MiniLineChart';
-import { AlertTriangle, Download, ImageOff, Link2, Loader2, Plus, RefreshCw, Search, Trash2, Upload, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Download, ImageOff, Link2, Loader2, Plus, RefreshCw, Search, Trash2, Upload, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { roleHome } from '../app/roleHome';
 
 // Matches ProductDetailDto — used for both the list (left panel only shows
 // the name) and the selected-product detail (right panel).
@@ -37,6 +39,10 @@ export interface InventoryTransaction {
   quantity: number;
   resultingStock: number;
   reason?: string | null;
+  // Who physically pulled the item out / returned it. Null on rows written
+  // before this was captured.
+  personName?: string | null;
+  // The signed-in user who recorded the movement.
   performedBy: string;
   occurredAt: string;
 }
@@ -91,8 +97,18 @@ type SortOrder = 'newest' | 'oldest';
 
 export default function ProductsPage() {
   const { role } = useAuth();
+  const navigate = useNavigate();
   // Inventory is visible to every role, but only sales and admin can modify it.
   const canModify = role === 'quotation' || role === 'admin';
+
+  // Back button: step back through history when there's somewhere to go back
+  // to, otherwise fall back to the role's home page (inventory is reachable
+  // from every module's header, and can also be opened as a fresh tab, where
+  // history has nothing behind it).
+  const handleBack = () => {
+    if (window.history.length > 1) navigate(-1);
+    else navigate(role ? roleHome(role) : '/', { replace: true });
+  };
 
   // Seed from the session cache so returning to this page renders instantly;
   // the fetch below still revalidates in the background.
@@ -102,8 +118,6 @@ export default function ProductsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('');
-  const [brandFilter, setBrandFilter] = useState('');
   const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
 
   const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
@@ -124,10 +138,8 @@ export default function ProductsPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [weeklyPurchases, setWeeklyPurchases] = useState<MiniLineChartPoint[]>([]);
   const [inventoryHistory, setInventoryHistory] = useState<InventoryTransaction[]>([]);
-  const [adjustDirection, setAdjustDirection] = useState<'In' | 'Out'>('In');
-  const [adjustQuantity, setAdjustQuantity] = useState('');
-  const [isAdjusting, setIsAdjusting] = useState(false);
-  const [adjustError, setAdjustError] = useState<string | null>(null);
+  // Who physically takes the item out or brings it back - not the signed-in
+  // user, who is recorded separately as the person who logged the movement.
 
   useEffect(() => {
     (async () => {
@@ -156,40 +168,6 @@ export default function ProductsPage() {
     fetchInventoryHistory();
   }, []);
 
-  const handleAdjustStock = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedProduct) return;
-    const quantity = parseInt(adjustQuantity, 10);
-    if (!quantity || quantity < 1) {
-      setAdjustError('Enter a quantity of at least 1.');
-      return;
-    }
-
-    setIsAdjusting(true);
-    setAdjustError(null);
-    try {
-      const res = await apiFetch(`/api/products/${selectedProduct.id}/inventory-transactions`, {
-        method: 'POST',
-        body: JSON.stringify({ direction: adjustDirection, quantity })
-      });
-      if (res.ok) {
-        const updated: Product = await res.json();
-        setSelectedProduct(updated);
-        setProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
-        queryCache.invalidate(CACHE_KEYS.products);
-        setAdjustQuantity('');
-        await fetchInventoryHistory();
-      } else {
-        const err = await res.json().catch(() => ({}));
-        setAdjustError(err.error || 'Failed to adjust stock.');
-      }
-    } catch (err) {
-      console.error('Failed to adjust stock:', err);
-      setAdjustError('Server connection error.');
-    } finally {
-      setIsAdjusting(false);
-    }
-  };
 
   // Increments per request so late responses from superseded fetches
   // (fast typing, fast clicking between products) are ignored.
@@ -239,16 +217,8 @@ export default function ProductsPage() {
     return () => window.clearTimeout(t);
   }, [deleteError]);
 
-  const categories = Array.from(new Set(products.map((p) => p.category).filter(Boolean))).sort((a, b) =>
-    a.localeCompare(b)
-  );
-  const brands = Array.from(new Set(products.map((p) => p.brand).filter(Boolean))).sort((a, b) =>
-    a.localeCompare(b)
-  );
 
   let visibleProducts = products;
-  if (categoryFilter) visibleProducts = visibleProducts.filter((p) => p.category === categoryFilter);
-  if (brandFilter) visibleProducts = visibleProducts.filter((p) => p.brand === brandFilter);
   visibleProducts = [...visibleProducts].sort((a, b) => {
     const diff = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     return sortOrder === 'newest' ? diff : -diff;
@@ -412,21 +382,32 @@ export default function ProductsPage() {
   };
 
   const selectClass =
-    'px-2.5 py-1.5 bg-slate-900/60 border border-slate-700 rounded text-slate-300 text-xs focus:border-blue-500 focus:outline-none';
+    'px-2.5 py-1.5 bg-zinc-900/60 border border-zinc-700 rounded text-zinc-300 text-xs focus:border-zinc-300 focus:outline-none';
 
   return (
-    <div className="h-[calc(100vh-65px)] bg-gradient-to-br from-slate-900 via-slate-950 to-black overflow-hidden">
+    <div className="h-[calc(100vh-65px)] app-surface overflow-hidden">
       <div className="h-full grid" style={{ gridTemplateColumns: '3fr 6fr 3fr' }}>
         {/* Left: product list (3) */}
-        <aside className="border-r border-slate-800 flex flex-col min-h-0">
-          <div className="px-4 pt-4 pb-3 border-b border-slate-800 space-y-2.5">
+        <aside className="border-r border-zinc-800 flex flex-col min-h-0">
+          <div className="px-4 pt-4 pb-3 border-b border-zinc-800 space-y-2.5">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold text-slate-200 uppercase tracking-wide">Products</h2>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <button
+                  type="button"
+                  title="Back"
+                  aria-label="Back"
+                  className="p-1.5 -ml-1.5 text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800 transition-colors"
+                  onClick={handleBack}
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+                <h2 className="text-sm font-bold text-zinc-200 uppercase tracking-wide">Products</h2>
+              </div>
               {canModify && (
                 <button
                   type="button"
                   title="Add Product"
-                  className="p-1.5 text-slate-400 hover:text-slate-50 hover:bg-slate-800 rounded transition-colors"
+                  className="p-1.5 text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800 rounded transition-colors"
                   onClick={() => {
                     setEditingProduct(null);
                     setIsFormOpen(true);
@@ -438,7 +419,7 @@ export default function ProductsPage() {
             </div>
 
             <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500" />
               <Input
                 type="text"
                 placeholder="Search products…"
@@ -451,26 +432,6 @@ export default function ProductsPage() {
             <div className="flex gap-1.5">
               <select
                 className={selectClass}
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-              >
-                <option value="">All Categories</option>
-                {categories.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-              <select className={selectClass} value={brandFilter} onChange={(e) => setBrandFilter(e.target.value)}>
-                <option value="">All Brands</option>
-                {brands.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
-              <select
-                className={selectClass}
                 value={sortOrder}
                 onChange={(e) => setSortOrder(e.target.value as SortOrder)}
               >
@@ -480,15 +441,15 @@ export default function ProductsPage() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto divide-y divide-slate-800/70">
+          <div className="flex-1 overflow-y-auto divide-y divide-zinc-800/70">
             {isLoading || isSearching ? (
               Array.from({ length: 10 }).map((_, i) => (
                 <div key={`skeleton-${i}`} className="px-4 py-3">
-                  <div className="h-4 w-full max-w-[220px] bg-slate-800 rounded animate-pulse" />
+                  <div className="h-4 w-full max-w-[220px] bg-zinc-800 rounded animate-pulse" />
                 </div>
               ))
             ) : visibleProducts.length === 0 ? (
-              <div className="px-4 py-10 text-center text-sm text-slate-500">
+              <div className="px-4 py-10 text-center text-sm text-zinc-500">
                 {searchQuery ? 'No products match your search.' : 'No products yet.'}
               </div>
             ) : (
@@ -499,8 +460,8 @@ export default function ProductsPage() {
                   onClick={() => handleSelectProduct(product.id)}
                   className={`w-full text-left px-4 py-3 text-sm transition-colors ${
                     selectedProductId === product.id
-                      ? 'bg-blue-600/20 text-blue-300 border-l-2 border-blue-400'
-                      : 'text-slate-300 hover:bg-slate-800/50 border-l-2 border-transparent'
+                      ? 'bg-zinc-700/40 text-zinc-100 border-l-2 border-zinc-300'
+                      : 'text-zinc-300 hover:bg-zinc-800/50 border-l-2 border-transparent'
                   }`}
                 >
                   {formatProductName(product.productName)}
@@ -513,7 +474,7 @@ export default function ProductsPage() {
         {/* Right: product detail (7) */}
         <main className="overflow-y-auto">
           {!selectedProductId ? (
-            <div className="h-full flex items-center justify-center text-slate-500 text-sm">
+            <div className="h-full flex items-center justify-center text-zinc-500 text-sm">
               Select a product to view details.
             </div>
           ) : (
@@ -521,14 +482,14 @@ export default function ProductsPage() {
               {/* Image */}
               <div className="shrink-0 w-[280px]">
                 <div
-  className={`relative aspect-square w-full bg-slate-900/60 border border-slate-800 rounded-lg overflow-hidden ${
+  className={`relative aspect-square w-full bg-zinc-900/60 border border-zinc-800 rounded-lg overflow-hidden ${
     imageUrl ? "cursor-zoom-in" : ""
   }`}
   onClick={() => imageUrl && setIsZoomOpen(true)}
 >
   {isImageLoading ? (
     <div className="absolute inset-0 flex items-center justify-center">
-      <Loader2 className="h-8 w-8 text-slate-500 animate-spin" />
+      <Loader2 className="h-8 w-8 text-zinc-500 animate-spin" />
     </div>
   ) : imageUrl ? (
     <img
@@ -537,9 +498,9 @@ export default function ProductsPage() {
       className="w-full h-full object-contain"
     />
   ) : (
-    <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-600 gap-2">
+    <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-600 gap-2">
       <ImageOff className="h-8 w-8" />
-      <span className="text-xs">No Image Available</span>
+      <span className="text-xs italic">No Image Available</span>
     </div>
   )}
 
@@ -550,7 +511,7 @@ export default function ProductsPage() {
         e.stopPropagation(); // Prevent opening zoom
         handleRefreshImage();
       }}
-      className="absolute bottom-2 right-2 p-2 rounded-full  hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
+      className="absolute bottom-2 right-2 p-2 rounded-full  hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors"
       title="Search for a different image"
     >
       <RefreshCw className="h-4 w-4" />
@@ -570,7 +531,7 @@ export default function ProductsPage() {
                   <button
                     type="button"
                     title="Upload an image"
-                    className="p-1.5 text-slate-400 hover:text-slate-50 hover:bg-slate-800 rounded transition-colors"
+                    className="p-1.5 text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800 rounded transition-colors"
                     onClick={handleUploadImageClick}
                   >
                     <Upload className="h-3.5 w-3.5" />
@@ -579,7 +540,7 @@ export default function ProductsPage() {
                     type="button"
                     title="Use an image URL"
                     className={`p-1.5 rounded transition-colors ${
-                      isRemoteUrlOpen ? 'text-blue-400 bg-slate-800' : 'text-slate-400 hover:text-slate-50 hover:bg-slate-800'
+                      isRemoteUrlOpen ? 'text-zinc-200 bg-zinc-800' : 'text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800'
                     }`}
                     onClick={() => setIsRemoteUrlOpen((v) => !v)}
                   >
@@ -601,11 +562,11 @@ export default function ProductsPage() {
                         handleSetRemoteImageUrl();
                       }
                     }}
-                    className="flex-1 min-w-0 px-2 py-1 bg-slate-900/60 border border-slate-700 rounded text-xs text-slate-50 placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+                    className="flex-1 min-w-0 px-2 py-1 bg-zinc-900/60 border border-zinc-700 rounded text-xs text-zinc-50 placeholder-zinc-500 focus:border-zinc-300 focus:outline-none"
                   />
                   <button
                     type="button"
-                    className="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded transition-colors"
+                    className="px-2 py-1 bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-medium rounded transition-colors"
                     onClick={handleSetRemoteImageUrl}
                   >
                     Set
@@ -617,21 +578,29 @@ export default function ProductsPage() {
 
                {selectedProduct && (
   <div className="mt-6 w-full flex flex-col items-center gap-2 p-6">
+    {/* Barcode, not a QR: it encodes the SKU alone, which is what a handheld
+        scanner reads. The old QR packed the whole product record as JSON -
+        useful to a phone camera, useless to warehouse scanning hardware. */}
     <div ref={qrCanvasRef}>
-      <QRCodeCanvas
-        value={buildProductQrPayload(selectedProduct)}
-        size={240}
-        level="M"
-        bgColor="transparent"
-        fgColor="#cbd5e1"
+      <Barcode
+        value={selectedProduct.sku || `SKU-${selectedProduct.id}`}
+        format="CODE128"
+        renderer="canvas"
+        width={2}
+        height={80}
+        displayValue
+        background="transparent"
+        lineColor="#d4d4d8"
+        fontOptions=""
+        textMargin={6}
       />
     </div>
     <button
       type="button"
       onClick={handleDownloadQrCode}
-      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-slate-50 hover:bg-slate-800 border border-slate-700 rounded-lg transition-colors"
+      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:text-zinc-50 hover:bg-zinc-800 border border-zinc-700 rounded-lg transition-colors"
     >
-      <Download className="h-3.5 w-3.5" /> Download QR
+      <Download className="h-3.5 w-3.5" /> Download Barcode
     </button>
   </div>
 )}
@@ -641,20 +610,20 @@ export default function ProductsPage() {
               <div className="flex-1 min-w-0">
                 {isDetailLoading || !selectedProduct ? (
                   <div className="space-y-3">
-                    <div className="h-7 w-2/3 bg-slate-800 rounded animate-pulse" />
-                    <div className="h-4 w-1/3 bg-slate-800 rounded animate-pulse" />
+                    <div className="h-7 w-2/3 bg-zinc-800 rounded animate-pulse" />
+                    <div className="h-4 w-1/3 bg-zinc-800 rounded animate-pulse" />
                   </div>
                 ) : (
                   <>
                     <div className="flex items-start justify-between gap-4">
-                      <h1 className="text-2xl font-bold text-slate-50">
+                      <h1 className="text-2xl font-bold text-zinc-50">
                         {formatProductName(selectedProduct.productName)}
                       </h1>
                       {canModify && (
                         <div className="shrink-0 flex gap-2">
                           <button
                             type="button"
-                            className="px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-slate-50 hover:bg-slate-800 border border-slate-700 rounded-lg transition-colors"
+                            className="px-3 py-1.5 text-xs font-medium text-zinc-300 hover:text-zinc-50 hover:bg-zinc-800 border border-zinc-700 rounded-lg transition-colors"
                             onClick={() => {
                               setEditingProduct(selectedProduct);
                               setIsFormOpen(true);
@@ -666,7 +635,7 @@ export default function ProductsPage() {
                             type="button"
                             title="Delete product"
                             disabled={isDeleting}
-                            className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-950/30 border border-slate-700 hover:border-red-900 rounded-lg transition-colors disabled:opacity-50"
+                            className="p-1.5 text-zinc-400 hover:text-red-400 hover:bg-red-950/30 border border-zinc-700 hover:border-red-900 rounded-lg transition-colors disabled:opacity-50"
                             onClick={handleDeleteProduct}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -675,97 +644,56 @@ export default function ProductsPage() {
                       )}
                     </div>
 
-                    <dl className="grid grid-cols-2 gap-x-6 gap-y-3 mt-5 pb-5 border-b border-slate-800">
+                    <dl className="grid grid-cols-2 gap-x-6 gap-y-3 mt-5 pb-5 border-b border-zinc-800">
                       <div>
-                        <dt className="text-[11px] text-slate-500 uppercase tracking-wide">Category</dt>
-                        <dd className="text-sm text-slate-200 mt-0.5">{selectedProduct.category || '—'}</dd>
+                        <dt className="text-[11px] text-zinc-500 uppercase tracking-wide">Category</dt>
+                        <dd className="text-sm text-zinc-200 mt-0.5">{selectedProduct.category || '—'}</dd>
                       </div>
                       <div>
-                        <dt className="text-[11px] text-slate-500 uppercase tracking-wide">Brand</dt>
-                        <dd className="text-sm text-slate-200 mt-0.5">{selectedProduct.brand || '—'}</dd>
+                        <dt className="text-[11px] text-zinc-500 uppercase tracking-wide">Brand</dt>
+                        <dd className="text-sm text-zinc-200 mt-0.5">{selectedProduct.brand || '—'}</dd>
                       </div>
                       <div>
-                        <dt className="text-[11px] text-slate-500 uppercase tracking-wide">Model</dt>
-                        <dd className="text-sm text-slate-200 mt-0.5">{selectedProduct.model?.trim() || '—'}</dd>
+                        <dt className="text-[11px] text-zinc-500 uppercase tracking-wide">Model</dt>
+                        <dd className="text-sm text-zinc-200 mt-0.5">{selectedProduct.model?.trim() || '—'}</dd>
                       </div>
                       <div>
-                        <dt className="text-[11px] text-slate-500 uppercase tracking-wide">Price</dt>
-                        <dd className="text-sm text-slate-200 mt-0.5">
+                        <dt className="text-[11px] text-zinc-500 uppercase tracking-wide">Price</dt>
+                        <dd className="text-sm text-zinc-200 mt-0.5">
                           {new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(
                             selectedProduct.price
                           )}
                         </dd>
                       </div>
                       <div>
-                        <dt className="text-[11px] text-slate-500 uppercase tracking-wide">Created</dt>
-                        <dd className="text-sm text-slate-200 mt-0.5">{formatDate(selectedProduct.createdAt)}</dd>
+                        <dt className="text-[11px] text-zinc-500 uppercase tracking-wide">Created</dt>
+                        <dd className="text-sm text-zinc-200 mt-0.5">{formatDate(selectedProduct.createdAt)}</dd>
                       </div>
                       <div>
-                        <dt className="text-[11px] text-slate-500 uppercase tracking-wide">Stock on Hand</dt>
-                        <dd className={`text-sm font-semibold mt-0.5 ${selectedProduct.stockQuantity > 0 ? 'text-slate-200' : 'text-red-400'}`}>
+                        <dt className="text-[11px] text-zinc-500 uppercase tracking-wide">Stock on Hand</dt>
+                        <dd className={`text-sm font-semibold mt-0.5 ${selectedProduct.stockQuantity > 0 ? 'text-zinc-200' : 'text-red-400'}`}>
                           {selectedProduct.stockQuantity}
                         </dd>
                       </div>
                     </dl>
 
-                    {/* Adjust stock — logs an IN/OUT transaction and updates the running quantity */}
-                    <div className="mt-5 pb-5 border-b border-slate-800">
-                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">Adjust Stock</h3>
-                      <form onSubmit={handleAdjustStock} className="flex flex-wrap items-start gap-2">
-                        <div className="flex rounded-lg border border-slate-700 overflow-hidden shrink-0">
-                          {(['In', 'Out'] as const).map((dir) => (
-                            <button
-                              key={dir}
-                              type="button"
-                              className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
-                                adjustDirection === dir
-                                  ? dir === 'In'
-                                    ? 'bg-emerald-600 text-white'
-                                    : 'bg-amber-600 text-white'
-                                  : 'bg-slate-900/60 text-slate-400 hover:text-slate-200'
-                              }`}
-                              onClick={() => setAdjustDirection(dir)}
-                            >
-                              {dir}
-                            </button>
-                          ))}
-                        </div>
-                        <input
-                          type="number"
-                          min={1}
-                          placeholder="Qty"
-                          value={adjustQuantity}
-                          onChange={(e) => setAdjustQuantity(e.target.value)}
-                          className="w-20 px-2.5 py-1.5 bg-slate-900/60 border border-slate-700 rounded-lg text-sm text-slate-50 focus:border-blue-500 focus:outline-none"
-                        />
-                        <button
-                          type="submit"
-                          disabled={isAdjusting}
-                          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition-colors disabled:opacity-50"
-                        >
-                          {isAdjusting ? 'Saving…' : 'Log Transaction'}
-                        </button>
-                      </form>
-                      {adjustError && <p className="mt-2 text-xs text-red-400">{adjustError}</p>}
-                    </div>
-
                     <div className="mt-5">
-                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">
+                      <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-wide mb-3">
                         Specifications
                       </h3>
                       {parseSpecPairs(selectedProduct.specs).length === 0 ? (
-                        <p className="text-sm text-slate-500">No specifications.</p>
+                        <p className="text-sm text-zinc-500 italic">No specifications.</p>
                       ) : (
-                        <dl className="divide-y divide-slate-800 border border-slate-800 rounded-lg overflow-hidden">
+                        <dl className="divide-y divide-zinc-800 border border-zinc-800 rounded-lg overflow-hidden">
                           {parseSpecPairs(selectedProduct.specs).map((pair, i) => (
                             <div
                               key={i}
-                              className="flex items-start justify-between gap-4 px-4 py-2.5 bg-slate-900/30"
+                              className="flex items-start justify-between gap-4 px-4 py-2.5 bg-zinc-900/30"
                             >
-                              <dt className="text-xs text-slate-500 uppercase tracking-wide pt-0.5">
+                              <dt className="text-xs text-zinc-500 uppercase tracking-wide pt-0.5">
                                 {pair.key || 'Note'}
                               </dt>
-                              <dd className="text-sm text-slate-200 text-right">{pair.value}</dd>
+                              <dd className="text-sm text-zinc-200 text-right">{pair.value}</dd>
                             </div>
                           ))}
                         </dl>
@@ -779,24 +707,28 @@ export default function ProductsPage() {
         </main>
 
         {/* Right: analytics (3) */}
-        <aside className="border-l border-slate-800 flex flex-col min-h-0">
-          <div className="px-4 pt-4 pb-3 border-b border-slate-800">
-            <h2 className="text-sm font-bold text-slate-200 uppercase tracking-wide">Analytics</h2>
+        <aside className="border-l border-zinc-800 flex flex-col min-h-0">
+          <div className="px-4 pt-4 pb-3 border-b border-zinc-800">
+            <h2 className="text-sm font-bold text-zinc-200 uppercase tracking-wide">Analytics</h2>
           </div>
           <div className="p-4">
-            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-1">
+            <p className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wide mb-1">
               Products Bought / Week
             </p>
             <MiniLineChart data={weeklyPurchases} height={140} />
           </div>
 
+          {/* The "Log Movement" form that stood here has been removed: recording
+              stock in/out moves to a separate account, so this page is now a
+              read-only view of the catalogue and its ledger. */}
+
           {/* IN/OUT ledger — what's been pulled out and what's come back in */}
-          <div className="px-4 pb-4 flex-1 min-h-0 flex flex-col">
-            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-2">
+          <div className="px-4 pt-4 pb-4 flex-1 min-h-0 flex flex-col">
+            <p className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wide mb-2">
               Stock Activity
             </p>
             {inventoryHistory.length === 0 ? (
-              <p className="text-xs text-slate-500">No stock movements yet.</p>
+              <p className="text-xs text-zinc-500 italic">No stock movements yet.</p>
             ) : (
               <div className="space-y-2 overflow-y-auto">
                 {inventoryHistory.map((tx) => (
@@ -809,11 +741,20 @@ export default function ProductsPage() {
                       {tx.direction === 'In' ? 'IN' : 'OUT'}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="text-slate-200 truncate">
-                        {formatProductName(tx.productName)} <span className="text-slate-500">× {tx.quantity}</span>
+                      <p className="text-zinc-200 truncate">
+                        {formatProductName(tx.productName)} <span className="text-zinc-500">× {tx.quantity}</span>
                       </p>
-                      <p className="text-slate-500 truncate">
-                        {tx.performedBy} · {formatDate(tx.occurredAt)}
+                      {/* Who handled the stock leads, since that's what anyone
+                          reading this ledger is chasing. The signed-in user who
+                          recorded it is secondary, and italic marks it as such. */}
+                      {tx.personName && (
+                        <p className="text-zinc-300 truncate">
+                          {tx.direction === 'In' ? 'Returned by' : 'Pulled out by'}{' '}
+                          <span className="font-medium">{tx.personName}</span>
+                        </p>
+                      )}
+                      <p className="text-zinc-500 truncate">
+                        {formatDate(tx.occurredAt)} · <span className="italic">logged by {tx.performedBy}</span>
                         {tx.reason ? ` · ${tx.reason}` : ''}
                       </p>
                     </div>
@@ -833,7 +774,7 @@ export default function ProductsPage() {
         >
           <button
             type="button"
-            className="absolute top-4 right-4 p-2 text-slate-300 hover:text-slate-50 transition-colors"
+            className="absolute top-4 right-4 p-2 text-zinc-300 hover:text-zinc-50 transition-colors"
             onClick={() => setIsZoomOpen(false)}
           >
             <X className="h-6 w-6" />

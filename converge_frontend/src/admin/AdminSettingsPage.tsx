@@ -214,7 +214,6 @@ export default function AdminSettingsPage() {
                   <th>Name</th>
                   <th>Email</th>
                   <th>Phone</th>
-                  <th>Preferences</th>
                   <th>Active</th>
                   <th>Actions</th>
                 </tr>
@@ -225,19 +224,7 @@ export default function AdminSettingsPage() {
                     <td className="admin-settings__name">{recipient.name}</td>
                     <td className="admin-settings__email">{recipient.email || '—'}</td>
                     <td className="admin-settings__phone">{recipient.phone || '—'}</td>
-                    <td>
-                      <div className="admin-settings__prefs">
-                        {recipient.preferences.map((pref) => (
-                          <div key={pref.type} className="admin-settings__pref-item">
-                            <span className="admin-settings__pref-type">{pref.type}</span>
-                            <span className="admin-settings__pref-badges">
-                              {pref.emailEnabled && <span className="badge"><Mail className="h-3 w-3" /></span>}
-                              {pref.smsEnabled && <span className="badge"><Smartphone className="h-3 w-3" /></span>}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </td>
+                   
                     <td>{recipient.isActive ? <Check className="h-4 w-4 text-emerald-400" /> : '—'}</td>
                     <td>
                       <button
@@ -261,16 +248,12 @@ export default function AdminSettingsPage() {
           <h2>Google Account (Gmail Sending)</h2>
         </div>
 
-        <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '16px' }}>
-          Connect a Google account to send notification emails (Purchase Request PDFs, deal-won
-          notices) through the Gmail API instead of the default provider. Requires{' '}
-          <code>Email__Provider=Gmail</code> set in the backend's <code>.env</code> to actually take effect.
-        </p>
+      
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           {googleStatus?.connected ? (
             <>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#e2e8f0' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#e4e4e7' }}>
                 <Check className="h-4 w-4 text-emerald-400" /> Connected as {googleStatus.email}
               </span>
               <button className="btn btn--small" type="button" onClick={handleDisconnectGoogle}>
@@ -304,7 +287,7 @@ export default function AdminSettingsPage() {
           <h2>Department Emails</h2>
         </div>
 
-        <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '16px' }}>
+        <p style={{ fontSize: '13px', color: '#a1a1aa', marginBottom: '16px' }}>
           One notification address per department. Purchasing gets an email whenever a quotation
           is sent to purchasing.
         </p>
@@ -312,7 +295,7 @@ export default function AdminSettingsPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '480px' }}>
           {departmentEmails.map((d) => (
             <div key={d.department} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <label style={{ width: '100px', fontSize: '13px', fontWeight: 600, color: '#cbd5e1' }}>
+              <label style={{ width: '100px', fontSize: '13px', fontWeight: 600, color: '#d4d4d8' }}>
                 {DEPARTMENT_LABELS[d.department] ?? d.department}
               </label>
               <input
@@ -349,53 +332,7 @@ export default function AdminSettingsPage() {
         </div>
       </div>
 
-      <div className="card">
-        <div className="panel-header">
-          <h2>Test Notifications</h2>
-        </div>
-
-        <p style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '16px' }}>
-          Send a test notification to all active recipients to verify your configuration.
-        </p>
-
-        <div className="admin-settings__test-buttons">
-          <button
-            className="btn"
-            type="button"
-            onClick={() => sendTestNotification('StageChanged')}
-          >
-            Test Stage Changed
-          </button>
-          <button
-            className="btn"
-            type="button"
-            onClick={() => sendTestNotification('WonApproval')}
-          >
-            Test Won Approval
-          </button>
-          <button
-            className="btn"
-            type="button"
-            onClick={() => sendTestNotification('PurchaseRequestCompleted')}
-          >
-            Test PR Completed
-          </button>
-        </div>
-
-        <AnimatePresence>
-          {testResult && (
-            <motion.div
-              className="toast toast--success"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
-              style={{ marginTop: '16px' }}
-            >
-              {testResult.message}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+      
 
       <AnimatePresence>
         {isFormOpen && (

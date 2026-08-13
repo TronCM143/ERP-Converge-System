@@ -9,7 +9,7 @@ interface KanbanCardOverlayProps {
 
 export default function KanbanCardOverlay({ client }: KanbanCardOverlayProps) {
   return (
-    <Card className="shadow-2xl border-primary/50 w-72 rotate-3 bg-white dark:bg-slate-900">
+    <Card className="shadow-2xl border-primary/50 w-72 rotate-3 bg-white dark:bg-zinc-900">
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-2 mb-3">
           <h3 className="font-bold text-sm text-foreground line-clamp-2">

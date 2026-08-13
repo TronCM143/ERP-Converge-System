@@ -1,0 +1,12 @@
+# .NET
+**/bin/
+**/obj/
+
+# Environment/config
+**/.env
+**/appsettings.json
+
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo

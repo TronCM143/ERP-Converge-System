@@ -17,6 +17,9 @@ export interface UserNotificationItem {
   type: string;
   title: string;
   details?: string | null;
+  // Optional in-app destination (relative SPA route). When present the header
+  // dropdown renders the entry as a link that navigates there on click.
+  linkUrl?: string | null;
   isRead: boolean;
   createdAt: string;
 }
@@ -64,7 +67,14 @@ export function useNotificationHub(enabled: boolean) {
     });
 
     connection.start().catch((err) => {
-      console.error('SignalR connection failed:', err);
+      // In dev, React StrictMode mounts this effect twice; the cleanup aborts
+      // the first negotiation and the retry connects fine — that transient
+      // abort isn't a real failure, so don't shout about it.
+      const aborted =
+        err?.name === 'AbortError' || /stopped during negotiation|abort/i.test(err?.message ?? '');
+      if (!aborted) {
+        console.error('SignalR connection failed:', err);
+      }
     });
 
     connectionRef.current = connection;

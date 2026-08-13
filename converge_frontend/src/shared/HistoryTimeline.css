@@ -13,6 +13,7 @@
   text-align: center;
   color: var(--muted);
   font-size: 13px;
+  font-style: italic;
 }
 
 .history-timeline__entry {
@@ -20,8 +21,8 @@
   gap: 12px;
   padding: 12px;
   border-left: 2px solid var(--border);
-  background: var(--subtle-bg, #fafbfc);
-  border-radius: 4px;
+  background: var(--subtle-bg, #fafafa);
+  border-radius: 0;
 }
 
 .history-timeline__dot {
@@ -29,8 +30,8 @@
   width: 8px;
   height: 8px;
   margin-top: 6px;
-  border-radius: 50%;
-  background: #64748b;
+  border-radius: 0;
+  background: #71717a;
 }
 
 .history-timeline__content {
@@ -96,7 +97,7 @@
   font-size: 12px;
   padding: 8px;
   background: rgba(0, 0, 0, 0.02);
-  border-radius: 4px;
+  border-radius: 0;
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   overflow-x: auto;
 }

@@ -69,7 +69,7 @@ export default function QuotationDetailModal({ quotationId, onClose }: Quotation
     <Dialog open={true} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl">
         {isLoading ? (
-          <div className="py-8 text-center text-slate-400">Loading…</div>
+          <div className="py-8 text-center text-zinc-400">Loading…</div>
         ) : quotation ? (
           <>
             <DialogHeader>
@@ -78,27 +78,27 @@ export default function QuotationDetailModal({ quotationId, onClose }: Quotation
                   {quotation.quotationNumber}
                   <Badge>{quotation.status}</Badge>
                 </DialogTitle>
-                <p className="text-slate-400 text-sm mt-1">{quotation.quotationName}</p>
+                <p className="text-zinc-400 text-sm mt-1">{quotation.quotationName}</p>
               </div>
             </DialogHeader>
 
             <div className="space-y-6">
               {/* Products */}
               <div>
-                <h3 className="text-sm font-bold text-slate-300 uppercase mb-3">Products</h3>
+                <h3 className="text-sm font-bold text-zinc-300 uppercase mb-3">Products</h3>
                 <div className="space-y-2">
                   {quotation.materialItems.map((item) => (
-                    <div key={item.id} className="p-3 bg-slate-900/30 rounded border border-slate-800">
+                    <div key={item.id} className="p-3 bg-zinc-900/30 rounded border border-zinc-800">
                       <div className="flex justify-between items-start">
                         <div>
-                          <p className="font-semibold text-slate-50">{item.itemName}</p>
-                          <p className="text-xs text-slate-400 mt-1">
+                          <p className="font-semibold text-zinc-50">{item.itemName}</p>
+                          <p className="text-xs text-zinc-400 mt-1">
                             {item.quantity} {item.unit} × {peso(item.unitPrice)}
                             {item.taxPercent > 0 && ` (+${item.taxPercent}% tax)`}
                           </p>
-                          {item.note && <p className="text-xs text-slate-500 italic mt-1">Note: {item.note}</p>}
+                          {item.note && <p className="text-xs text-zinc-500 italic mt-1">Note: {item.note}</p>}
                         </div>
-                        <p className="font-bold text-slate-50">{peso(item.lineTotal)}</p>
+                        <p className="font-bold text-zinc-50">{peso(item.lineTotal)}</p>
                       </div>
                     </div>
                   ))}
@@ -108,18 +108,18 @@ export default function QuotationDetailModal({ quotationId, onClose }: Quotation
               {/* Labor */}
               {quotation.laborItems.length > 0 && (
                 <div>
-                  <h3 className="text-sm font-bold text-slate-300 uppercase mb-3">Labor</h3>
+                  <h3 className="text-sm font-bold text-zinc-300 uppercase mb-3">Labor</h3>
                   <div className="space-y-2">
                     {quotation.laborItems.map((item) => (
-                      <div key={item.id} className="p-3 bg-slate-900/30 rounded border border-slate-800">
+                      <div key={item.id} className="p-3 bg-zinc-900/30 rounded border border-zinc-800">
                         <div className="flex justify-between items-start">
                           <div>
-                            <p className="font-semibold text-slate-50">{item.description}</p>
-                            <p className="text-xs text-slate-400 mt-1">
+                            <p className="font-semibold text-zinc-50">{item.description}</p>
+                            <p className="text-xs text-zinc-400 mt-1">
                               {item.persons} man × {item.days}d @ {peso(item.ratePerPersonPerDay)}/day
                             </p>
                           </div>
-                          <p className="font-bold text-slate-50">{peso(item.lineTotal)}</p>
+                          <p className="font-bold text-zinc-50">{peso(item.lineTotal)}</p>
                         </div>
                       </div>
                     ))}
@@ -128,21 +128,21 @@ export default function QuotationDetailModal({ quotationId, onClose }: Quotation
               )}
 
               {/* Totals */}
-              <div className="p-4 bg-gradient-to-r from-slate-800/50 to-slate-900/50 rounded-lg border border-slate-700">
+              <div className="p-4 bg-gradient-to-r from-zinc-800/50 to-zinc-900/50 rounded-lg border border-zinc-700">
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">Materials</span>
-                    <span className="text-slate-50 font-semibold">{peso(quotation.materialsTotal)}</span>
+                    <span className="text-zinc-400">Materials</span>
+                    <span className="text-zinc-50 font-semibold">{peso(quotation.materialsTotal)}</span>
                   </div>
                   {quotation.laborItems.length > 0 && (
                     <div className="flex justify-between text-sm">
-                      <span className="text-slate-400">Labor</span>
-                      <span className="text-slate-50 font-semibold">{peso(quotation.laborTotal)}</span>
+                      <span className="text-zinc-400">Labor</span>
+                      <span className="text-zinc-50 font-semibold">{peso(quotation.laborTotal)}</span>
                     </div>
                   )}
-                  <div className="border-t border-slate-700 pt-2 mt-2 flex justify-between">
-                    <span className="text-slate-50 font-bold">Grand Total</span>
-                    <span className="text-lg font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
+                  <div className="border-t border-zinc-700 pt-2 mt-2 flex justify-between">
+                    <span className="text-zinc-50 font-bold">Grand Total</span>
+                    <span className="text-lg font-bold text-zinc-100 tracking-[0.06em]">
                       {peso(quotation.grandTotal)}
                     </span>
                   </div>

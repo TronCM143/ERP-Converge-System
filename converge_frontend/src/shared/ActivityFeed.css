@@ -14,7 +14,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 14px 16px 10px 16px;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid #27272a;
   background: transparent;
   backdrop-filter: none;
   flex-shrink: 0;
@@ -27,7 +27,7 @@
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.03em;
-  color: #cbd5e1;
+  color: #d4d4d8;
   text-transform: uppercase;
 }
 
@@ -35,7 +35,7 @@
   position: relative;
   flex-shrink: 0;
   padding: 8px 16px;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid #27272a;
 }
 
 .activity-feed__search-icon {
@@ -43,27 +43,27 @@
   left: 26px;
   top: 50%;
   transform: translateY(-50%);
-  color: #64748b;
+  color: #71717a;
   pointer-events: none;
 }
 
 .activity-feed__search-input {
   width: 100%;
   padding: 6px 10px 6px 28px;
-  background: #0f172a;
-  border: 1px solid #334155;
-  border-radius: 6px;
-  color: #e2e8f0;
+  background: #18181b;
+  border: 1px solid #3f3f46;
+  border-radius: 0;
+  color: #e4e4e7;
   font-size: 12px;
 }
 
 .activity-feed__search-input:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: #a1a1aa;
 }
 
 .activity-feed__search-input::placeholder {
-  color: #64748b;
+  color: #71717a;
 }
 
 .activity-feed__refresh {
@@ -71,16 +71,16 @@
   background: transparent;
   cursor: pointer;
   padding: 4px 8px;
-  border-radius: 8px;
-  color: #64748b;
+  border-radius: 0;
+  color: #71717a;
   font-size: 16px;
   line-height: 1;
   transition: background 0.15s ease, color 0.15s ease;
 }
 
 .activity-feed__refresh:hover {
-  background: #1e293b;
-  color: #cbd5e1;
+  background: #27272a;
+  color: #d4d4d8;
 }
 
 .activity-feed__refresh-icon {
@@ -115,15 +115,16 @@
 }
 
 .activity-feed__list::-webkit-scrollbar-thumb {
-  background: #475569;
-  border-radius: 2px;
+  background: #52525b;
+  border-radius: 0;
 }
 
 .activity-feed__placeholder {
   padding: 16px;
   text-align: center;
-  color: #64748b;
+  color: #71717a;
   font-size: 12px;
+  font-style: italic;
 }
 
 .activity-feed__entry {
@@ -131,7 +132,7 @@
   align-items: flex-start;
   gap: 8px;
   padding: 6px 8px;
-  border-radius: 6px;
+  border-radius: 0;
   transition: background 0.12s ease;
 }
 
@@ -140,35 +141,37 @@
 }
 
 .activity-feed__entry--clickable:hover {
-  background: #1e293b;
+  background: #27272a;
 }
 
 .activity-feed__icon {
   flex-shrink: 0;
   width: 24px;
   height: 24px;
-  border-radius: 6px;
+  border-radius: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 12px;
-  background: #1e293b;
+  background: #27272a;
 }
 
+/* Entity type is decorative coding, not state - so it's carried by four
+   distinct grey steps instead of four hues. */
 .activity-feed__icon--client {
-  background: #3730a3;
+  background: #3f3f46;
 }
 
 .activity-feed__icon--quotation {
-  background: #0369a1;
+  background: #52525b;
 }
 
 .activity-feed__icon--purchaserequest {
-  background: #b45309;
+  background: #71717a;
 }
 
 .activity-feed__icon--product {
-  background: #059669;
+  background: #a1a1aa;
 }
 
 .activity-feed__body {
@@ -179,53 +182,86 @@
 .activity-feed__line {
   font-size: 11px;
   line-height: 1.4;
-  color: #cbd5e1;
+  color: #d4d4d8;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
 }
+
+/* The actor column that lived here was removed — see ActivityFeed.tsx. */
 
 .activity-feed__actor {
   font-weight: 600;
   padding: 0 4px;
-  border-radius: 4px;
+  border-radius: 0;
   font-size: 10px;
 }
 
 .activity-feed__actor--sales {
-  color: #a5f3fc;
-  background: #0c4a6e;
+  color: #e4e4e7;
+  background: #52525b;
 }
 
 .activity-feed__actor--purchasing {
-  color: #fcd34d;
-  background: #78350f;
+  color: #e4e4e7;
+  background: #71717a;
 }
 
 .activity-feed__actor--admin {
-  color: #d8b4fe;
-  background: #581c87;
+  color: #d4d4d8;
+  background: #27272a;
 }
 
 .activity-feed__actor--system {
-  color: #cbd5e1;
-  background: #334155;
+  color: #d4d4d8;
+  background: #3f3f46;
 }
 
 .activity-feed__summary {
-  color: #cbd5e1;
+  color: #d4d4d8;
+}
+
+/* Only rendered while an entry is open, so it wraps to full text rather than
+   truncating the way the old always-on line had to. */
+.activity-feed__detail-panel {
+  margin-top: 4px;
+  padding: 6px 8px;
+  border-left: 2px solid #3f3f46;
+  background: #1f1f22;
 }
 
 .activity-feed__details {
-  margin-top: 1px;
   font-size: 10px;
-  color: #64748b;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.5;
+  color: #a1a1aa;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.activity-feed__details + .activity-feed__details {
+  margin-top: 2px;
+}
+
+.activity-feed__open {
+  margin-top: 6px;
+  padding: 0;
+  background: none;
+  border: 0;
+  font-size: 10px;
+  color: #d4d4d8;
+  cursor: pointer;
+}
+
+.activity-feed__open:hover {
+  color: #fafafa;
+  text-decoration: underline;
 }
 
 .activity-feed__time {
   flex-shrink: 0;
   font-size: 10px;
-  color: #475569;
+  color: #52525b;
   white-space: nowrap;
   padding-top: 1px;
 }

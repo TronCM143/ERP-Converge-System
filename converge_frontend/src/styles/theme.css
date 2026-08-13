@@ -3,19 +3,23 @@
    Without these, var(--muted) etc. silently resolve to nothing and leave
    stray light-mode artifacts. */
 :root {
-  --primary: #3b82f6;
-  --primary-light: #60a5fa;
-  --primary-dark: #1d4ed8;
-  --secondary: #06b6d4;
-  --accent: #22d3ee;
-  --text: #e2e8f0;
-  --text-secondary: #cbd5e1;
-  --muted: #94a3b8;
-  --border: #334155;
-  --radius: 12px;
+  /* Monochrome greys (zinc). "primary"/"secondary"/"accent" are kept as
+     names so legacy stylesheets keep resolving, but they no longer carry a
+     hue - emphasis is a lighter grey, not a different color. Radius is 0 to
+     match the squared-off Tailwind theme. */
+  --primary: #a1a1aa;
+  --primary-light: #d4d4d8;
+  --primary-dark: #3f3f46;
+  --secondary: #71717a;
+  --accent: #d4d4d8;
+  --text: #e4e4e7;
+  --text-secondary: #d4d4d8;
+  --muted: #a1a1aa;
+  --border: #3f3f46;
+  --radius: 0px;
   --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
-  --subtle-bg: #1e293b;
+  --subtle-bg: #27272a;
 }
 
 * { box-sizing: border-box; }

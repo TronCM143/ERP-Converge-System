@@ -33,7 +33,7 @@ export default function NewPrPopup({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="pr-popup__icon">
-              <Inbox className="h-8 w-8 mx-auto text-slate-400" />
+              <Inbox className="h-8 w-8 mx-auto text-zinc-400" />
             </div>
             <div className="pr-popup__title">New Purchase Request</div>
             <div className="pr-popup__body">

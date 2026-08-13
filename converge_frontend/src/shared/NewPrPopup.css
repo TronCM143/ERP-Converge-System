@@ -1,7 +1,10 @@
+/* Both surfaces are transparent so the broadcast reads as part of the page
+   rather than a panel dropped on top of it. The backdrop still covers the
+   viewport (it's the click-away target), it just doesn't tint anything. */
 .pr-popup-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.35);
+  background: transparent;
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -12,9 +15,9 @@
 .pr-popup {
   width: 100%;
   max-width: 380px;
-  background: white;
-  border-radius: 16px;
-  box-shadow: 0 24px 48px rgba(16, 24, 40, 0.22);
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
   padding: 22px;
   text-align: center;
 }

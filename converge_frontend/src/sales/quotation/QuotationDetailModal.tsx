@@ -4,7 +4,7 @@ import { apiFetch } from '../../shared/api';
 import { formatProductName } from '../../shared/formatProductName';
 import { EmailCandidate } from '../../shared/EmailRecipientPickerDialog';
 import SendQuotationPdfDialog from './SendQuotationPdfDialog';
-import { AlertTriangle, CheckCircle2, Download, Mail, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, CloudUpload, Download, Mail, X } from 'lucide-react';
 
 interface NotificationRecipientPreference {
   type: number;
@@ -27,6 +27,7 @@ interface QuotationMaterialItem {
   note: string;
   quantity: number;
   unitPrice: number;
+  discountAmount: number;
   taxPercent: number;
   lineTotal: number;
 }
@@ -64,6 +65,7 @@ export default function QuotationDetailModal({ quotationId, onClose }: Quotation
   const [quotation, setQuotation] = useState<Quotation | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isSavingToDrive, setIsSavingToDrive] = useState(false);
   const [sendDialogCandidates, setSendDialogCandidates] = useState<EmailCandidate[] | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [errorToastMessage, setErrorToastMessage] = useState<string | null>(null);
@@ -120,6 +122,23 @@ export default function QuotationDetailModal({ quotationId, onClose }: Quotation
     }
   };
 
+  const handleSaveToDrive = async () => {
+    if (!quotation) return;
+    setIsSavingToDrive(true);
+    try {
+      const res = await apiFetch(`/api/quotations/${quotation.id}/save-to-drive`, { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to save to Drive.');
+      }
+      setToastMessage('Saved to Google Drive.');
+    } catch (err) {
+      setErrorToastMessage(err instanceof Error ? err.message : 'Failed to save to Drive.');
+    } finally {
+      setIsSavingToDrive(false);
+    }
+  };
+
   const handleOpenSendDialog = async () => {
     let candidates: EmailCandidate[] = [];
     try {
@@ -163,70 +182,80 @@ export default function QuotationDetailModal({ quotationId, onClose }: Quotation
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={onClose}>
       <motion.div
-        className="bg-slate-800 rounded-lg shadow-2xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto border border-slate-700"
+        className="bg-zinc-800 rounded-lg shadow-2xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto border border-zinc-700"
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
         transition={{ duration: 0.2 }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between p-6 border-b border-slate-700">
+        <div className="flex items-start justify-between p-6 border-b border-zinc-700">
           <div>
-            <h2 className="text-xl font-bold text-slate-50">{quotation?.quotationNumber}</h2>
-            <p className="text-sm text-slate-400 mt-1">{quotation?.quotationName}</p>
+            <h2 className="text-xl font-bold text-zinc-50">{quotation?.quotationNumber}</h2>
+            <p className="text-sm text-zinc-400 mt-1">{quotation?.quotationName}</p>
           </div>
           <div className="flex items-center gap-1">
             {quotation && (
               <>
                 <button
-                  className="p-1.5 hover:bg-slate-700/50 rounded transition-colors disabled:opacity-50"
+                  className="p-1.5 hover:bg-zinc-700/50 rounded transition-colors disabled:opacity-50"
                   type="button"
                   onClick={handleDownloadPdf}
                   disabled={isDownloading}
                   title="Download PDF"
                 >
-                  <Download className="h-4 w-4 text-slate-400" />
+                  <Download className="h-4 w-4 text-zinc-400" />
                 </button>
                 <button
-                  className="p-1.5 hover:bg-slate-700/50 rounded transition-colors"
+                  className="p-1.5 hover:bg-zinc-700/50 rounded transition-colors"
                   type="button"
                   onClick={handleOpenSendDialog}
                   title="Send PDF to admins"
                 >
-                  <Mail className="h-4 w-4 text-slate-400" />
+                  <Mail className="h-4 w-4 text-zinc-400" />
+                </button>
+                <button
+                  className="p-1.5 hover:bg-zinc-700/50 rounded transition-colors disabled:opacity-50"
+                  type="button"
+                  onClick={handleSaveToDrive}
+                  disabled={isSavingToDrive}
+                  title="Save PDF to Google Drive"
+                >
+                  <CloudUpload className="h-4 w-4 text-zinc-400" />
                 </button>
               </>
             )}
             <button
-              className="p-1 hover:bg-slate-700/50 rounded transition-colors"
+              className="p-1 hover:bg-zinc-700/50 rounded transition-colors"
               type="button"
               onClick={onClose}
               title="Close"
             >
-              <X className="h-5 w-5 text-slate-400" />
+              <X className="h-5 w-5 text-zinc-400" />
             </button>
           </div>
         </div>
 
         {isLoading ? (
-          <div className="p-8 text-center text-slate-400">Loading…</div>
+          <div className="p-8 text-center text-zinc-400 italic">Loading…</div>
         ) : quotation ? (
           <div className="p-6 space-y-6">
             <div>
-              <h3 className="text-sm font-bold text-slate-300 uppercase mb-3">Products</h3>
+              <h3 className="text-sm font-bold text-zinc-300 uppercase mb-3">Products</h3>
               <div className="space-y-2">
                 {quotation.materialItems.map((item) => (
-                  <div key={item.id} className="p-3 bg-slate-900/30 rounded border border-slate-800">
+                  <div key={item.id} className="p-3 bg-zinc-900/30 rounded border border-zinc-800">
                     <div className="flex justify-between items-start">
                       <div>
-                        <p className="font-semibold text-slate-50">{formatProductName(item.itemName)}</p>
-                        <p className="text-xs text-slate-400 mt-1">
+                        <p className="font-semibold text-zinc-50">{formatProductName(item.itemName)}</p>
+                        <p className="text-xs text-zinc-400 mt-1">
                           {item.quantity} {item.unit} × {peso(item.unitPrice)}
+                          {item.discountAmount > 0 && ` (−${peso(item.discountAmount)} disc)`}
                           {item.taxPercent > 0 && ` (+${item.taxPercent}% tax)`}
                         </p>
-                        {item.note && <p className="text-xs text-slate-500 italic mt-1">Note: {item.note}</p>}
+                        {item.note && <p className="text-xs text-zinc-500 italic mt-1">Note: {item.note}</p>}
                       </div>
-                      <p className="font-bold text-slate-50">{peso(item.lineTotal)}</p>
+                      <p className="font-bold text-zinc-50">{peso(item.lineTotal)}</p>
                     </div>
                   </div>
                 ))}
@@ -235,18 +264,18 @@ export default function QuotationDetailModal({ quotationId, onClose }: Quotation
 
             {quotation.laborItems.length > 0 && (
               <div>
-                <h3 className="text-sm font-bold text-slate-300 uppercase mb-3">Labor</h3>
+                <h3 className="text-sm font-bold text-zinc-300 uppercase mb-3">Labor</h3>
                 <div className="space-y-2">
                   {quotation.laborItems.map((item) => (
-                    <div key={item.id} className="p-3 bg-slate-900/30 rounded border border-slate-800">
+                    <div key={item.id} className="p-3 bg-zinc-900/30 rounded border border-zinc-800">
                       <div className="flex justify-between items-start">
                         <div>
-                          <p className="font-semibold text-slate-50">{item.description}</p>
-                          <p className="text-xs text-slate-400 mt-1">
+                          <p className="font-semibold text-zinc-50">{item.description}</p>
+                          <p className="text-xs text-zinc-400 mt-1">
                             {item.persons} man × {item.days}d @ {peso(item.ratePerPersonPerDay)}/day
                           </p>
                         </div>
-                        <p className="font-bold text-slate-50">{peso(item.lineTotal)}</p>
+                        <p className="font-bold text-zinc-50">{peso(item.lineTotal)}</p>
                       </div>
                     </div>
                   ))}
@@ -254,21 +283,21 @@ export default function QuotationDetailModal({ quotationId, onClose }: Quotation
               </div>
             )}
 
-            <div className="p-4 bg-gradient-to-r from-slate-800/50 to-slate-900/50 rounded-lg border border-slate-700">
+            <div className="p-4 bg-gradient-to-r from-zinc-800/50 to-zinc-900/50 rounded-lg border border-zinc-700">
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-400">Materials</span>
-                  <span className="text-slate-50 font-semibold">{peso(quotation.materialsTotal)}</span>
+                  <span className="text-zinc-400">Materials</span>
+                  <span className="text-zinc-50 font-semibold">{peso(quotation.materialsTotal)}</span>
                 </div>
                 {quotation.laborItems.length > 0 && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">Labor</span>
-                    <span className="text-slate-50 font-semibold">{peso(quotation.laborTotal)}</span>
+                    <span className="text-zinc-400">Labor</span>
+                    <span className="text-zinc-50 font-semibold">{peso(quotation.laborTotal)}</span>
                   </div>
                 )}
-                <div className="border-t border-slate-700 pt-2 mt-2 flex justify-between">
-                  <span className="text-slate-50 font-bold">Grand Total</span>
-                  <span className="text-lg font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
+                <div className="border-t border-zinc-700 pt-2 mt-2 flex justify-between">
+                  <span className="text-zinc-50 font-bold">Grand Total</span>
+                  <span className="text-lg font-bold text-zinc-100 tracking-[0.06em]">
                     {peso(quotation.grandTotal)}
                   </span>
                 </div>

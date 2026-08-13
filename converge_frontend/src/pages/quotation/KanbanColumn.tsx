@@ -20,9 +20,9 @@ const stageIcons: Record<string, string> = {
 };
 
 const stageGradients: Record<string, string> = {
-  Leads: 'from-indigo-600/20 to-indigo-500/5 border-indigo-700/50',
-  Quote: 'from-blue-600/20 to-blue-500/5 border-blue-700/50',
-  Proposal: 'from-purple-600/20 to-purple-500/5 border-purple-700/50',
+  Leads: 'from-zinc-700/30 to-zinc-800/10 border-zinc-700',
+  Quote: 'from-blue-600/20 to-blue-500/5 border-zinc-600',
+  Proposal: 'from-zinc-700/30 to-zinc-800/10 border-zinc-700',
   Won: 'from-emerald-600/20 to-emerald-500/5 border-emerald-700/50'
 };
 
@@ -49,7 +49,7 @@ export default function KanbanColumn({ stage, clientCount, onAddClient, children
                 variant="ghost"
                 size="sm"
                 onClick={onAddClient}
-                className="h-8 w-8 p-0 hover:bg-slate-700"
+                className="h-8 w-8 p-0 hover:bg-zinc-700"
               >
                 <Plus className="h-4 w-4" />
               </Button>
@@ -58,7 +58,7 @@ export default function KanbanColumn({ stage, clientCount, onAddClient, children
         </div>
       </CardHeader>
 
-      <CardContent className="flex-1 overflow-y-auto px-3 pb-3 flex flex-col gap-3 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+      <CardContent className="flex-1 overflow-y-auto px-3 pb-3 flex flex-col gap-3 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
         {children}
       </CardContent>
     </Card>

@@ -4,25 +4,33 @@ import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "../../lib/utils"
 
+// Monochrome, square-cornered buttons matching the login screen: the primary
+// action is a light-on-dark inversion (zinc-100 on zinc-950) instead of a
+// colored fill, and labels are small uppercase with wide tracking. Gradients
+// and colored glows are gone. `destructive` keeps red - it's a functional
+// warning cue, not decoration.
 const buttonVariants = cva(
-  "inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-semibold ring-offset-slate-950 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap border text-[12px] font-bold uppercase tracking-[0.12em] ring-offset-zinc-950 transition-all duration-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
       variant: {
-        default: "bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-700 hover:to-blue-800 shadow-lg hover:shadow-blue-500/50",
+        default:
+          "bg-zinc-100 text-zinc-950 border-zinc-100 hover:bg-white hover:shadow-[0_0_20px_rgba(255,255,255,0.15)]",
         destructive:
-          "bg-gradient-to-r from-red-600 to-red-700 text-white hover:from-red-700 hover:to-red-800 shadow-lg hover:shadow-red-500/50",
+          "bg-red-700 text-white border-red-700 hover:bg-red-600 hover:border-red-600",
         outline:
-          "border-2 border-slate-700 bg-slate-900/50 hover:bg-slate-800 hover:border-slate-600 text-slate-50",
+          "border-zinc-700 bg-transparent text-zinc-100 hover:bg-zinc-800 hover:border-zinc-500",
         secondary:
-          "bg-gradient-to-r from-slate-700 to-slate-800 text-slate-50 hover:from-slate-600 hover:to-slate-700",
-        ghost: "hover:bg-slate-800/50 text-slate-50 hover:text-white",
-        link: "text-blue-400 underline-offset-4 hover:underline hover:text-blue-300",
+          "border-zinc-700 bg-zinc-800 text-zinc-100 hover:bg-zinc-700 hover:border-zinc-600",
+        ghost: "border-transparent text-zinc-300 hover:bg-zinc-800 hover:text-zinc-50",
+        // Inline links read as prose, so they opt out of the uppercase
+        // treatment and lean on italic emphasis instead.
+        link: "border-transparent text-sm font-medium normal-case italic tracking-normal text-zinc-300 underline-offset-4 hover:underline hover:text-zinc-50",
       },
       size: {
         default: "h-10 px-4 py-2",
-        sm: "h-9 rounded-lg px-3 text-xs",
-        lg: "h-11 rounded-lg px-8",
+        sm: "h-9 px-3 text-[11px]",
+        lg: "h-11 px-8",
         icon: "h-10 w-10",
       },
     },

@@ -84,16 +84,16 @@ export default function CrmDashboardPage() {
   const activeDraggedClient = clients.find((c) => c.id === activeId);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-950 to-black">
+    <div className="min-h-screen app-surface">
       <div className="space-y-6">
         {/* Header */}
-        <div className="border-b border-slate-800 bg-gradient-to-r from-slate-900/80 via-slate-950/80 to-black/80 backdrop-blur-md">
+        <div className="border-b border-zinc-800 bg-gradient-to-r from-zinc-900/80 via-zinc-950/80 to-black/80 backdrop-blur-md">
           <div className="max-w-7xl mx-auto px-6 py-8">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
               <div>
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="p-3 rounded-lg bg-gradient-to-r from-blue-600/20 to-blue-500/10 border border-blue-700/30">
-                    <Users className="h-6 w-6 text-blue-400" />
+                  <div className="p-3 rounded-lg bg-zinc-800/60 border border-zinc-600">
+                    <Users className="h-6 w-6 text-zinc-200" />
                   </div>
                
                 </div>
@@ -145,7 +145,7 @@ export default function CrmDashboardPage() {
           {!isLoading && filteredClients.length === 0 && searchQuery === '' ? (
             <Card className="p-12 text-center">
               <div className="text-4xl mb-4">👥</div>
-              <p className="text-slate-400">
+              <p className="text-zinc-400">
                 No clients yet. Add your first one to get started.
               </p>
             </Card>

@@ -1,9 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { useAuth } from '../app/AuthContext';
 import { roleHome } from '../app/roleHome';
-import { GlassMorphCard } from '../components/ui/glass-morph-card';
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -14,6 +13,14 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Toasts clear themselves. Keyed on the message so two identical failures in a
+  // row still restart the timer rather than letting the first one expire early.
+  useEffect(() => {
+    if (!error) return;
+    const t = window.setTimeout(() => setError(null), 4000);
+    return () => window.clearTimeout(t);
+  }, [error]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,104 +40,120 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-slate-900 flex items-center justify-center p-6">
-      {/* backdrop */}
-      <div
-        className="absolute inset-0 z-0
-        [background:radial-gradient(ellipse_1100px_800px_at_50%_40%,rgba(59,130,246,0.18),transparent_70%),linear-gradient(to_bottom,rgba(2,6,23,0.25)_0%,rgba(2,6,23,0.55)_100%),url('/pexels-photo-2881233.jpg')_center/cover_no-repeat]"
-      />
+    <div className="relative min-h-screen w-full bg-zinc-950 flex items-center justify-center p-6 overflow-hidden">
+      {/* Subtle ambient spotlight effect for an elegant dark backdrop */}
+      <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.04)_0,transparent_60%)]" />
 
-      {/* Glass morph card, centered */}
-      <motion.div
-        className="relative z-[1] w-full max-w-[420px]"
-        initial={{ opacity: 0, y: 24, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.5, ease: 'easeOut' }}
-      >
-        <GlassMorphCard glowColor="blue" intensity={8} className="w-full">
-          <div className="w-full flex flex-col items-center px-10 py-12">
-            {/* Logo */}
-            <div className="mb-6 flex justify-center w-full">
-              <img
-                src="/CSiLogo.png"
-                alt="Converge.IT Solutions Inc."
-                className="h-16 w-auto"
+      {/* Aesthetic minimalist dark card */}
+      <div className="relative z-10 w-full max-w-[400px] bg-zinc-950/80 backdrop-blur-md border border-zinc-800 p-10 shadow-[0_0_50px_rgba(0,0,0,0.6)]">
+        <div className="w-full flex flex-col items-center">
+          
+          {/* Logo - elegantly faded and inverted */}
+          <div className="mb-10 flex justify-center w-full">
+            <img
+              src="/CSiLogo.png"
+              alt="Converge.IT Solutions Inc."
+              className="h-12 w-auto filter invert grayscale opacity-75 hover:opacity-100 transition-opacity duration-500"
+            />
+          </div>
+
+          <form onSubmit={handleSubmit} className="w-full space-y-6">
+            
+            <div className="space-y-1.5">
+              <label htmlFor="login-username" className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-semibold ml-1">
+                Username
+              </label>
+              <input
+                id="login-username"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoFocus
+                required
+                autoComplete="username"
+                className="w-full px-4 py-3.5 text-[14px] text-zinc-100 font-light
+                bg-zinc-900/40 border border-zinc-800 rounded-none
+                transition-all duration-300
+                hover:border-zinc-600
+                focus:outline-none focus:border-zinc-300 focus:bg-zinc-900/80 focus:ring-0"
               />
             </div>
 
-            <h1 className="text-xl text-white mb-1 tracking-wide">Welcome!</h1>
-            <p className="text-sm text-white/60 mb-8"></p>
+            <div className="space-y-1.5">
+              <label htmlFor="login-password" className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-semibold ml-1">
+                Password
+              </label>
+              <input
+                id="login-password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoComplete="current-password"
+                className="w-full px-4 py-3.5 text-[14px] text-zinc-100 font-light
+                bg-zinc-900/40 border border-zinc-800 rounded-none
+                transition-all duration-300
+                hover:border-zinc-600
+                focus:outline-none focus:border-zinc-300 focus:bg-zinc-900/80 focus:ring-0"
+              />
+            </div>
 
-            <form onSubmit={handleSubmit} className="w-full">
-              <div className="mb-4">
-                <input
-                  id="login-username"
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  autoFocus
-                  required
-                  autoComplete="username"
-                  placeholder="Username"
-                  className="w-full px-4 py-3.5 box-border text-[15px] text-white font-medium
-                  bg-white/10 border border-white/20 rounded-[12px] backdrop-blur-sm
-                  transition-all duration-200
-                  placeholder:text-white/45 placeholder:font-normal
-                  hover:bg-white/[0.14] hover:border-white/30
-                  focus:outline-none focus:bg-white/[0.16] "
-                />
-              </div>
+            {/* The error used to render here as a bordered block, which pushed
+                the form down as it appeared. It is now a toast at the bottom of
+                the viewport — see the end of this component. */}
 
-              <div className="mb-6">
-                <input
-                  id="login-password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  autoComplete="current-password"
-                  placeholder="Password"
-                  className="w-full px-4 py-3.5 box-border text-[15px] text-white font-medium
-                  bg-white/10 border border-white/20 rounded-[12px] backdrop-blur-sm
-                  transition-all duration-200
-                  placeholder:text-white/45 placeholder:font-normal
-                  hover:bg-white/[0.14] hover:border-white/30
-                  focus:outline-none focus:bg-white/[0.16] "
-                />
-              </div>
-
-              {error && (
-                <motion.div
-                  className="bg-red-500/15 border border-red-400/30 text-red-200 font-medium
-                  text-[13px] px-4 py-3 rounded-[12px] mb-6 overflow-hidden flex items-center gap-2"
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                  </svg>
-                  {error}
-                </motion.div>
-              )}
-
-              <motion.button
+            <div className="pt-4">
+              <button
                 type="submit"
                 disabled={isSubmitting}
-                whileTap={{ scale: 0.97 }}
-                className="w-full py-3.5 border-0 rounded-[12px] text-white
-                bg-gradient-to-r from-cyan-500 to-blue-600
-                text-[15px] font-semibold tracking-wide cursor-pointer
-                shadow-[0_8px_24px_rgba(37,99,235,0.35)]
-                transition-all duration-200
-                enabled:hover:from-cyan-400 enabled:hover:to-blue-500 enabled:hover:-translate-y-0.5 enabled:hover:shadow-[0_12px_28px_rgba(37,99,235,0.45)]
-                disabled:opacity-60 disabled:cursor-not-allowed disabled:shadow-none"
+                className="w-full py-4 bg-zinc-100 text-zinc-950 border border-zinc-100 rounded-none
+                text-[12px] font-bold uppercase tracking-[0.15em] cursor-pointer
+                transition-all duration-300
+                hover:bg-white hover:shadow-[0_0_20px_rgba(255,255,255,0.15)]
+                disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSubmitting ? 'Signing in…' : 'Sign In'}
-              </motion.button>
-            </form>
-          </div>
-        </GlassMorphCard>
-      </motion.div>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {/* Error toast: fixed to the bottom-centre of the viewport and above the
+          card (z-50 vs the card's z-10), so it never shifts the form. Clears
+          itself after 4s, and is dismissed immediately by the next submit. */}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            key="login-error"
+            role="alert"
+            aria-live="assertive"
+            className="fixed bottom-8 left-1/2 z-50 -translate-x-1/2 flex items-center gap-2.5 px-4 py-2.5
+              rounded-md bg-red-950/95 border border-red-500/60 text-red-100 text-[13px]
+              shadow-[0_8px_30px_rgba(0,0,0,0.6)] backdrop-blur-sm"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 16 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-4 w-4 shrink-0 text-red-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              />
+            </svg>
+            <span className="leading-none">{error}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -1,15 +1,5 @@
-import React from 'react';
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  Legend,
-  ResponsiveContainer,
-  Tooltip,
-  TooltipContentProps,
-  XAxis,
-  YAxis
-} from 'recharts';
+import React, { useState } from 'react';
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis } from 'recharts';
 
 export interface PipelineTrendPoint {
   period: string;
@@ -17,79 +7,159 @@ export interface PipelineTrendPoint {
   quote: number;
   proposal: number;
   won: number;
+  lost: number;
 }
 
-// Validated categorical palette (node scripts/validate_palette.js — passes
-// lightness band, CVD separation, normal-vision floor, contrast; the grey's
-// low chroma is intentional — Leads is meant to read as neutral/early-stage,
-// and the legend + tooltip labels carry its identity, not color alone).
+// Monochrome ramp: with no hue available, the series are separated purely by
+// lightness, ordered dark→light as Lost, Quote, Leads, Proposal, Won. Steps
+// widen toward the dark end because perceived lightness compresses near white,
+// which keeps the five lines roughly evenly spaced to the eye.
+//
+// Two supports, because "light white" vs "white" is a small gap on its own and
+// the darkest line is the dimmest against the page:
+//   * fillTop — the area gradient's top opacity, scaled DOWN as the stroke gets
+//     lighter. A near-white fill at a uniform opacity would wash the whole plot
+//     pale and bury the lines it's meant to support.
+//   * dash / width — Lost is dashed and Won is drawn thicker, so the two
+//     extremes stay identifiable even where lightness alone is close.
 const SERIES = [
-  { key: 'leads', name: 'Leads', color: '#64748b' },
-  { key: 'quote', name: 'Quote', color: '#d97706' },
-  { key: 'proposal', name: 'Proposal', color: '#0d9488' },
-  { key: 'won', name: 'Won', color: '#7c3aed' }
+  { key: 'lost', name: 'Lost', color: '#52525b', fillTop: 0.3, width: 2, dash: '5 4' },
+  { key: 'quote', name: 'Quote', color: '#8a8a94', fillTop: 0.22, width: 2, dash: undefined },
+  { key: 'leads', name: 'Leads', color: '#bfbfc7', fillTop: 0.16, width: 2, dash: undefined },
+  { key: 'proposal', name: 'Proposal', color: '#e4e4e7', fillTop: 0.12, width: 2, dash: undefined },
+  { key: 'won', name: 'Won', color: '#ffffff', fillTop: 0.12, width: 2.5, dash: undefined }
 ] as const;
 
-function ChartTooltip({ active, payload, label }: TooltipContentProps) {
-  if (!active || !payload || payload.length === 0) return null;
-  return (
-    <div className="bg-slate-800 border border-slate-700 rounded-lg shadow-xl px-3 py-2 text-xs">
-      <div className="text-slate-400 font-medium mb-1.5">{label}</div>
-      <div className="space-y-1">
-        {SERIES.map((s) => {
-          const entry = payload.find((p) => p.dataKey === s.key);
-          if (!entry) return null;
-          return (
-            <div key={s.key} className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
-              <span className="text-slate-300">{s.name}</span>
-              <span className="ml-auto font-semibold text-slate-50">{String(entry.value)}</span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+type Series = (typeof SERIES)[number];
+
+// What the cursor is currently over: ONE point of ONE series. The readout is
+// deliberately not a combined panel listing all five stages — hovering a line
+// answers "how many at this stage, this period" for that line alone.
+interface HoveredPoint {
+  key: string;
+  name: string;
+  color: string;
+  value: number;
+  period: string;
+  cx: number;
+  cy: number;
+}
+
+// Props Recharts hands a custom `dot` renderer. Typed loosely because the
+// payload is the caller's own datum.
+interface DotProps {
+  cx?: number;
+  cy?: number;
+  index?: number;
+  payload?: PipelineTrendPoint;
 }
 
 // Bare — no border/card chrome — meant to sit directly in a page layout.
 export default function PipelineTrendChart({ data, height = 220 }: { data: PipelineTrendPoint[]; height?: number }) {
-  return (
-    <ResponsiveContainer width="100%" height={height}>
-      <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -16 }}>
-        <defs>
-          {SERIES.map((s) => (
-            <linearGradient key={s.key} id={`pipelineTrend-${s.key}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={s.color} stopOpacity={0.35} />
-              <stop offset="100%" stopColor={s.color} stopOpacity={0} />
-            </linearGradient>
-          ))}
-        </defs>
+  const [hovered, setHovered] = useState<HoveredPoint | null>(null);
 
-        <CartesianGrid vertical={false} stroke="#1e293b" strokeDasharray="3 3" />
-        <XAxis dataKey="period" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
-        <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={30} allowDecimals={false} />
-        <Tooltip content={ChartTooltip} cursor={{ stroke: '#334155', strokeWidth: 1 }} />
-        <Legend
-          iconType="circle"
-          iconSize={8}
-          wrapperStyle={{ fontSize: 11, color: '#94a3b8', paddingTop: 8 }}
+  // One dot per data point per series, each with a transparent hit circle
+  // wider than the dot so it's comfortable to hit. The visible dot only grows
+  // for the point actually under the cursor, keeping the plot clean.
+  const renderDot = (s: Series) => (props: DotProps) => {
+    const { cx, cy, index, payload } = props;
+    if (cx == null || cy == null || !payload) return <g key={`${s.key}-${index}-empty`} />;
+    const isHovered = hovered?.key === s.key && hovered?.period === payload.period;
+    const value = payload[s.key];
+
+    return (
+      <g key={`${s.key}-${index}`}>
+        <circle
+          cx={cx}
+          cy={cy}
+          r={10}
+          fill="transparent"
+          style={{ pointerEvents: 'all', cursor: 'crosshair' }}
+          onMouseEnter={() =>
+            setHovered({ key: s.key, name: s.name, color: s.color, value, period: payload.period, cx, cy })
+          }
+          onMouseLeave={() => setHovered((cur) => (cur?.key === s.key && cur.period === payload.period ? null : cur))}
         />
+        <circle
+          cx={cx}
+          cy={cy}
+          r={isHovered ? 4.5 : 2}
+          fill={s.color}
+          fillOpacity={isHovered ? 1 : 0.75}
+          stroke={isHovered ? '#09090b' : 'none'}
+          strokeWidth={isHovered ? 1.5 : 0}
+          style={{ pointerEvents: 'none' }}
+        />
+      </g>
+    );
+  };
 
-        {SERIES.map((s) => (
-          <Area
-            key={s.key}
-            type="monotone"
-            dataKey={s.key}
-            name={s.name}
-            stroke={s.color}
-            strokeWidth={2}
-            fill={`url(#pipelineTrend-${s.key})`}
-            dot={false}
-            activeDot={{ r: 4, strokeWidth: 0 }}
+  return (
+    // `pipeline-trend` scopes the rule in globals.css that stops the area fills
+    // from swallowing hover before it reaches the dots' hit circles.
+    <div className="pipeline-trend relative w-full" style={{ height }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+          <defs>
+            {SERIES.map((s) => (
+              <linearGradient key={s.key} id={`pipelineTrend-${s.key}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={s.color} stopOpacity={s.fillTop} />
+                <stop offset="100%" stopColor={s.color} stopOpacity={0} />
+              </linearGradient>
+            ))}
+          </defs>
+
+          <CartesianGrid vertical={false} stroke="#27272a" strokeDasharray="3 3" />
+          <XAxis dataKey="period" stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} />
+          <YAxis
+            stroke="#71717a"
+            fontSize={11}
+            tickLine={false}
+            axisLine={false}
+            width={32}
+            allowDecimals={false}
+            ticks={[0, 10, 20, 30, 40]}
           />
-        ))}
-      </AreaChart>
-    </ResponsiveContainer>
+
+          {/* No <Tooltip>: a shared tooltip always reports every series at the
+              hovered period in one container. The per-point dots below own the
+              interaction instead. */}
+          {SERIES.map((s) => (
+            <Area
+              key={s.key}
+              type="monotone"
+              dataKey={s.key}
+              name={s.name}
+              stroke={s.color}
+              strokeWidth={s.width}
+              strokeDasharray={s.dash}
+              fill={`url(#pipelineTrend-${s.key})`}
+              dot={renderDot(s)}
+              activeDot={false}
+            />
+          ))}
+        </AreaChart>
+      </ResponsiveContainer>
+
+      {/* Readout floats just above the hovered point, following the pattern in
+          MiniLineChart. cx/cy come from Recharts, so it tracks the real plotted
+          position rather than a recomputed one. */}
+      {hovered && (
+        <div
+          className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-[calc(100%+10px)] bg-zinc-800 border border-zinc-700 px-2 py-1 shadow-lg whitespace-nowrap"
+          style={{ left: hovered.cx, top: hovered.cy }}
+        >
+          <div className="flex items-center gap-1.5">
+            <span
+              className="h-2 w-2 shrink-0 border border-white/20"
+              style={{ backgroundColor: hovered.color }}
+            />
+            <span className="text-[11px] text-zinc-300">{hovered.name}</span>
+            <span className="text-[11px] font-semibold text-zinc-50 tabular-nums">{hovered.value}</span>
+          </div>
+          <div className="text-[10px] italic text-zinc-500">{hovered.period}</div>
+        </div>
+      )}
+    </div>
   );
 }

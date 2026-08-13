@@ -9,7 +9,9 @@ const Card = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      "rounded-lg border border-slate-800 bg-gradient-to-br from-slate-900/50 to-slate-950/50 text-slate-50 shadow-xl backdrop-blur-sm",
+      // Flat square panel: one grey surface with a hairline border, and a
+      // soft black drop shadow for depth instead of a tinted gradient.
+      "border border-zinc-800 bg-zinc-950/60 text-zinc-50 shadow-[0_0_30px_rgba(0,0,0,0.5)] backdrop-blur-sm",
       className
     )}
     {...props}
@@ -36,7 +38,9 @@ const CardTitle = React.forwardRef<
   <h2
     ref={ref}
     className={cn(
-      "text-2xl font-bold leading-none tracking-tight bg-gradient-to-r from-blue-400 to-blue-300 bg-clip-text text-transparent",
+      // Was a blue clip-text gradient; now plain light grey with wide
+      // tracking, which is what carries the emphasis in a monochrome UI.
+      "text-2xl font-bold leading-none tracking-[0.06em] text-zinc-100",
       className
     )}
     {...props}
@@ -50,7 +54,9 @@ const CardDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <p
     ref={ref}
-    className={cn("text-sm text-slate-400", className)}
+    // Italic marks this as the secondary "annotation" voice - with no accent
+    // color left, style is what separates it from the title above it.
+    className={cn("text-sm italic text-zinc-400", className)}
     {...props}
   />
 ))

@@ -1,5 +1,5 @@
 :root {
-  --page-bg: #0f172a;
+  --page-bg: #18181b;
 }
 
 .page-header {
@@ -16,7 +16,7 @@
   font-weight: 800;
   letter-spacing: -0.02em;
   color: var(--text);
-  background: linear-gradient(135deg, #60a5fa 0%, #06b6d4 100%);
+  background: linear-gradient(135deg, #d4d4d8 0%, #71717a 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -24,7 +24,7 @@
 
 .page-header__subtitle {
   margin-top: 6px;
-  color: #94a3b8;
+  color: #a1a1aa;
   font-size: 13px;
 }
 
@@ -35,35 +35,39 @@
 }
 
 .card {
-  background: #0f172a;
-  border: 1px solid #334155;
-  border-radius: 12px;
+  background: #18181b;
+  border: 1px solid #3f3f46;
+  border-radius: 0;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
   padding: 24px;
   transition: all 0.3s ease;
 }
 
 .card:hover {
-  box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 10px 15px -3px rgba(161, 161, 170, 0.1);
 }
 
+/* Same treatment as the Tailwind <Button> primitive: squared, grey, and a
+   small uppercase label with wide tracking. */
 .btn {
-  border: 1px solid #475569;
-  background: #1e293b;
-  border-radius: 8px;
+  border: 1px solid #52525b;
+  background: #27272a;
+  border-radius: 0;
   padding: 10px 16px;
   cursor: pointer;
-  font-weight: 600;
-  font-size: 13px;
+  font-weight: 700;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
   transition: all 0.2s ease;
-  color: #cbd5e1;
+  color: #d4d4d8;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 .btn:hover:not(:disabled) {
-  border-color: #64748b;
-  background: #334155;
-  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.1);
+  border-color: #71717a;
+  background: #3f3f46;
+  box-shadow: 0 2px 4px rgba(161, 161, 170, 0.1);
   transform: translateY(-1px);
 }
 
@@ -76,31 +80,35 @@
   cursor: not-allowed;
 }
 
+/* Primary is a light-on-dark inversion, not a colored fill - same rule as the
+   login button and the <Button> primitive's default variant. */
 .btn--primary {
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  border-color: #1e40af;
-  color: white;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+  background: #f4f4f5;
+  border-color: #f4f4f5;
+  color: #09090b;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
 .btn--primary:hover:not(:disabled) {
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-  border-color: #1e40af;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+  background: #ffffff;
+  border-color: #ffffff;
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.15);
   transform: translateY(-2px);
 }
 
+/* Red stays - a destructive action is state, not decoration - but the
+   gradient is flattened to match everything else. */
 .btn--danger {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  background: #b91c1c;
   border-color: #b91c1c;
   color: white;
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
 .btn--danger:hover:not(:disabled) {
-  background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
-  border-color: #7f1d1d;
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+  background: #dc2626;
+  border-color: #dc2626;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
   transform: translateY(-2px);
 }
 
@@ -109,21 +117,21 @@
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: #94a3b8;
+  color: #a1a1aa;
   margin-bottom: 8px;
 }
 
 .breadcrumbs__link {
-  color: #60a5fa;
+  color: #d4d4d8;
   font-weight: 600;
 }
 
 .breadcrumbs__sep {
-  color: #64748b;
+  color: #71717a;
 }
 
 .breadcrumbs__current {
-  color: #94a3b8;
+  color: #a1a1aa;
 }
 
 /* Badges */
@@ -131,7 +139,7 @@
   display: inline-flex;
   align-items: center;
   padding: 6px 10px;
-  border-radius: 8px;
+  border-radius: 0;
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
@@ -142,23 +150,23 @@
 }
 
 .badge--pending { background: #78350f; color: #fcd34d; }
-.badge--processing { background: #1e3a8a; color: #93c5fd; }
-.badge--ordered { background: #581c87; color: #d8b4fe; }
+.badge--processing { background: #18181b; color: #e4e4e7; }
+.badge--ordered { background: #27272a; color: #d4d4d8; }
 .badge--completed { background: #166534; color: #86efac; }
 .badge--cancelled { background: #7f1d1d; color: #fca5a5; }
-.badge--waiting { background: #374151; color: #d1d5db; }
+.badge--waiting { background: #3f3f46; color: #d4d4d8; }
 .badge--ready { background: #166534; color: #86efac; }
 .badge--received { background: #047857; color: #a7f3d0; }
-.badge--draft { background: #374151; color: #d1d5db; }
-.badge--sent { background: #1e3a8a; color: #93c5fd; }
+.badge--draft { background: #3f3f46; color: #d4d4d8; }
+.badge--sent { background: #18181b; color: #e4e4e7; }
 .badge--approved { background: #166534; color: #86efac; }
 .badge--rejected { background: #7f1d1d; color: #fca5a5; }
 
 /* CRM pipeline stages */
-.badge--leads { background: #374151; color: #d1d5db; }
-.badge--quote { background: #1e3a8a; color: #93c5fd; }
-.badge--rfq { background: #1e3a8a; color: #93c5fd; }
-.badge--proposal { background: #581c87; color: #d8b4fe; }
+.badge--leads { background: #3f3f46; color: #d4d4d8; }
+.badge--quote { background: #18181b; color: #e4e4e7; }
+.badge--rfq { background: #18181b; color: #e4e4e7; }
+.badge--proposal { background: #27272a; color: #d4d4d8; }
 .badge--negotiation { background: #78350f; color: #fcd34d; }
 .badge--won { background: #166534; color: #86efac; }
 .badge--lost { background: #7f1d1d; color: #fca5a5; }
@@ -168,7 +176,7 @@
   overflow-x: auto;
   margin: -16px;
   margin-top: 0;
-  border-radius: 0 0 var(--radius) var(--radius);
+  border-radius: 0;
 }
 
 .custom-table {
@@ -179,11 +187,11 @@
 }
 
 .custom-table th {
-  background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+  background: linear-gradient(180deg, #27272a 0%, #18181b 100%);
   padding: 14px 16px;
   font-weight: 700;
-  color: #cbd5e1;
-  border-bottom: 2px solid #334155;
+  color: #d4d4d8;
+  border-bottom: 2px solid #3f3f46;
   text-transform: uppercase;
   font-size: 11px;
   letter-spacing: 0.5px;
@@ -191,9 +199,9 @@
 
 .custom-table td {
   padding: 16px;
-  border-bottom: 1px solid #334155;
+  border-bottom: 1px solid #3f3f46;
   vertical-align: middle;
-  color: #cbd5e1;
+  color: #d4d4d8;
 }
 
 .custom-table tbody tr {
@@ -201,12 +209,12 @@
 }
 
 .custom-table tbody tr:hover {
-  background: #1e293b;
-  box-shadow: inset 0 0 10px rgba(59, 130, 246, 0.08);
+  background: #27272a;
+  box-shadow: inset 0 0 10px rgba(161, 161, 170, 0.08);
 }
 
 .custom-table tbody tr.row-selected {
-  background: #1e3a8a;
+  background: #18181b;
 }
 
 /* Forms */
@@ -218,7 +226,7 @@
   display: block;
   font-size: 12px;
   font-weight: 700;
-  color: #cbd5e1;
+  color: #d4d4d8;
   margin-bottom: 8px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -226,47 +234,48 @@
 
 .form-control {
   width: 100%;
-  border: 1.5px solid #475569;
-  border-radius: 8px;
+  border: 1.5px solid #52525b;
+  border-radius: 0;
   padding: 11px 13px;
   font-size: 13px;
-  background: #0f172a;
+  background: #18181b;
   transition: all 0.2s;
   line-height: 1.5;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-  color: #cbd5e1;
+  color: #d4d4d8;
 }
 
 .form-control:hover {
-  border-color: #64748b;
+  border-color: #71717a;
 }
 
 .form-control:focus {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15), 0 2px 4px rgba(0, 0, 0, 0.3);
+  border-color: #a1a1aa;
+  box-shadow: 0 0 0 4px rgba(161, 161, 170, 0.15), 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .form-control::placeholder {
-  color: #64748b;
+  color: #71717a;
+  font-style: italic;
 }
 
 /* Read-only display variant of .form-control - used wherever a value is locked
    (e.g. client info inside a client-scoped quotation, view-mode profile fields) */
 .form-control--static {
-  background: #1e293b;
-  color: #cbd5e1;
+  background: #27272a;
+  color: #d4d4d8;
   cursor: default;
   padding: 10px 12px;
-  border-color: #334155;
+  border-color: #3f3f46;
 }
 
 /* Dynamic item builder rows (used by PR items, quotation materials/labor, etc.) */
 .item-builder {
-  border: 1px dashed #475569;
+  border: 1px dashed #52525b;
   padding: 12px;
-  border-radius: 8px;
-  background: #0f172a;
+  border-radius: 0;
+  background: #18181b;
   margin-bottom: 14px;
 }
 
@@ -290,7 +299,7 @@
 .empty-state {
   text-align: center;
   padding: 40px 20px;
-  color: #94a3b8;
+  color: #a1a1aa;
 }
 
 .empty-state__icon {
@@ -302,6 +311,7 @@
 .empty-state__text {
   font-size: 14px;
   font-weight: 500;
+  font-style: italic;
 }
 
 .action-bar {
@@ -310,34 +320,34 @@
   gap: 10px;
   margin-top: 16px;
   padding-top: 14px;
-  border-top: 1px solid #334155;
+  border-top: 1px solid #3f3f46;
 }
 
 .po-summary-box {
-  background: #1e293b;
-  border-radius: 8px;
+  background: #27272a;
+  border-radius: 0;
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 8px;
   margin-top: 14px;
-  border: 1px solid #334155;
+  border: 1px solid #3f3f46;
 }
 
 .po-summary-row {
   display: flex;
   justify-content: space-between;
   font-size: 13px;
-  color: #cbd5e1;
+  color: #d4d4d8;
 }
 
 .po-summary-row--total {
   font-weight: 700;
   font-size: 15px;
-  border-top: 1px solid #334155;
+  border-top: 1px solid #3f3f46;
   padding-top: 8px;
   margin-top: 4px;
-  color: #60a5fa;
+  color: #d4d4d8;
 }
 
 .panel-header {
@@ -346,15 +356,15 @@
   justify-content: space-between;
   margin-bottom: 20px;
   padding-bottom: 16px;
-  border-bottom: 2px solid #334155;
+  border-bottom: 2px solid #3f3f46;
 }
 
 .panel-header h2 {
   font-size: 16px;
   font-weight: 700;
   margin: 0;
-  color: #cbd5e1;
-  background: linear-gradient(90deg, #60a5fa 0%, #06b6d4 100%);
+  color: #d4d4d8;
+  background: linear-gradient(90deg, #d4d4d8 0%, #71717a 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -375,7 +385,7 @@
   min-width: 320px;
   max-width: 400px;
   padding: 14px 16px;
-  border-radius: 12px;
+  border-radius: 0;
   color: white;
   font-size: 13px;
   font-weight: 600;
@@ -410,8 +420,8 @@
   max-width: 1080px;
   max-height: 90vh;
   overflow-y: auto;
-  background: #0f172a;
-  border-radius: 16px;
+  background: #18181b;
+  border-radius: 0;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 10px 15px -3px rgba(0, 0, 0, 0.3);
-  border: 1px solid #334155;
+  border: 1px solid #3f3f46;
 }

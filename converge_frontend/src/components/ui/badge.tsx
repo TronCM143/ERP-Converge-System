@@ -3,18 +3,21 @@ import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "../../lib/utils"
 
+// Square tags (no pill), with the neutral variants differentiated by grey
+// luminance and uppercase tracking. destructive/success keep their hue -
+// those two communicate state, so flattening them would lose information.
 const badgeVariants = cva(
-  "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-bold transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-950",
+  "inline-flex items-center border px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] transition-colors focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-2 focus:ring-offset-zinc-950",
   {
     variants: {
       variant: {
         default:
-          "border-blue-700/50 bg-blue-900/30 text-blue-300 hover:bg-blue-900/50",
+          "border-zinc-600 bg-zinc-700/60 text-zinc-100 hover:bg-zinc-700",
         secondary:
-          "border-slate-700 bg-slate-800/50 text-slate-300 hover:bg-slate-800",
+          "border-zinc-700 bg-zinc-800/60 text-zinc-300 hover:bg-zinc-800",
         destructive:
           "border-red-700/50 bg-red-900/30 text-red-300 hover:bg-red-900/50",
-        outline: "border-slate-700 text-slate-300",
+        outline: "border-zinc-700 text-zinc-300",
         success:
           "border-emerald-700/50 bg-emerald-900/30 text-emerald-300 hover:bg-emerald-900/50",
       },

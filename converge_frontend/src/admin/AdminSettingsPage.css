@@ -4,7 +4,7 @@
   gap: 20px;
   min-height: 100vh;
   padding: 24px;
-  background: linear-gradient(135deg, #0f172a 0%, #020617 60%, #000000 100%);
+  background: linear-gradient(135deg, #18181b 0%, #09090b 60%, #000000 100%);
 }
 
 .admin-settings__recipients-table {
@@ -20,32 +20,32 @@
 .admin-settings__recipients-table td {
   padding: 12px;
   text-align: left;
-  border-bottom: 1px solid #334155;
+  border-bottom: 1px solid #3f3f46;
   font-size: 13px;
-  color: #cbd5e1;
+  color: #d4d4d8;
 }
 
 .admin-settings__recipients-table th {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.02em;
-  color: #94a3b8;
-  background: #1e293b;
+  color: #a1a1aa;
+  background: #27272a;
   font-size: 12px;
 }
 
 .admin-settings__recipients-table tbody tr:hover {
-  background-color: #1e293b;
+  background-color: #27272a;
 }
 
 .admin-settings__name {
   font-weight: 500;
-  color: #f1f5f9;
+  color: #f4f4f5;
 }
 
 .admin-settings__email,
 .admin-settings__phone {
-  color: #94a3b8;
+  color: #a1a1aa;
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 12px;
 }
@@ -64,12 +64,12 @@
 }
 
 .admin-settings__pref-type {
-  background: #1e3a8a;
+  background: #18181b;
   padding: 2px 8px;
-  border-radius: 3px;
+  border-radius: 0;
   font-size: 11px;
   font-weight: 500;
-  color: #93c5fd;
+  color: #e4e4e7;
   white-space: nowrap;
 }
 
@@ -81,8 +81,8 @@
 .admin-settings__pref-badges .badge {
   padding: 2px 6px;
   font-size: 11px;
-  background: #334155;
-  border-radius: 3px;
+  background: #3f3f46;
+  border-radius: 0;
   border: none;
   box-shadow: none;
 }

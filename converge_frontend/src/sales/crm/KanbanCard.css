@@ -14,10 +14,10 @@
   flex-direction: column;
   gap: 10px;
   padding: 14px 16px;
-  background: white;
-  border: 1.5px solid #e2e8f0;
-  border-radius: 10px;
-  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.05);
+  background: #27272a;
+  border: 1.5px solid #3f3f46;
+  border-radius: 0;
+  box-shadow: 0 2px 4px rgba(24, 24, 27, 0.05);
   cursor: grab;
   text-align: left;
   font: inherit;
@@ -26,15 +26,15 @@
 }
 
 .kanban-card__content:hover {
-  border-color: #cbd5e1;
-  box-shadow: 0 4px 8px rgba(15, 23, 42, 0.1);
+  border-color: #d4d4d8;
+  box-shadow: 0 4px 8px rgba(24, 24, 27, 0.1);
   transform: translateY(-2px);
   cursor: pointer;
 }
 
 .kanban-card__content:active {
   cursor: grabbing;
-  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.15);
+  box-shadow: 0 8px 16px rgba(24, 24, 27, 0.15);
 }
 
 .kanban-card__header {
@@ -55,7 +55,7 @@
 .kanban-card__drag-handle {
   flex-shrink: 0;
   font-size: 16px;
-  color: #cbd5e1;
+  color: #d4d4d8;
   opacity: 0;
   transition: opacity 0.2s ease;
 }
@@ -75,7 +75,7 @@
   align-items: center;
   justify-content: space-between;
   padding-top: 8px;
-  border-top: 1px solid #f1f5f9;
+  border-top: 1px solid #f4f4f5;
 }
 
 .kanban-card__meta {
@@ -96,5 +96,5 @@
 
 .kanban-card__date {
   font-size: 11px;
-  color: #94a3b8;
+  color: #a1a1aa;
 }

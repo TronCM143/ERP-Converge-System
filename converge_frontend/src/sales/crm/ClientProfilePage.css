@@ -6,10 +6,10 @@
 }
 
 .client-profile__header {
-  background: linear-gradient(135deg, white 0%, #f9fafb 100%);
+  background: linear-gradient(135deg, white 0%, #fafafa 100%);
   border-bottom: 2px solid var(--border);
   padding: 24px;
-  border-radius: 14px 14px 0 0;
+  border-radius: 0;
   margin-bottom: 0;
 }
 

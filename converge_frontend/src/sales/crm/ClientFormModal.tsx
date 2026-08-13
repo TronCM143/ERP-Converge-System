@@ -13,8 +13,16 @@ export interface ClientSummary {
   email?: string;
   notes?: string;
   stage: string;
+  lossReason?: string | null;
   quotationCount: number;
+  /* Two distinct money figures — see ClientResponseDto on the server.
+     totalSales         = everything this client has already bought (approved).
+     currentOpportunity = the deal on the table right now (latest quotation). */
   totalSales: number;
+  currentOpportunity?: number | null;
+  // Latest quotation's name, e.g. "CCTV + Solar Installation".
+  currentService?: string | null;
+  followUpDate?: string | null;
   lastUpdated: string;
   createdAt: string;
 }
@@ -35,7 +43,7 @@ export default function ClientFormModal({
     setErrorMessage(null);
 
     if (!values.name.trim() || !values.address.trim()) {
-      setErrorMessage('Company name and address are required.');
+      setErrorMessage('Client name and address are required.');
       return;
     }
 
@@ -49,7 +57,9 @@ export default function ClientFormModal({
           contactPerson: values.contactPerson.trim() || null,
           contactNumber: values.contactNumber.trim() || null,
           email: values.email.trim() || null,
-          notes: values.notes.trim() || null
+          notes: values.notes.trim() || null,
+          // Empty date box means "nothing scheduled", which the API stores as null.
+          followUpDate: values.followUpDate ? new Date(values.followUpDate).toISOString() : null
         })
       });
       if (!res.ok) {
@@ -75,7 +85,7 @@ export default function ClientFormModal({
     >
       <motion.div
         className="card modal-panel"
-        style={{ maxWidth: '560px' }}
+        style={{ maxWidth: '440px' }}
         initial={{ opacity: 0, y: 20, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 12, scale: 0.98 }}

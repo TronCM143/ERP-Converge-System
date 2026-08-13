@@ -117,10 +117,10 @@ export default function ClientProfilePage() {
 
   if (notFound) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-950 to-black p-6">
+      <div className="min-h-screen app-surface p-6">
         <Card className="p-12 text-center max-w-md mx-auto">
           <div className="text-4xl mb-4">🔍</div>
-          <p className="text-slate-400 mb-6">Client not found.</p>
+          <p className="text-zinc-400 mb-6">Client not found.</p>
           <Link className="inline-block" to="/quotation/crm">
             <Button variant="secondary" className="gap-2">
               <ArrowLeft className="h-4 w-4" />
@@ -137,9 +137,9 @@ export default function ClientProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-950 to-black">
+    <div className="min-h-screen app-surface">
       {/* Header */}
-      <div className="border-b border-slate-800 bg-gradient-to-r from-slate-900/80 via-slate-950/80 to-black/80 backdrop-blur-md">
+      <div className="border-b border-zinc-800 bg-gradient-to-r from-zinc-900/80 via-zinc-950/80 to-black/80 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-6 py-6">
           <div className="flex items-center gap-4 mb-4">
             <Link to="/quotation/crm">
@@ -151,10 +151,10 @@ export default function ClientProfilePage() {
           </div>
           <div className="flex items-center justify-between gap-6">
             <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
+              <h1 className="text-3xl font-bold text-zinc-100 tracking-[0.06em]">
                 {client.name}
               </h1>
-              <p className="text-slate-400 text-sm mt-1">
+              <p className="text-zinc-400 text-sm mt-1">
                 Client since {new Date(client.createdAt).toLocaleDateString()}
               </p>
             </div>
@@ -206,24 +206,24 @@ export default function ClientProfilePage() {
                 ) : (
                   <div className="space-y-4">
                     <div>
-                      <label className="text-xs font-semibold text-slate-400 uppercase">Company Name</label>
-                      <p className="text-slate-50 mt-1">{client.name}</p>
+                      <label className="text-xs font-semibold text-zinc-400 uppercase">Company Name</label>
+                      <p className="text-zinc-50 mt-1">{client.name}</p>
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-slate-400 uppercase">Address</label>
-                      <p className="text-slate-50 mt-1">{client.address}</p>
+                      <label className="text-xs font-semibold text-zinc-400 uppercase">Address</label>
+                      <p className="text-zinc-50 mt-1">{client.address}</p>
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-slate-400 uppercase">Contact Person</label>
-                      <p className="text-slate-50 mt-1">{editValues?.contactPerson || '—'}</p>
+                      <label className="text-xs font-semibold text-zinc-400 uppercase">Contact Person</label>
+                      <p className="text-zinc-50 mt-1">{editValues?.contactPerson || '—'}</p>
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-slate-400 uppercase">Phone</label>
-                      <p className="text-slate-50 mt-1">{editValues?.contactNumber || '—'}</p>
+                      <label className="text-xs font-semibold text-zinc-400 uppercase">Phone</label>
+                      <p className="text-zinc-50 mt-1">{editValues?.contactNumber || '—'}</p>
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-slate-400 uppercase">Email</label>
-                      <p className="text-slate-50 mt-1 truncate">{editValues?.email || '—'}</p>
+                      <label className="text-xs font-semibold text-zinc-400 uppercase">Email</label>
+                      <p className="text-zinc-50 mt-1 truncate">{editValues?.email || '—'}</p>
                     </div>
                   </div>
                 )}
@@ -253,7 +253,7 @@ export default function ClientProfilePage() {
                 {quotations.length === 0 ? (
                   <div className="text-center py-8">
                     <div className="text-3xl mb-2">📋</div>
-                    <p className="text-slate-400">No quotations yet</p>
+                    <p className="text-zinc-400">No quotations yet</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -262,12 +262,12 @@ export default function ClientProfilePage() {
                         key={quote.id}
                         whileHover={{ scale: 1.02 }}
                         onClick={() => setSelectedQuotationId(quote.id)}
-                        className="p-4 rounded-lg border border-slate-700 bg-slate-900/30 hover:bg-slate-900/50 cursor-pointer transition-all group"
+                        className="p-4 rounded-lg border border-zinc-700 bg-zinc-900/30 hover:bg-zinc-900/50 cursor-pointer transition-all group"
                       >
                         <div className="flex items-start justify-between">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-3">
-                              <h4 className="font-semibold text-slate-50 group-hover:text-blue-400 transition-colors">
+                              <h4 className="font-semibold text-zinc-50 group-hover:text-zinc-100 transition-colors">
                                 {quote.quotationNumber}
                               </h4>
                               <Badge
@@ -285,11 +285,11 @@ export default function ClientProfilePage() {
                                 {quote.status}
                               </Badge>
                             </div>
-                            <p className="text-slate-400 text-sm mt-1">{quote.quotationName}</p>
+                            <p className="text-zinc-400 text-sm mt-1">{quote.quotationName}</p>
                           </div>
                           <div className="text-right flex-shrink-0">
-                            <p className="font-semibold text-slate-50">₱{quote.grandTotal.toLocaleString()}</p>
-                            <p className="text-slate-400 text-xs mt-1">
+                            <p className="font-semibold text-zinc-50">₱{quote.grandTotal.toLocaleString()}</p>
+                            <p className="text-zinc-400 text-xs mt-1">
                               {new Date(quote.createdAt).toLocaleDateString()}
                             </p>
                           </div>
