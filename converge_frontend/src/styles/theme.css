@@ -1,25 +1,37 @@
-/* Legacy theme file - layout resets plus dark values for the legacy CSS
+/* Legacy theme file - layout resets plus light values for the legacy CSS
    variables still referenced across older stylesheets/inline styles.
    Without these, var(--muted) etc. silently resolve to nothing and leave
-   stray light-mode artifacts. */
+   stray artifacts. */
 :root {
-  /* Monochrome greys (zinc). "primary"/"secondary"/"accent" are kept as
-     names so legacy stylesheets keep resolving, but they no longer carry a
-     hue - emphasis is a lighter grey, not a different color. Radius is 0 to
-     match the squared-off Tailwind theme. */
-  --primary: #a1a1aa;
-  --primary-light: #d4d4d8;
-  --primary-dark: #3f3f46;
-  --secondary: #71717a;
-  --accent: #d4d4d8;
-  --text: #e4e4e7;
-  --text-secondary: #d4d4d8;
-  --muted: #a1a1aa;
-  --border: #3f3f46;
+  /* Light theme values for the legacy variable names. These are literal and
+     are NOT affected by the inverted ramp in tailwind.config.js, so they're
+     written dark-on-light directly: text is dark navy, borders and surfaces
+     are cool light greys. Radius is 0 to match the squared-off Tailwind
+     theme.
+
+     "primary" is the navy text/fill family. "brand" is the blue accent
+     (#3a598f, from the quotation PDF wordmark) used for links, focus and
+     selection. "accent" is the orange half of the same wordmark (#e87516),
+     reserved for minimal/low-emphasis controls. */
+  --primary: #1b2f4c;
+  --primary-light: #5b7196;
+  --primary-dark: #1b2f4c;
+  --secondary: #5b7196;
+  --brand: #3a598f;
+  --brand-dark: #314b77;
+  --brand-light: #e3ebf5;
+  --accent: #e87516;
+  --accent-dark: #ce6410;
+  --accent-light: #fef4ec;
+  --text: #1b2f4c;
+  --text-secondary: #2b446b;
+  --muted: #5b7196;
+  --border: #ccd6e6;
   --radius: 0px;
-  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
-  --subtle-bg: #27272a;
+  --shadow: 0 1px 2px 0 rgba(27, 47, 76, 0.05);
+  --shadow-lg: 0 8px 24px -6px rgba(27, 47, 76, 0.12);
+  --subtle-bg: #f0f4fa;
+  --surface: #ffffff;
 }
 
 * { box-sizing: border-box; }

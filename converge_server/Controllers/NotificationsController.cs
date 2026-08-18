@@ -32,6 +32,9 @@ namespace converge_server.Controllers
                 n.Type,
                 n.Title,
                 n.Details,
+                // Was omitted from this projection, so the client always saw
+                // linkUrl === undefined and treated every entry as unclickable.
+                n.LinkUrl,
                 n.IsRead,
                 n.CreatedAt
             }));
@@ -45,6 +48,19 @@ namespace converge_server.Controllers
 
             await _notificationService.MarkAllReadAsync(role);
             return NoContent();
+        }
+
+        // Mark a single notification read. Opening one entry previously had to
+        // call mark-read (all), which cleared the badge for everything the user
+        // hadn't actually looked at.
+        [HttpPut("{id:long}/read")]
+        public async Task<IActionResult> MarkOneRead(long id)
+        {
+            var role = CallerRole;
+            if (string.IsNullOrEmpty(role)) return NoContent();
+
+            var ok = await _notificationService.MarkReadAsync(role, id);
+            return ok ? NoContent() : NotFound();
         }
     }
 }

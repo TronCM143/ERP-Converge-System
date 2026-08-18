@@ -1,3 +1,5 @@
+using System;
+using System.Linq;
 using System.Threading.Tasks;
 using converge_server.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -30,12 +32,25 @@ namespace converge_server.Controllers
         }
 
         [HttpGet("recent")]
-        public async Task<IActionResult> GetRecent([FromQuery] int limit = 30, [FromQuery] string? changedBy = null)
+        // entityTypes is a comma-separated list ("PurchaseRequest,Product"); omitted
+        // means every type. It is what makes the purchasing feed a purchasing feed
+        // rather than a copy of the sales one.
+        public async Task<IActionResult> GetRecent(
+            [FromQuery] int limit = 30,
+            [FromQuery] string? changedBy = null,
+            [FromQuery] string? entityTypes = null)
         {
             if (limit < 1) limit = 1;
             if (limit > 100) limit = 100;
 
-            var recent = await _auditService.GetRecentAsync(limit, string.IsNullOrWhiteSpace(changedBy) ? null : changedBy);
+            var types = string.IsNullOrWhiteSpace(entityTypes)
+                ? null
+                : entityTypes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
+            var recent = await _auditService.GetRecentAsync(
+                limit,
+                string.IsNullOrWhiteSpace(changedBy) ? null : changedBy,
+                types);
             return Ok(recent);
         }
     }

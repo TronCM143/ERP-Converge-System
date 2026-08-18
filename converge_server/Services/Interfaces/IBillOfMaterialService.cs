@@ -7,7 +7,7 @@ namespace converge_server.Services.Interfaces
 {
     public interface IBillOfMaterialService
     {
-        Task<BillOfMaterialItem> UpdateBillOfMaterialItemStatusAsync(Guid billOfMaterialItemId, UpdateBillOfMaterialItemStatusDto dto);
+        Task<BillOfMaterialItem> UpdateBillOfMaterialItemStatusAsync(Guid billOfMaterialItemId, UpdateBillOfMaterialItemStatusDto dto, string? contentRootPath = null);
         Task<BillOfMaterialItem> SaveItemEvidenceAsync(Guid billOfMaterialItemId, IFormFile file, string contentRootPath);
         Task<EntityBillOfMaterial> CompleteBillOfMaterialAsync(Guid billOfMaterialId);
     }

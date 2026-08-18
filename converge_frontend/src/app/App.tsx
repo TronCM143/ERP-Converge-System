@@ -7,6 +7,7 @@ import PurchaseOrderDetailPage from '../purchasing/PurchaseOrderDetailPage';
 import CrmDashboardPage from '../sales/crm/CrmDashboardPage';
 import ClientProfilePage from '../sales/crm/ClientProfilePage';
 import SalesHistoryPage from '../sales/SalesHistoryPage';
+import AdminHomePage from '../admin/AdminHomePage';
 import QuotationsListPage from '../sales/quotation/QuotationsListPage';
 import ProductsPage from '../inventory/ProductsPage';
 import AdminSettingsPage from '../admin/AdminSettingsPage';
@@ -33,6 +34,18 @@ export default function App() {
       <Route element={<ERPLayout />}>
         <Route path="/" element={<HomeRedirect />} />
 
+        {/* Admin module picker. Admin is the only role with access to every
+            area, so it has no single natural home — it used to land in the
+            Sales CRM, which hid Inventory and Purchasing entirely. */}
+        <Route
+          path="/admin"
+          element={
+            <RequireRole role="admin">
+              <AdminHomePage />
+            </RequireRole>
+          }
+        />
+
         {/* Sales module: CRM (sales + admin oversight) */}
         <Route
           path="/sales/crm"
@@ -42,6 +55,12 @@ export default function App() {
             </RequireRole>
           }
         />
+        {/* A client profile needs an id. `/sales/clients` and `/sales/clients/`
+            match no route at all (the :clientId segment cannot be empty), so
+            without this they fell through to the catch-all — which is why
+            landing on the bare path showed nothing useful. Send them to the
+            board, which is the list this page belongs to. */}
+        <Route path="/sales/clients" element={<Navigate to="/sales/crm" replace />} />
         <Route
           path="/sales/clients/:clientId"
           element={
@@ -61,8 +80,12 @@ export default function App() {
           }
         />
 
+        {/* /sales/analytics is gone. Its whole job — the year's won vs lost —
+            is now the chart in the CRM header (SalesTrendChart), and the
+            month-by-month detail below still lives at /sales/history. */}
+
         {/* Detailed sales reporting, split off the CRM dashboard so that page
-            can stay a workspace. Reached from the "Sales this month" monitor. */}
+            can stay a workspace. Reached from the analytics page. */}
         <Route
           path="/sales/history"
           element={
@@ -86,7 +109,7 @@ export default function App() {
         <Route
           path="/purchasing/purchase-requests"
           element={
-            <RequireRole role="purchasing">
+            <RequireRole role={['purchasing', 'admin']}>
               <PurchaseRequestsPage />
             </RequireRole>
           }
@@ -96,7 +119,7 @@ export default function App() {
         <Route
           path="/purchasing/purchase-requests/:purchaseRequestId"
           element={
-            <RequireRole role="purchasing">
+            <RequireRole role={['purchasing', 'admin']}>
               <PurchaseOrderDetailPage />
             </RequireRole>
           }

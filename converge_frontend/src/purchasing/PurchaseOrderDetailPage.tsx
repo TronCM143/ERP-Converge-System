@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, ArrowLeft, CheckCircle2, MoreVertical, Paperclip, Pencil, Upload, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, MoreVertical, Paperclip, Pencil, Trash2, Upload, X } from 'lucide-react';
 import { apiFetch } from '../shared/api';
 import { formatProductName } from '../shared/formatProductName';
 import EmailRecipientPickerDialog, { EmailCandidate } from '../shared/EmailRecipientPickerDialog';
@@ -43,7 +43,13 @@ export default function PurchaseOrderDetailPage() {
 
   // null = dialog closed; array (possibly empty) = open with these default candidates.
   const [submitDialogCandidates, setSubmitDialogCandidates] = useState<EmailCandidate[] | null>(null);
-  const [evidenceViewerUrl, setEvidenceViewerUrl] = useState<string | null>(null);
+  /* The whole BOM item, not just its URL: the viewer now carries Replace and
+     Remove, and both need the item to act on. */
+  const [evidenceViewerItem, setEvidenceViewerItem] = useState<BOMItem | null>(null);
+  /* Item whose attachment is awaiting a delete confirmation. Removing the proof
+     of a transaction deletes the file from the server as well as unlinking it —
+     there is no undo — so it asks first. */
+  const [confirmRemoveEvidence, setConfirmRemoveEvidence] = useState<BOMItem | null>(null);
   /* Open Actions menu: which row, and where its button is on screen.
      The coordinates are needed because the menu renders `fixed`, not `absolute`:
      the table sits in an overflow-x-auto wrapper, and setting overflow on one
@@ -120,7 +126,15 @@ export default function PurchaseOrderDetailPage() {
     patch: Partial<
       Pick<
         BOMItem,
-        'status' | 'remarks' | 'orderDate' | 'deliveryDate' | 'supplier' | 'discountAmount' | 'taxPercent' | 'requiredQuantity'
+        | 'status'
+        | 'remarks'
+        | 'orderDate'
+        | 'deliveryDate'
+        | 'supplier'
+        | 'supplierAddress'
+        | 'discountAmount'
+        | 'taxPercent'
+        | 'requiredQuantity'
       >
     > & {
       // Server-side fields with no direct BOMItem counterpart: a price override
@@ -146,6 +160,8 @@ export default function PurchaseOrderDetailPage() {
           orderDate: patch.orderDate !== undefined ? patch.orderDate : item.orderDate ?? null,
           deliveryDate: patch.deliveryDate !== undefined ? patch.deliveryDate : item.deliveryDate ?? null,
           supplier: patch.supplier !== undefined ? patch.supplier : item.supplier ?? null,
+          supplierAddress:
+            patch.supplierAddress !== undefined ? patch.supplierAddress : item.supplierAddress ?? null,
           discountAmount: patch.discountAmount,
           taxPercent: patch.taxPercent,
           requiredQuantity: patch.requiredQuantity,
@@ -190,6 +206,27 @@ export default function PurchaseOrderDetailPage() {
   };
 
   // ----- Evidence image upload (proof of transaction per item) -----
+  /* Items whose stored attachment URL doesn't resolve to a real file.
+
+     Some rows reference images that are no longer on disk. The old paperclip
+     icon hid that — it looked identical whether the file existed or not — but a
+     thumbnail would render as a browser "broken image" glyph. Tracked on the
+     img's onError so those rows can show an honest "file missing" state that
+     offers a re-upload instead. */
+  const [brokenEvidence, setBrokenEvidence] = useState<Set<string>>(new Set());
+  const markEvidenceBroken = (id: string) =>
+    setBrokenEvidence((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+
+  // Escape closes the attachment viewer, matching the click-outside behaviour.
+  useEffect(() => {
+    if (!evidenceViewerItem) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setEvidenceViewerItem(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [evidenceViewerItem]);
+
   const evidenceInputRef = useRef<HTMLInputElement>(null);
   const evidenceItemIdRef = useRef<string | null>(null);
 
@@ -414,7 +451,7 @@ export default function PurchaseOrderDetailPage() {
   };
 
   return (
-    <div className="h-[calc(100vh-36px)] overflow-hidden app-surface flex flex-col">
+    <div className="h-[calc(100vh-36px)] overflow-hidden app-wallpaper flex flex-col">
       {/* Toasts */}
       <div className="toast-container" aria-live="polite" aria-atomic="true">
         {errorMessage && (
@@ -562,7 +599,7 @@ export default function PurchaseOrderDetailPage() {
                   for the whole document (not the per-item ones in the table), so
                   it reads as a sheet of paper laid on the record. */}
              <textarea
-  className="w-full px-2.5 py-1.5 bg-transparent rounded text-white text-[14px] italic placeholder-zinc-500 focus:outline-none resize-none overflow-hidden"
+  className="w-full px-2.5 py-1.5 bg-transparent rounded text-zinc-50 text-[14px] italic placeholder-zinc-500 focus:outline-none resize-none overflow-hidden"
   rows={2}
   ref={autoGrow}
   defaultValue={selectedPr.remarks || ''}
@@ -603,7 +640,6 @@ export default function PurchaseOrderDetailPage() {
                     <th className={thCls}>Discount</th>
                     <th className={thCls}>Tax %</th>
                     <th className={`${thCls} text-right`}>Total</th>
-                    <th className={thCls}>Supplier name</th>
                     <SortableTh label="Order Date" column="orderDate" sort={itemSort} onSort={toggleItemSort} />
                     <SortableTh label="Delivery Date" column="deliveryDate" sort={itemSort} onSort={toggleItemSort} />
                     <SortableTh label="Status" column="status" sort={itemSort} onSort={toggleItemSort} />
@@ -614,7 +650,12 @@ export default function PurchaseOrderDetailPage() {
                 <tbody>
                   {selectedBom
                     ? sortBomItems(selectedBom.items, itemSort).map((item) => {
-                        const noteOpen = noteOpenMap[item.id] ?? Boolean(item.remarks);
+                        // Open by default when the panel holds anything at all — a supplier
+                        // recorded earlier would otherwise be invisible behind a closed
+                        // pencil, which is how the old column's data would appear lost.
+                        const noteOpen =
+                          noteOpenMap[item.id] ??
+                          Boolean(item.remarks || item.supplier || item.supplierAddress);
                         const hasProof = Boolean(item.evidenceImageUrl);
                         return (
                           <tr
@@ -633,20 +674,58 @@ export default function PurchaseOrderDetailPage() {
                                   <Pencil className="h-3.5 w-3.5" />
                                 </button>
                               </div>
+                              {/* The note panel now carries who the line is being
+                                  bought from as well as the free note. Supplier had
+                                  its own table column, which cost every row a wide
+                                  text box for a field that is usually empty and is
+                                  only looked at while sourcing one item — the same
+                                  moment the note is being written. All three are
+                                  optional and stay italic, so an empty panel reads
+                                  as prompts rather than as data. */}
                               {noteOpen && (
-                                <textarea
-                                  rows={1}
-                                  ref={autoGrow}
-                                  className="w-full mt-1 pt-1 border-t border-zinc-700/60 bg-transparent text-zinc-400 text-xs italic placeholder-zinc-500 focus:outline-none resize-none overflow-hidden"
-                                  placeholder="add note…"
-                                  defaultValue={item.remarks || ''}
-                                  onInput={(e) => autoGrow(e.currentTarget)}
-                                  onBlur={(e) => {
-                                    if ((item.remarks || '') !== e.target.value) {
-                                      persistBomItem(item, { remarks: e.target.value });
-                                    }
-                                  }}
-                                />
+                                <div className="mt-1 space-y-1 border-t border-zinc-700/60 pt-1">
+                                  <input
+                                    type="text"
+                                    className="w-full bg-transparent text-xs italic text-zinc-400 placeholder-zinc-500 focus:outline-none"
+                                    placeholder="Supplier Name:"
+                                    defaultValue={item.supplier ?? ''}
+                                    onBlur={(e) => {
+                                      const next = e.target.value.trim();
+                                      // The API reads null as "leave unchanged", so an
+                                      // emptied box sends "" to actually clear it.
+                                      if ((item.supplier ?? '') !== next) {
+                                        persistBomItem(item, { supplier: next });
+                                      }
+                                    }}
+                                  />
+
+                                  <input
+                                    type="text"
+                                    className="w-full bg-transparent text-xs italic text-zinc-400 placeholder-zinc-500 focus:outline-none"
+                                    placeholder="Address/Store:"
+                                    defaultValue={item.supplierAddress ?? ''}
+                                    onBlur={(e) => {
+                                      const next = e.target.value.trim();
+                                      if ((item.supplierAddress ?? '') !== next) {
+                                        persistBomItem(item, { supplierAddress: next });
+                                      }
+                                    }}
+                                  />
+
+                                  <textarea
+                                    rows={1}
+                                    ref={autoGrow}
+                                    className="w-full resize-none overflow-hidden bg-transparent text-xs italic text-zinc-400 placeholder-zinc-500 focus:outline-none"
+                                    placeholder="add notes…"
+                                    defaultValue={item.remarks || ''}
+                                    onInput={(e) => autoGrow(e.currentTarget)}
+                                    onBlur={(e) => {
+                                      if ((item.remarks || '') !== e.target.value) {
+                                        persistBomItem(item, { remarks: e.target.value });
+                                      }
+                                    }}
+                                  />
+                                </div>
                               )}
                             </td>
                             {/* Quantity and price are editable at any point in
@@ -730,26 +809,6 @@ export default function PurchaseOrderDetailPage() {
                             <td className="px-3 py-2 border-l border-zinc-800/60 text-zinc-100 font-semibold whitespace-nowrap text-right">
                               {item.price != null ? peso(bomLineTotal(item)) : <span className="text-zinc-600">—</span>}
                             </td>
-                            {/* Free text — suppliers aren't a catalog here, so this
-                                is typed per line. defaultValue + onBlur matches the
-                                other editable cells: the field holds what you type
-                                and only writes when you leave it. */}
-                            <td className="px-3 py-2 border-l border-zinc-800/60">
-                              <input
-                                type="text"
-                                defaultValue={item.supplier ?? ''}
-                                placeholder="—"
-                                className="w-32 px-1 py-1 bg-transparent text-zinc-50 text-[13px] placeholder-zinc-600 focus:outline-none focus:bg-zinc-900/40 rounded"
-                                onBlur={(e) => {
-                                  const next = e.target.value.trim();
-                                  // The API reads null as "leave unchanged", so an
-                                  // emptied box sends "" to actually clear it.
-                                  if ((item.supplier ?? '') !== next) {
-                                    persistBomItem(item, { supplier: next });
-                                  }
-                                }}
-                              />
-                            </td>
                             <td className="px-3 py-2 border-l border-zinc-800/60">
                               <input
                                 type="date"
@@ -777,45 +836,50 @@ export default function PurchaseOrderDetailPage() {
                                 ))}
                               </select>
                             </td>
-                            {/* With a file attached this becomes view / replace /
-                                remove instead of a single view-only button -
-                                previously an attachment could never be undone. */}
+                            {/* Attached file shows as a thumbnail; Replace and
+                                Remove have moved into the viewer that opens on
+                                click. Three icons per row across every item was
+                                a wall of controls, and two of them were
+                                destructive-adjacent actions sitting one pixel
+                                from "view". */}
                             <td className="px-3 py-2 border-l border-zinc-800/60">
                               <div className="flex items-center justify-center gap-1">
-                                <button
-                                  type="button"
-                                  className={`transition-colors ${
-                                    hasProof ? 'text-emerald-400 hover:text-emerald-300' : 'text-zinc-400 hover:text-zinc-200'
-                                  }`}
-                                  title={hasProof ? 'View proof' : 'Upload proof'}
-                                  disabled={isLoading}
-                                  onClick={() =>
-                                    hasProof ? setEvidenceViewerUrl(item.evidenceImageUrl!) : handleEvidenceUploadClick(item.id)
-                                  }
-                                >
-                                  <Paperclip className="h-4 w-4" />
-                                </button>
-                                {hasProof && (
-                                  <>
-                                    <button
-                                      type="button"
-                                      title="Replace proof"
-                                      disabled={isLoading}
-                                      className="text-zinc-400 hover:text-zinc-100 transition-colors"
-                                      onClick={() => handleEvidenceUploadClick(item.id)}
-                                    >
-                                      <Upload className="h-3.5 w-3.5" />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      title="Remove proof"
-                                      disabled={isLoading}
-                                      className="text-zinc-400 hover:text-red-400 transition-colors"
-                                      onClick={() => persistBomItem(item, { clearEvidence: true })}
-                                    >
-                                      <X className="h-3.5 w-3.5" />
-                                    </button>
-                                  </>
+                                {hasProof && !brokenEvidence.has(item.id) ? (
+                                  <button
+                                    type="button"
+                                    title="View attachment"
+                                    disabled={isLoading}
+                                    onClick={() => setEvidenceViewerItem(item)}
+                                    className="h-9 w-9 shrink-0 overflow-hidden border border-zinc-700 transition-colors hover:border-blue-600 disabled:opacity-50"
+                                  >
+                                    <img
+                                      src={item.evidenceImageUrl!}
+                                      alt="Attachment preview"
+                                      className="h-full w-full object-cover"
+                                      onError={() => markEvidenceBroken(item.id)}
+                                    />
+                                  </button>
+                                ) : hasProof ? (
+                                  // Row has a stored URL but the file 404s.
+                                  <button
+                                    type="button"
+                                    title="Attachment file is missing — click to upload a replacement"
+                                    disabled={isLoading}
+                                    onClick={() => handleEvidenceUploadClick(item.id)}
+                                    className="grid h-9 w-9 shrink-0 place-items-center border border-dashed border-amber-500 text-amber-600 transition-colors hover:bg-amber-50 disabled:opacity-50"
+                                  >
+                                    <AlertTriangle className="h-4 w-4" />
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="text-zinc-400 hover:text-zinc-200 transition-colors"
+                                    title="Upload proof"
+                                    disabled={isLoading}
+                                    onClick={() => handleEvidenceUploadClick(item.id)}
+                                  >
+                                    <Paperclip className="h-4 w-4" />
+                                  </button>
                                 )}
                               </div>
                             </td>
@@ -899,7 +963,7 @@ export default function PurchaseOrderDetailPage() {
             <button
               type="button"
               disabled={isLoading}
-              className="w-full px-3 py-1.5 text-left text-[13px] text-red-400 hover:bg-zinc-800 transition-colors disabled:opacity-50"
+              className="w-full px-3 py-1.5 text-left text-[13px] text-red-600 hover:bg-zinc-800 transition-colors disabled:opacity-50"
               onClick={() => void handleDeleteItem(actionsMenu.itemId)}
             >
               Delete item
@@ -908,27 +972,150 @@ export default function PurchaseOrderDetailPage() {
         </>
       )}
 
-      {/* Evidence image viewer — slides in from the right */}
+      {/* Attachment delete confirmation. The file is removed from the server,
+          not just unlinked from the item, so this is not undoable — hence a
+          dialog rather than a bare trash click. Same square, bordered shell the
+          rest of the module's dialogs use. */}
       <AnimatePresence>
-        {evidenceViewerUrl && (
+        {confirmRemoveEvidence && (
           <motion.div
-            className="fixed inset-0 z-[60] bg-black/50"
+            className="fixed inset-0 z-[75] flex items-center justify-center bg-zinc-50/40 p-6"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={() => setEvidenceViewerUrl(null)}
+            onClick={() => setConfirmRemoveEvidence(null)}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Remove attachment"
           >
             <motion.div
-              className="fixed inset-y-0 right-0 w-[420px]"
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'tween', duration: 0.2 }}
+              className="w-full max-w-md border border-zinc-700 bg-zinc-900 p-6 shadow-[0_16px_48px_-12px_rgba(15,35,64,0.22)]"
+              initial={{ opacity: 0, y: 12, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.98 }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex-1 overflow-auto p-4 flex items-center justify-center">
-                <img src={evidenceViewerUrl} alt="Transaction evidence" className="max-w-full max-h-full rounded border border-zinc-700" />
+              <h2 className="text-[15px] font-bold text-zinc-50">Remove attachment?</h2>
+              <p className="mt-2 text-[13px] text-zinc-400">
+                The proof of transaction for{' '}
+                <span className="font-semibold text-zinc-200">
+                  {formatProductName(confirmRemoveEvidence.itemName)}
+                </span>{' '}
+                will be deleted from the server. This can't be undone.
+              </p>
+
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="border border-zinc-700 bg-zinc-900 px-4 py-2 text-[13px] text-zinc-200 transition-colors hover:bg-zinc-800"
+                  onClick={() => setConfirmRemoveEvidence(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isLoading}
+                  className="border border-red-700 bg-red-700 px-4 py-2 text-[13px] font-medium text-red-50 transition-colors hover:bg-red-800 disabled:opacity-50"
+                  onClick={() => {
+                    const item = confirmRemoveEvidence;
+                    setConfirmRemoveEvidence(null);
+                    void persistBomItem(item, { clearEvidence: true });
+                  }}
+                >
+                  Remove
+                </button>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Attachment viewer.
+
+          A centred lightbox rather than the old right-hand drawer: the drawer
+          panel spanned the full viewport height, so "click outside the image"
+          meant "click the narrow strip to its left" — most of the screen still
+          belonged to the panel and did nothing.
+
+          Now only the image and its controls stop propagation, so a click
+          anywhere else on the backdrop closes it. Escape closes too. */}
+      <AnimatePresence>
+        {evidenceViewerItem?.evidenceImageUrl && (
+          <motion.div
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-zinc-50/60 p-10 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setEvidenceViewerItem(null)}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Item attachment"
+          >
+            <motion.div
+              className="relative"
+              initial={{ opacity: 0, scale: 0.97 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.97 }}
+              transition={{ duration: 0.15 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Controls, upper right. Outside the image's top-right corner so
+                  they never cover the content being reviewed. */}
+              <div className="absolute -top-3 -right-3 z-10 flex items-center gap-1 border border-zinc-700 bg-zinc-900 p-1 shadow-[0_6px_18px_-6px_rgba(22,58,95,0.3)]">
+                <button
+                  type="button"
+                  title="Replace attachment"
+                  aria-label="Replace attachment"
+                  disabled={isLoading}
+                  className="p-1.5 text-zinc-400 transition-colors hover:text-blue-600 disabled:opacity-50"
+                  onClick={() => {
+                    const id = evidenceViewerItem.id;
+                    // Close first: the OS file dialog opens over this, and the
+                    // list refreshes underneath once the upload completes.
+                    setEvidenceViewerItem(null);
+                    handleEvidenceUploadClick(id);
+                  }}
+                >
+                  <Upload className="h-4 w-4" />
+                </button>
+
+                <button
+                  type="button"
+                  title="Remove attachment"
+                  aria-label="Remove attachment"
+                  disabled={isLoading}
+                  className="p-1.5 text-zinc-400 transition-colors hover:text-red-600 disabled:opacity-50"
+                  onClick={() => {
+                    const item = evidenceViewerItem;
+                    setEvidenceViewerItem(null);
+                    setConfirmRemoveEvidence(item);
+                  }}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+
+                <span className="mx-0.5 h-4 w-px bg-zinc-700" aria-hidden="true" />
+
+                <button
+                  type="button"
+                  title="Close"
+                  aria-label="Close"
+                  className="p-1.5 text-zinc-400 transition-colors hover:text-zinc-50"
+                  onClick={() => setEvidenceViewerItem(null)}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <img
+                src={evidenceViewerItem.evidenceImageUrl}
+                alt={`Attachment for ${evidenceViewerItem.itemName}`}
+                className="max-h-[80vh] max-w-[80vw] border border-zinc-700 bg-zinc-900 object-contain"
+              />
+
+              <p className="mt-2 truncate text-center text-[11px] text-zinc-500">
+                {formatProductName(evidenceViewerItem.itemName)}
+              </p>
             </motion.div>
           </motion.div>
         )}

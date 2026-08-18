@@ -77,7 +77,7 @@ export default function EmailRecipientPickerDialog({
 
   return (
     <motion.div
-      className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-zinc-50/40 flex items-center justify-center z-50 p-4"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -94,7 +94,7 @@ export default function EmailRecipientPickerDialog({
         {/* Header */}
         <div className="flex items-start justify-between gap-3 p-5  bg-gradient-to-r from-zinc-800 to-zinc-800/40">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="h-10 w-10 rounded-full bg-zinc-700 flex items-center justify-center text-white shrink-0 shadow-lg shadow-black/40">
+            <div className="h-10 w-10 rounded-full bg-blue-600 flex items-center justify-center text-white shrink-0 shadow-lg shadow-blue-600/20">
               {icon}
             </div>
             <div className="min-w-0">
@@ -154,7 +154,7 @@ export default function EmailRecipientPickerDialog({
                   type="button"
                   onClick={() => removeExtraEmail(email)}
                   title="Remove"
-                  className="p-1 text-zinc-500 hover:text-red-400 transition-colors shrink-0"
+                  className="p-1 text-zinc-500 hover:text-red-600 transition-colors shrink-0"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -191,7 +191,7 @@ export default function EmailRecipientPickerDialog({
           </div>
 
           {errorMessage && (
-            <div className="flex items-center gap-2 px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-300">
+            <div className="flex items-center gap-2 px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-600">
               <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> {errorMessage}
             </div>
           )}
@@ -218,7 +218,7 @@ export default function EmailRecipientPickerDialog({
           <button
             type="button"
             onClick={() => onConfirm(resolvedEmails)}
-            className="px-4 py-2 bg-zinc-100 text-zinc-950 text-sm font-semibold rounded-lg hover:shadow-[0_0_20px_rgba(255,255,255,0.15)] transition-all flex items-center gap-1.5"
+            className="px-4 py-2 bg-zinc-100 text-zinc-950 text-sm font-semibold rounded-lg hover:shadow-[0_4px_14px_rgba(15,35,64,0.18)] transition-all flex items-center gap-1.5"
           >
             <Send className="h-3.5 w-3.5" />
             {`${confirmLabel}${resolvedEmails.length > 0 ? ` (${resolvedEmails.length})` : ''}`}

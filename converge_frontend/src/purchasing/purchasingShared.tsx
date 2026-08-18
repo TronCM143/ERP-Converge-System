@@ -52,6 +52,9 @@ export interface BOMItem {
   receivedAt?: string | null;
   remarks?: string | null;
   supplier?: string | null;
+  // Where that supplier is — street address, store, branch. Edited beside the
+  // supplier name in the per-item note panel.
+  supplierAddress?: string | null;
   evidenceImageUrl?: string | null;
   price?: number | null;
   // Procurement-side rates, applied to this line's gross subtotal.
@@ -283,34 +286,35 @@ export function ArrivalsCalendar({ prs }: { prs: PurchaseRequest[] }) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-[16px] font-bold text-zinc-200 uppercase tracking-wide">Delivery Calendar</h3>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            className="px-2 py-0.5 text-[18px] leading-none text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800 rounded transition-colors"
-            onClick={() => {
-              setCursor(new Date(year, month - 1, 1));
-              setSelectedDay(null);
-            }}
-          >
-            ‹
-          </button>
-          <span className="text-[15px] font-semibold text-zinc-200 min-w-[120px] text-center">
-            {cursor.toLocaleDateString([], { month: 'long', year: 'numeric' })}
-          </span>
-          <button
-            type="button"
-            className="px-2 py-0.5 text-[18px] leading-none text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800 rounded transition-colors"
-            onClick={() => {
-              setCursor(new Date(year, month + 1, 1));
-              setSelectedDay(null);
-            }}
-          >
-            ›
-          </button>
-        </div>
-      </div>
+      <div className="flex items-center justify-center mb-4">
+  <div className="flex items-center gap-1">
+    <button
+      type="button"
+      className="px-2 py-0.5 text-[18px] leading-none text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800 rounded transition-colors"
+      onClick={() => {
+        setCursor(new Date(year, month - 1, 1));
+        setSelectedDay(null);
+      }}
+    >
+      ‹
+    </button>
+
+    <span className="text-[15px] font-semibold text-zinc-200 min-w-[120px] text-center">
+      {cursor.toLocaleDateString([], { month: 'long', year: 'numeric' })}
+    </span>
+
+    <button
+      type="button"
+      className="px-2 py-0.5 text-[18px] leading-none text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800 rounded transition-colors"
+      onClick={() => {
+        setCursor(new Date(year, month + 1, 1));
+        setSelectedDay(null);
+      }}
+    >
+      ›
+    </button>
+  </div>
+</div>
 
       <div className="grid grid-cols-7 gap-1 mb-1">
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
@@ -345,8 +349,8 @@ export function ArrivalsCalendar({ prs }: { prs: PurchaseRequest[] }) {
               : 'border-zinc-800';
           const dateTextCls = hasArrivals
             ? allReceived
-              ? 'text-emerald-200'
-              : 'text-amber-200'
+              ? 'text-emerald-700'
+              : 'text-amber-700'
             : isToday
               ? 'text-zinc-200'
               : 'text-zinc-400';
@@ -382,7 +386,7 @@ export function ArrivalsCalendar({ prs }: { prs: PurchaseRequest[] }) {
             {(arrivalsByDay.get(selectedDay.toDateString()) ?? []).map((a, i) => (
               <li
                 key={i}
-                className={`text-[15px] flex items-center gap-1.5 ${a.received ? 'text-emerald-400' : 'text-zinc-200'}`}
+                className={`text-[15px] flex items-center gap-1.5 ${a.received ? 'text-emerald-600' : 'text-zinc-200'}`}
               >
                 {a.received ? <span className="shrink-0">✓</span> : <span className="h-1.5 w-1.5 rounded-full bg-zinc-500 shrink-0" />}
                 {a.label}

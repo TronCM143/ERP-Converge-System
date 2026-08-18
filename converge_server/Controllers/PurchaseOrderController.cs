@@ -7,7 +7,7 @@ namespace converge_server.Controllers
 {
     [ApiController]
     [Route("api/purchase-orders")]
-    [Authorize(Roles = "purchasing")]
+    [Authorize(Roles = "purchasing,admin")]
     public class PurchaseOrderController : ControllerBase
     {
         private readonly IPurchaseOrderService _purchaseOrderService;

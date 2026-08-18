@@ -1,21 +1,28 @@
+import { useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GlassMorphCard } from '../../components/ui/glass-morph-card';
 import { ClientSummary } from './ClientFormModal';
-import { peso, followUpState, shortDate } from './crmFormat';
+import { peso, shortDate, relativeDay, clientAccent } from './crmFormat';
 
 interface KanbanCardProps {
   client: ClientSummary;
   onClick: () => void;
 }
 
-/* Information order, most to least important:
-     1 client name  2 contact person  3 service  4 current deal value
-     5 follow-up / last activity  6 total client sales (only if they have any)
+/* Opportunity card.
 
-   Height is no longer fixed — a client with a service line and a follow-up date
-   genuinely has more to say than a bare new lead, and padding every card to the
-   tallest wasted most of the column. */
+   Hierarchy, strongest to weakest: client name, amount, date. The amount is
+   the figure a salesperson scans a column for, so it outweighs the timestamp
+   rather than sitting beside it as an equal.
+
+   The left border is the stage colour — the only colour on an otherwise white
+   card. A client with an explicit colour set on its profile overrides it, so
+   the accent picker still does something visible; unset clients (the norm)
+   read as their pipeline stage.
+
+   Plain div rather than GlassMorphCard: that component brings backdrop-blur, a
+   3D tilt transform and an inset sheen, none of which belong in a square-edged
+   enterprise board — and its blur made text noticeably softer. */
 export default function KanbanCard({ client, onClick }: KanbanCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: client.id.toString()
@@ -24,71 +31,67 @@ export default function KanbanCard({ client, onClick }: KanbanCardProps) {
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1
+    opacity: isDragging ? 0.4 : 1
   };
 
-  const followUp = followUpState(client.followUpDate);
-  // A client with no approved quotations has bought nothing yet, so showing
-  // "Total Sales ₱0.00" would be noise — they're simply new.
-  const hasHistory = client.totalSales > 0;
+  /* An explicit per-client colour wins; otherwise the colour is derived from the
+     client's name. Deliberately NOT the stage colour: the card would then
+     repaint itself the moment it was dragged to another column, so a card you
+     were tracking by colour became a different card mid-drag. A client's colour
+     is its identity and stays put wherever it sits on the board. */
+  const accent = clientAccent(
+    client.name,
+    client.accentColor
+  );
+  const [isHovered, setIsHovered] = useState(false);
+
+  // currentOpportunity (newest quotation, any status) — NOT totalSales, which
+  // counts approved quotations only and reads ₱0 until a deal closes.
+  const amount = client.currentOpportunity ?? (client.totalSales > 0 ? client.totalSales : null);
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <GlassMorphCard
-        tone="raised"
-        radius="md"
-        intensity={7}
-        disabled={isDragging}
+      {/* The whole card carries the colour now — there is no left stripe.
+          Inline styles rather than classes because the hue is per-client and
+          arbitrary (any hex from the profile picker), so it can't be a
+          precompiled Tailwind class. */}
+      <div
         onClick={onClick}
-        className="cursor-grab active:cursor-grabbing"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        className="relative cursor-grab border px-2 py-2 transition-colors duration-150 active:cursor-grabbing"
+        /* Two layers: the accent tint painted OVER a near-opaque white base.
+
+           The tint alone was enough while the board behind it was solid white,
+           but the board is translucent now — without its own base the card
+           would inherit the wave artwork straight behind its figures, and the
+           amount is the one thing on this card that has to stay readable. */
+        style={{
+          backgroundImage: `linear-gradient(${isHovered ? accent.fillHover : accent.fill}, ${
+            isHovered ? accent.fillHover : accent.fill
+          })`,
+          backgroundColor: 'rgba(255,255,255,0.92)',
+          borderColor: accent.border
+        }}
       >
-        <div className="p-3 flex flex-col gap-1">
-          <h4 className="min-w-0 truncate text-[15px] leading-tight font-medium text-zinc-100">
-            {client.name}
-          </h4>
+        {/* Type and padding are sized for a sixth of the board. The date line
+            truncates rather than wrapping: two lines of metadata on a card this
+            narrow pushed the amount — the figure the column is scanned for —
+            below the fold of a compact stack. */}
+        <p className="truncate text-[12px] font-semibold leading-tight text-zinc-50">
+          {client.name}
+        </p>
 
-          {client.contactPerson && (
-            <p className="truncate text-[13px] leading-tight font-light text-zinc-400">
-              {client.contactPerson}
-            </p>
-          )}
+        <p className="mt-0.5 truncate text-[13px] font-bold leading-tight tabular-nums text-zinc-50">
+          {amount != null ? peso(amount) : <span className="text-[11px] font-normal italic text-zinc-500">No quotation</span>}
+        </p>
 
-          {/* The deal itself — what it's for and what it's worth. */}
-          {(client.currentService || client.currentOpportunity != null) && (
-            <div className="mt-1.5 pt-1.5 border-t border-zinc-800/70">
-              {client.currentService && (
-                <p className="truncate text-[12px] leading-tight text-zinc-300">{client.currentService}</p>
-              )}
-              {client.currentOpportunity != null && client.currentOpportunity > 0 && (
-                <p className="text-[14px] leading-tight font-semibold text-zinc-100 tabular-nums mt-0.5">
-                  {peso(client.currentOpportunity)}
-                </p>
-              )}
-            </div>
-          )}
-
-          <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px] leading-tight text-zinc-500">
-            <span className="shrink-0">{shortDate(client.lastUpdated)}</span>
-            {followUp && (
-              // Overdue is the one thing on this card that demands action today,
-              // so it is the only element allowed an attention colour.
-              <span className={`shrink-0 truncate ${followUp.overdue ? 'text-amber-400' : 'text-zinc-400'}`}>
-                Follow-up: {followUp.label}
-              </span>
-            )}
-          </div>
-
-          {client.stage === 'Lost' && client.lossReason && (
-            <p className="truncate text-[11px] leading-tight text-rose-300/70">{client.lossReason}</p>
-          )}
-
-          {hasHistory && (
-            <p className="text-[11px] leading-tight text-zinc-500 tabular-nums">
-              Total sales {peso(client.totalSales)}
-            </p>
-          )}
-        </div>
-      </GlassMorphCard>
+        <p className="mt-0.5 truncate text-[10px] leading-tight text-zinc-500">
+          {shortDate(client.lastUpdated)}
+          <span aria-hidden="true"> · </span>
+          {relativeDay(client.lastUpdated)}
+        </p>
+      </div>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace converge_server.Models.Entities
@@ -43,6 +43,13 @@ namespace converge_server.Models.Entities
 
         [Column(TypeName = "decimal(5,2)")]
         public decimal TaxPercent { get; set; }
+
+        /* Flat peso amount off this line (NOT a percentage — TaxPercent is).
+           The column already existed but this property had gone missing, so the
+           discount the quotation editor sends was silently dropped on every
+           save and never reached the totals. */
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal DiscountAmount { get; set; }
 
         public int SortOrder { get; set; }
 

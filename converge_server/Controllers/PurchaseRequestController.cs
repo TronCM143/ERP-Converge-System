@@ -1,4 +1,4 @@
-using converge_server.Models.DTOs.BillOfMaterial;
+﻿using converge_server.Models.DTOs.BillOfMaterial;
 using converge_server.Models.DTOs.PurchaseRequest;
 using converge_server.Models.DTOs.PurchaseRequestItem;
 using converge_server.Services.Interfaces;
@@ -9,7 +9,7 @@ namespace converge_server.Controllers
 {
     [ApiController]
     [Route("api/purchase-requests")]
-    [Authorize(Roles = "purchasing")]
+    [Authorize(Roles = "purchasing,admin")]
     public class PurchaseRequestController : ControllerBase
     {
         private readonly IPurchaseRequestService _purchaseRequestService;
@@ -76,7 +76,14 @@ namespace converge_server.Controllers
                         bomItem.ReceivedAt,
                         bomItem.Remarks,
                         bomItem.Supplier,
-                        bomItem.EvidenceImageUrl
+                        bomItem.SupplierAddress,
+                        bomItem.EvidenceImageUrl,
+                        // This is the projection the PR list uses — the one the
+                        // purchasing workspace actually reads. Omitting pricing
+                        // here is what left every PO/PR summary at ₱0.00.
+                        Price = bomItem.UnitPrice,
+                        bomItem.DiscountAmount,
+                        bomItem.TaxPercent
                     }).ToList()
                 }
             });
@@ -288,7 +295,13 @@ namespace converge_server.Controllers
                         item.QuantityToPurchase,
                         item.DeliveryDate,
                         item.ReceivedAt,
-                        item.Remarks
+                        item.Remarks,
+                        // Pricing was absent from this projection, so the client's
+                        // BOMItem.price was always undefined and bomTotals() — which
+                        // skips null-priced lines — summed every PO/PR to zero.
+                        Price = item.UnitPrice,
+                        item.DiscountAmount,
+                        item.TaxPercent
                     })
                 }
             });
@@ -320,7 +333,13 @@ namespace converge_server.Controllers
                     item.QuantityToPurchase,
                     item.DeliveryDate,
                     item.ReceivedAt,
-                    item.Remarks
+                    item.Remarks,
+                    // Pricing was absent from this projection, so the client's
+                    // BOMItem.price was always undefined and bomTotals() — which
+                    // skips null-priced lines — summed every PO/PR to zero.
+                    Price = item.UnitPrice,
+                    item.DiscountAmount,
+                    item.TaxPercent
                 })
             });
         }
@@ -359,13 +378,16 @@ namespace converge_server.Controllers
 
             try
             {
-                var item = await _billOfMaterialService.UpdateBillOfMaterialItemStatusAsync(itemId, dto);
+                var item = await _billOfMaterialService.UpdateBillOfMaterialItemStatusAsync(itemId, dto, _env.ContentRootPath);
                 return Ok(new
                 {
                     item.Id,
                     item.ItemName,
                     item.Status,
-                    item.Remarks
+                    item.Remarks,
+                    item.Supplier,
+                    item.SupplierAddress,
+                    item.EvidenceImageUrl
                 });
             }
             catch (KeyNotFoundException ex)

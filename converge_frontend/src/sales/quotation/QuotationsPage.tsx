@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CircleCheck, CloudUpload, FileSearch, FileText, Plus, Search, ShoppingCart, Trash2 } from 'lucide-react';
 import { apiFetch } from '../../shared/api';
@@ -6,6 +6,35 @@ import { queryCache, CACHE_KEYS } from '../../shared/queryCache';
 import { useAuth } from '../../app/AuthContext';
 import { ClientSummary } from '../crm/ClientFormModal';
 import QuotationFormModal from './QuotationFormModal';
+
+/* ── Tuning knobs ───────────────────────────────────────────────────────────
+   How far, in pixels, the "Send to Purchase" button is pushed in from the left
+   edge of the Actions column. Raising it slides the button further right, away
+   from the Status pill and closer to the Delete icon; lowering it does the
+   reverse. This is the only number to change — the Actions column's minimum
+   width is derived from it (see ACTIONS_MIN_PX), so widening the offset can't
+   squeeze the Delete icon off the right corner on a narrow window. */
+const SEND_TO_PURCHASE_OFFSET_PX = 100;
+
+/* How far the rest of the row — Name, Date, Amount, Status — is pushed right,
+   as a percentage of the table's width. Quotation # deliberately does NOT move:
+   the offset is added to that first column's width, so the number stays anchored
+   at the left edge and everything after it slides right by this much. Raise or
+   lower the one number to widen or close the gap. */
+const CONTENT_OFFSET_PERCENT = 20;
+
+/* Nudge for the Name column ALONE, in pixels — negative pulls it left, positive
+   pushes it right. It is a margin on the Name cell rather than a change to the
+   track sizes, which is what keeps Date / Amount / Status / Actions exactly
+   where they are; the cell simply reaches back into the empty run that
+   CONTENT_OFFSET_PERCENT opened up. Pulling further left than that run is wide
+   will run Name into the quotation number. */
+const NAME_NUDGE_PX = -100;
+
+/* Room the Actions column needs at its narrowest: the labelled Send button,
+   the Drive control, the Delete icon and the gap between the two ends. */
+const ACTIONS_BASE_PX = 206;
+const ACTIONS_MIN_PX = ACTIONS_BASE_PX + SEND_TO_PURCHASE_OFFSET_PX;
 
 interface QuotationMaterialItem {
   id: number;
@@ -56,26 +85,30 @@ const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionD
 const statusClass = (s: string) => {
   switch (s) {
     case 'Approved':
-      return 'bg-emerald-500/10 text-emerald-300';
+      return 'bg-emerald-500/10 text-emerald-700';
     case 'Sent':
       return 'bg-zinc-800 text-zinc-200';
     case 'Rejected':
-      return 'bg-rose-500/10 text-rose-300';
+      return 'bg-rose-500/10 text-rose-600';
     default:
       return 'bg-zinc-700/40 text-zinc-400';
   }
 };
 
+/* `onQuotationSelect` is gone: it existed to hand a quotation id up to the page
+   so it could open a separate detail modal. Rows now open the generator
+   directly, so there is nothing to hand up. */
 export default function QuotationsPage({
   client,
   autoOpenModal,
-  onQuotationChanged,
-  onQuotationSelect
+  openQuotationId,
+  onQuotationChanged
 }: {
   client: ClientSummary;
   autoOpenModal?: boolean;
+  /** Quotation to open in the generator on arrival — from a "?quotation=34" notification link. */
+  openQuotationId?: number;
   onQuotationChanged?: () => void;
-  onQuotationSelect?: (quotationId: number) => void;
 }) {
   const { role } = useAuth();
   // Admin gets read-only oversight; only sales staff can create or act on quotations.
@@ -84,9 +117,38 @@ export default function QuotationsPage({
   /* One column template shared by the header and every row — the only way the
      two stay aligned. The Actions column exists only when the user can manage,
      so read-only viewers get five columns, not an empty gutter. */
-  const gridCols = canManage
-    ? 'grid grid-cols-[110px_minmax(0,1fr)_100px_120px_88px_104px]'
-    : 'grid grid-cols-[110px_minmax(0,1fr)_100px_120px_88px]';
+  /* The Name column was `1fr` and swallowed every spare pixel, which left the
+     Actions column at 104px — only wide enough for icon buttons. Name is now
+     capped so the row's content packs to the LEFT and the freed width goes to
+     Actions, which has to fit a labelled "Send to Purchase" button plus the
+     Drive and Delete controls. Date/Amount/Status also tighten slightly.
+
+     Actions is `minmax(…,1fr)`, not a flat width. Capping Name at `0.85fr`
+     leaves the flex factors summing to less than 1, and CSS Grid then hands an
+     fr track only that fraction of the free space — the remaining ~15% became
+     dead space PAST the last column, so Actions (and its heading) stopped short
+     of the right edge. Letting Actions take the slack pins it to the far right
+     and widens the cell, which is also what separates the Delete icon in its
+     right corner from the "Send to Purchase" button at the cell's left.
+
+     The first track is `calc(104px + CONTENT_OFFSET_PERCENT%)` rather than a
+     bare 104px, which is how everything from Name rightward gets shifted with a
+     single value instead of a spacer element in the header and in every row. The
+     quotation number is left-aligned inside that track, so it alone stays put.
+
+     An inline style rather than a `grid-cols-[…]` class because both the offset
+     and the Actions minimum are computed from the knobs at the top of the file,
+     and Tailwind only generates classes it can read literally in the source. */
+  const numberCol = `calc(104px + ${CONTENT_OFFSET_PERCENT}%)`;
+  const gridStyle: React.CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: canManage
+      ? `${numberCol} minmax(90px, 0.85fr) 92px 112px 84px minmax(${ACTIONS_MIN_PX}px, 1fr)`
+      : `${numberCol} minmax(90px, 1fr) 92px 112px 84px`
+  };
+  /* Applied to the Name heading AND the Name cell — the two have to carry the
+     same nudge or the column stops lining up with its label. */
+  const nameCellStyle: React.CSSProperties = { marginLeft: NAME_NUDGE_PX };
   // Seeded from the session cache so revisiting a client's profile shows
   // their quotations instantly.
   const [quotations, setQuotations] = useState<Quotation[]>(
@@ -99,6 +161,9 @@ export default function QuotationsPage({
   const [editingQuotation, setEditingQuotation] = useState<Quotation | null>(null);
   // Quotation id awaiting "send to purchasing" confirmation.
   const [confirmSendId, setConfirmSendId] = useState<number | null>(null);
+  // Resolved so the confirm dialog can name the quotation it is about to hand
+  // over, rather than asking about "this quotation" in the abstract.
+  const sendTarget = confirmSendId == null ? null : quotations.find((q) => q.id === confirmSendId) ?? null;
   // Quotation awaiting delete confirmation.
   const [confirmDelete, setConfirmDelete] = useState<Quotation | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -130,6 +195,19 @@ export default function QuotationsPage({
   useEffect(() => {
     if (autoOpenModal) setIsModalOpen(true);
   }, [autoOpenModal]);
+
+  /* A notification link can name a quotation directly ("?quotation=34"); open it
+     in the generator as soon as the list it belongs to has arrived. Guarded so it
+     fires once — the id stays in the URL after the user closes the modal, so
+     without the ref they could never get out of it. */
+  const deepLinkOpened = useRef(false);
+  useEffect(() => {
+    if (!openQuotationId || deepLinkOpened.current) return;
+    const target = quotations.find((q) => q.id === openQuotationId);
+    if (!target) return;
+    deepLinkOpened.current = true;
+    setEditingQuotation(target);
+  }, [openQuotationId, quotations]);
 
   const fetchQuotations = async () => {
     const cacheKey = CACHE_KEYS.quotationsForClient(client.id);
@@ -297,7 +375,7 @@ export default function QuotationsPage({
 
           {canManage && (
             <motion.button
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-zinc-100 hover:bg-white text-zinc-950 rounded-lg transition-colors font-medium"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-zinc-100 hover:bg-zinc-200 text-zinc-950 rounded-lg transition-colors font-medium"
               type="button"
               whileTap={{ scale: 0.94 }}
               onClick={() => setIsModalOpen(true)}
@@ -346,23 +424,28 @@ export default function QuotationsPage({
           </div>
         ) : (
           <div className="flex flex-col min-h-0 flex-1">
-            {/* Header and rows share ONE grid template (see gridCols), including
+            {/* Header and rows share ONE grid template (see gridStyle), including
                 the Actions column. Previously the header was a 5-column grid plus
                 a 140px spacer while each row carried a 104px action group on the
                 LEFT and an 80px one on the right — so no column ever lined up
                 with its heading. */}
-            <div className={`${gridCols} gap-3 mb-1.5 shrink-0 px-3 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider`}>
+            {/* Solid brand-blue header band with white labels. */}
+            <div
+              style={gridStyle}
+              className="gap-3 shrink-0 bg-blue-600 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-white"
+            >
               <span>Quotation #</span>
-              <span>Name</span>
+              <span style={nameCellStyle}>Name</span>
               <span>Date</span>
               <span className="text-right">Amount</span>
               <span className="text-right">Status</span>
               {canManage && <span className="text-right">Actions</span>}
             </div>
 
-            {/* Only this list scrolls. */}
-            <div className="flex-1 min-h-0 overflow-y-auto space-y-1.5 pr-1">
-              {filteredQuotations.map((q) => (
+            {/* Only this list scrolls. `space-y` is gone: zebra striping only
+                reads as banding when the rows actually touch. */}
+            <div className="flex-1 min-h-0 overflow-y-auto border-x border-b border-zinc-700">
+              {filteredQuotations.map((q, rowIndex) => (
                 /* One row, one grid — no side gutters. The Approve (✓), Reject (×)
                    and Move-to-Proposal (→) controls that used to sit on the left
                    are gone: those advance the deal, which is CRM's job, and
@@ -370,28 +453,39 @@ export default function QuotationsPage({
                    stage. Actions now holds record-level actions only. */
                 <div
                   key={q.id}
-                  className={`${gridCols} gap-3 items-center border-y border-zinc-800 bg-zinc-900/40 px-3 py-2.5 cursor-pointer hover:bg-zinc-800/40 transition-colors`}
-                  onClick={() => {
-                    // Drafts open in the quotation editor pre-filled; anything
-                    // already sent onward opens the read-only detail view.
-                    if (canManage && q.status === 'Draft') {
-                      setEditingQuotation(q);
-                    } else {
-                      onQuotationSelect?.(q.id);
-                    }
-                  }}
+                  style={gridStyle}
+                  /* Alternating white / pale blue. The tint is deliberately
+                     light — rows carry a coloured status pill and an orange
+                     action button, and a stronger band would compete with
+                     both. */
+                  className={`gap-3 items-center border-b border-zinc-800 px-3 py-2.5 cursor-pointer transition-colors last:border-b-0 hover:bg-blue-100 ${
+                    rowIndex % 2 === 0 ? 'bg-zinc-900' : 'bg-[#f2f6fb]'
+                  }`}
+                  /* Every quotation opens in the quotation generator, whatever
+                     its status. There is no second look-alike viewer: the
+                     generator IS the view, and it switches itself to view-only
+                     for anything past Draft (and for roles that can't write). */
+                  onClick={() => setEditingQuotation(q)}
                 >
+                  {/* `justify-self-start` keeps the link's hit area on the number
+                      itself. As a stretched grid item it would otherwise span the
+                      whole first track — which is now ~20% of the table wider than
+                      the text — and clicking that empty run would open the
+                      quotation. `max-w-full` leaves `truncate` working for the
+                      rare over-long number. */}
                   <button
                     type="button"
-                    className="quotation-number-link font-semibold text-zinc-100 hover:text-white text-left truncate"
+                    className="quotation-number-link justify-self-start max-w-full font-semibold text-blue-600 hover:text-blue-700 text-left truncate"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onQuotationSelect?.(q.id);
+                      setEditingQuotation(q);
                     }}
                   >
                     {q.quotationNumber}
                   </button>
-                  <span className="text-zinc-300 truncate">{q.quotationName}</span>
+                  <span style={nameCellStyle} className="text-zinc-300 truncate">
+                    {q.quotationName}
+                  </span>
                   <span className="text-xs text-zinc-500 whitespace-nowrap">
                     {new Date(q.createdAt).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' })}
                   </span>
@@ -405,47 +499,69 @@ export default function QuotationsPage({
                   </div>
 
                   {canManage && (
-                    <div className="flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
-                      {/* Kept deliberately, unlike ✓ / × / →: this hands the
-                          quotation to the purchasing module, and CRM has no
-                          equivalent — dropping it would leave no way at all to
-                          raise a purchase request from a quotation. */}
-                      {q.status === 'Draft' && client.stage === 'Proposal' && (
-                        <button
-                          type="button"
-                          title="Send to Purchasing"
-                          disabled={isLoading}
-                          onClick={() => setConfirmSendId(q.id)}
-                          className="p-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors disabled:opacity-50"
-                        >
-                          <ShoppingCart className="h-4 w-4" />
-                        </button>
-                      )}
-                      {/* Drive status: a check when the PDF is already archived in
-                          Drive, otherwise a one-click "save to Drive". Both are
-                          record actions on the quotation file, not workflow. */}
-                      {driveConfigured &&
-                        (isInDrive(q) ? (
-                          <span title="Saved to Google Drive" className="p-1.5 text-emerald-400">
-                            <CircleCheck className="h-4 w-4" />
-                          </span>
-                        ) : (
+                    /* Two ends, not one cluster. Everything used to pack to the
+                       right with `gap-0.5`, which left the delete icon two
+                       pixels from "Send to Purchase" — an irreversible action a
+                       pointer-width from a routine one. The forward actions now
+                       sit at the left of the cell and Delete is pinned to the
+                       row's right corner, so it also lands in the same place on
+                       every row whether or not the Send button is there. */
+                    <div className="flex items-center justify-between gap-3" onClick={(e) => e.stopPropagation()}>
+                      {/* Pushed in from the cell's left edge by
+                          SEND_TO_PURCHASE_OFFSET_PX (top of this file). The
+                          offset is on the group, not on the button itself, so
+                          the Drive control keeps the same x on rows that have no
+                          Send button. */}
+                      <div
+                        className="flex min-w-0 items-center gap-0.5"
+                        style={{ marginLeft: SEND_TO_PURCHASE_OFFSET_PX }}
+                      >
+                        {/* Kept deliberately, unlike ✓ / × / →: this hands the
+                            quotation to the purchasing module, and CRM has no
+                            equivalent — dropping it would leave no way at all to
+                            raise a purchase request from a quotation. */}
+                        {/* Labelled rather than a bare cart icon: this is the one
+                            control here that hands the record to another module,
+                            and an icon gave no hint of that. */}
+                        {q.status === 'Draft' && client.stage === 'Proposal' && (
                           <button
                             type="button"
-                            title="Save to Google Drive"
-                            disabled={savingDriveId === q.id}
-                            onClick={() => void handleSaveToDrive(q)}
-                            className="p-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors disabled:opacity-50"
+                            title="Send this quotation to Purchasing"
+                            disabled={isLoading}
+                            onClick={() => setConfirmSendId(q.id)}
+                            className="inline-flex items-center gap-1 border border-orange-500 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-orange-600 hover:bg-orange-50 hover:text-orange-700 transition-colors disabled:opacity-50 whitespace-nowrap"
                           >
-                            <CloudUpload className="h-4 w-4" />
+                            <ShoppingCart className="h-3.5 w-3.5 shrink-0" />
+                            Send to Purchase
                           </button>
-                        ))}
+                        )}
+                        {/* Drive status: a check when the PDF is already archived in
+                            Drive, otherwise a one-click "save to Drive". Both are
+                            record actions on the quotation file, not workflow. */}
+                        {driveConfigured &&
+                          (isInDrive(q) ? (
+                            <span title="Saved to Google Drive" className="p-1.5 text-emerald-600">
+                              <CircleCheck className="h-4 w-4" />
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              title="Save to Google Drive"
+                              disabled={savingDriveId === q.id}
+                              onClick={() => void handleSaveToDrive(q)}
+                              className="p-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors disabled:opacity-50"
+                            >
+                              <CloudUpload className="h-4 w-4" />
+                            </button>
+                          ))}
+                      </div>
+
                       <button
                         type="button"
                         title="Delete quotation (also removes its PDF from Drive)"
                         disabled={isLoading}
                         onClick={() => setConfirmDelete(q)}
-                        className="p-1.5 rounded text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                        className="shrink-0 p-1.5 rounded text-zinc-400 hover:text-red-600 hover:bg-red-500/10 transition-colors disabled:opacity-50"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -467,45 +583,74 @@ export default function QuotationsPage({
           />
         )}
         {editingQuotation && (
+          /* readOnly for anyone who can't write (admin oversight). The modal
+             locks itself for non-Draft statuses on its own. */
           <QuotationFormModal
             client={client}
             quotation={editingQuotation}
+            readOnly={!canManage}
             onClose={() => setEditingQuotation(null)}
             onCreated={handleQuotationCreated}
           />
         )}
         {confirmSendId != null && (
           <motion.div
-            className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center"
+            className="fixed inset-0 bg-zinc-50/40 z-50 flex items-center justify-center"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setConfirmSendId(null)}
           >
             <motion.div
-              className="bg-zinc-800 border border-zinc-700 rounded-lg shadow-2xl p-6 w-full max-w-sm"
+              className="bg-zinc-900 border border-zinc-700 shadow-[0_16px_48px_-12px_rgba(15,35,64,0.22)] p-6 w-full max-w-md"
               initial={{ opacity: 0, y: 12, scale: 0.97 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 8, scale: 0.97 }}
               onClick={(e) => e.stopPropagation()}
+              role="alertdialog"
+              aria-modal="true"
             >
-              <h3 className="text-lg font-bold text-zinc-50 mb-2">Send to Purchasing?</h3>
-             
-              <div className="flex gap-2 justify-end">
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 shrink-0 grid place-items-center h-8 w-8 bg-orange-50 text-orange-600">
+                  <ShoppingCart className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <h3 className="text-[15px] font-bold text-zinc-50">Send to Purchasing?</h3>
+                  {/* The dialog previously had a heading and nothing else, so it
+                      asked for confirmation without saying what would happen. */}
+                  <p className="mt-1.5 text-[13px] leading-snug text-zinc-400">
+                    {sendTarget ? (
+                      <>
+                        <span className="font-semibold text-zinc-200">{sendTarget.quotationNumber}</span>
+                        {sendTarget.quotationName ? ` — ${sendTarget.quotationName}` : ''} will be handed to the
+                        Purchasing module, which raises a purchase request and a bill of materials from its
+                        line items.
+                      </>
+                    ) : (
+                      'This quotation will be handed to the Purchasing module.'
+                    )}
+                  </p>
+                  <p className="mt-2 text-[12px] italic text-zinc-500">
+                    Purchasing takes ownership from that point — you can&rsquo;t undo this from here.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-2 justify-end mt-5">
                 <button
                   type="button"
-                  className="px-4 py-2 text-sm bg-zinc-700 text-zinc-300 hover:bg-zinc-600 rounded transition-colors"
+                  className="px-4 py-2 text-[12px] font-bold uppercase tracking-wide border border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800 transition-colors"
                   onClick={() => setConfirmSendId(null)}
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  className="px-4 py-2 text-sm bg-zinc-100 text-zinc-950 rounded hover:shadow-[0_0_20px_rgba(255,255,255,0.15)] transition-all disabled:opacity-50"
+                  className="px-4 py-2 text-[12px] font-bold uppercase tracking-wide bg-zinc-100 text-zinc-950 border border-zinc-100 hover:bg-zinc-200 transition-colors disabled:opacity-50"
                   disabled={isLoading}
                   onClick={handleConfirmSend}
                 >
-                  Confirm
+                  {isLoading ? 'Sending…' : 'Send to Purchasing'}
                 </button>
               </div>
             </motion.div>
@@ -513,7 +658,7 @@ export default function QuotationsPage({
         )}
         {confirmDelete && (
           <motion.div
-            className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center"
+            className="fixed inset-0 bg-zinc-50/40 z-50 flex items-center justify-center"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}

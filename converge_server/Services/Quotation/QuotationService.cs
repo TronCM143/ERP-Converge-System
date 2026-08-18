@@ -1,4 +1,4 @@
-using converge_server.Data;
+﻿using converge_server.Data;
 using converge_server.Hubs;
 using converge_server.Models.DTOs.PurchaseRequest;
 using converge_server.Models.DTOs.PurchaseRequestItem;
@@ -106,8 +106,14 @@ namespace converge_server.Services.Quotations
             {
                 var product = products[itemDto.ProductId];
                 var unitPrice = itemDto.UnitPrice ?? product.Price;
-                var lineTotal = unitPrice * itemDto.Quantity;
+                var gross = unitPrice * itemDto.Quantity;
+                // Discount can't exceed the line, or a typo turns into negative
+                // revenue that silently reduces the whole quotation.
+                var discount = Math.Clamp(itemDto.DiscountAmount, 0m, gross);
+                var lineTotal = gross - discount;
                 materialsTotal += lineTotal;
+                // Tax applies to the DISCOUNTED line, matching how the editor
+                // shows it. Previously discount was ignored entirely here.
                 taxTotal += lineTotal * itemDto.TaxPercent / 100m;
 
                 quotation.MaterialItems.Add(new QuotationMaterialItem
@@ -121,6 +127,7 @@ namespace converge_server.Services.Quotations
                     Unit = string.IsNullOrWhiteSpace(itemDto.Unit) ? "pcs" : itemDto.Unit,
                     UnitPrice = unitPrice,
                     TaxPercent = itemDto.TaxPercent,
+                    DiscountAmount = discount,
                     SortOrder = sortOrder++,
                     LineTotal = lineTotal
                 });
@@ -211,8 +218,14 @@ namespace converge_server.Services.Quotations
             {
                 var product = products[itemDto.ProductId];
                 var unitPrice = itemDto.UnitPrice ?? product.Price;
-                var lineTotal = unitPrice * itemDto.Quantity;
+                var gross = unitPrice * itemDto.Quantity;
+                // Discount can't exceed the line, or a typo turns into negative
+                // revenue that silently reduces the whole quotation.
+                var discount = Math.Clamp(itemDto.DiscountAmount, 0m, gross);
+                var lineTotal = gross - discount;
                 materialsTotal += lineTotal;
+                // Tax applies to the DISCOUNTED line, matching how the editor
+                // shows it. Previously discount was ignored entirely here.
                 taxTotal += lineTotal * itemDto.TaxPercent / 100m;
 
                 quotation.MaterialItems.Add(new QuotationMaterialItem
@@ -226,6 +239,7 @@ namespace converge_server.Services.Quotations
                     Unit = string.IsNullOrWhiteSpace(itemDto.Unit) ? "pcs" : itemDto.Unit,
                     UnitPrice = unitPrice,
                     TaxPercent = itemDto.TaxPercent,
+                    DiscountAmount = discount,
                     SortOrder = sortOrder++,
                     LineTotal = lineTotal
                 });

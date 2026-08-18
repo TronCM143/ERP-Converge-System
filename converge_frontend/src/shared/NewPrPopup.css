@@ -1,10 +1,18 @@
-/* Both surfaces are transparent so the broadcast reads as part of the page
-   rather than a panel dropped on top of it. The backdrop still covers the
-   viewport (it's the click-away target), it just doesn't tint anything. */
+/* The panel is an opaque card, not a transparent overlay. It was previously
+   both transparent and shadowless so the broadcast would "read as part of the
+   page", but it lands over whatever the purchaser was already looking at —
+   usually the request table — and the page text showed straight through the
+   message, so neither layer could be read. Solid white plus the standard
+   hairline border and lift is what makes the notice legible.
+
+   The backdrop takes the same navy scrim the module's other modals use
+   (`bg-zinc-50/40`, which on the inverted ramp is rgba(27,47,76,…)), so the
+   page recedes behind the card instead of competing with it. It also stays the
+   click-away target. */
 .pr-popup-backdrop {
   position: fixed;
   inset: 0;
-  background: transparent;
+  background: rgba(27, 47, 76, 0.4);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -15,9 +23,10 @@
 .pr-popup {
   width: 100%;
   max-width: 380px;
-  background: transparent;
-  border-radius: 0;
-  box-shadow: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
   padding: 22px;
   text-align: center;
 }

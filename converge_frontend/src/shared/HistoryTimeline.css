@@ -21,7 +21,7 @@
   gap: 12px;
   padding: 12px;
   border-left: 2px solid var(--border);
-  background: var(--subtle-bg, #fafafa);
+  background: var(--subtle-bg, #f5f8fc);
   border-radius: 0;
 }
 
@@ -31,7 +31,7 @@
   height: 8px;
   margin-top: 6px;
   border-radius: 0;
-  background: #71717a;
+  background: #9aabc4;
 }
 
 .history-timeline__content {
@@ -96,16 +96,16 @@
   gap: 6px;
   font-size: 12px;
   padding: 8px;
-  background: rgba(0, 0, 0, 0.02);
+  background: rgba(27, 47, 76, 0.009);
   border-radius: 0;
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   overflow-x: auto;
 }
 
 .history-timeline__old {
-  color: #d32f2f;
+  color: #b91c1c;
 }
 
 .history-timeline__new {
-  color: #388e3c;
+  color: #166534;
 }

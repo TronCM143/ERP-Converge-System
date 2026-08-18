@@ -1,14 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { AnimatePresence } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { apiFetch } from '../../shared/api';
 import ClientFormFields, { ClientFormValues } from './ClientFormFields';
+import ClientAccentPicker from './ClientAccentPicker';
 import { ClientSummary } from './ClientFormModal';
 import QuotationsPage from '../quotation/QuotationsPage';
-import QuotationDetailModal from '../quotation/QuotationDetailModal';
-import { ArrowLeft, Edit2, Save, Search, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Edit2, Save, Search, Trash2, X } from 'lucide-react';
 
 export default function ClientProfilePage() {
   const { clientId } = useParams<{ clientId: string }>();
@@ -23,21 +22,38 @@ export default function ClientProfilePage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editValues, setEditValues] = useState<ClientFormValues | null>(null);
-  const [selectedQuotationId, setSelectedQuotationId] = useState<number | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  // Non-404 load failures (500, network, auth). Tracked separately from
+  // `notFound` so the page can offer a retry rather than claiming the client
+  // doesn't exist.
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const fetchClient = async () => {
+    // No id in the URL (e.g. someone landed on /sales/clients/) — there is
+    // nothing to fetch, and requesting /api/clients/undefined just 404s.
+    if (!clientId) {
+      setNotFound(true);
+      return;
+    }
+
     try {
       setIsLoading(true);
+      setLoadError(null);
       const res = await apiFetch(`/api/clients/${clientId}`);
       if (res.status === 404) {
         setNotFound(true);
         return;
       }
-      if (res.ok) setClient(await res.json());
+      if (!res.ok) {
+        // Anything that isn't a 404 used to fall through here silently, leaving
+        // `client` null and the page rendering absolutely nothing.
+        throw new Error(`Request failed (${res.status})`);
+      }
+      setClient(await res.json());
     } catch (err) {
-      console.error(err);
+      console.error('Failed to load client:', err);
+      setLoadError(err instanceof Error ? err.message : 'Could not load this client.');
     } finally {
       setIsLoading(false);
     }
@@ -47,14 +63,16 @@ export default function ClientProfilePage() {
     fetchClient();
   }, [clientId]);
 
-  // Arriving from a notification link like "?quotation=34" opens that
-  // quotation's detail modal directly.
-  useEffect(() => {
+  /* Arriving from a notification link like "?quotation=34" opens that quotation
+     in the generator. The id is handed to the quotations list rather than opened
+     here: the generator needs the whole quotation record, and the list is what
+     fetches it. */
+  const deepLinkQuotationId = (() => {
     const q = searchParams.get('quotation');
-    if (!q) return;
+    if (!q) return undefined;
     const id = parseInt(q, 10);
-    if (!Number.isNaN(id)) setSelectedQuotationId(id);
-  }, [searchParams]);
+    return Number.isNaN(id) ? undefined : id;
+  })();
 
   const toFormValues = (c: ClientSummary): ClientFormValues => ({
     name: c.name,
@@ -146,8 +164,50 @@ export default function ClientProfilePage() {
     );
   }
 
+  /* Everything below replaces a bare `return null`, which rendered a blank
+     page during loading AND on every non-404 failure — with no spinner, no
+     message and no way back. */
+  if (loadError) {
+    return (
+      <div className="min-h-screen app-surface p-6">
+        <Card className="p-10 text-center max-w-md mx-auto">
+          <AlertTriangle className="h-10 w-10 mx-auto mb-4 text-rose-600" />
+          <p className="text-zinc-100 font-semibold mb-1">Could not load this client.</p>
+          <p className="text-[12px] text-zinc-500 mb-6">{loadError}</p>
+          <div className="flex gap-2 justify-center">
+            <Button variant="secondary" onClick={() => void fetchClient()}>
+              Try again
+            </Button>
+            <Link to="/sales/crm">
+              <Button variant="secondary" className="gap-2">
+                <ArrowLeft className="h-4 w-4" />
+                Back to CRM
+              </Button>
+            </Link>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   if (!client) {
-    return null;
+    return (
+      <div className="min-h-screen app-surface p-6">
+        <Card className="p-10 text-center max-w-md mx-auto">
+          <p className="text-[13px] text-zinc-500 italic">
+            {isLoading ? 'Loading client…' : 'No client to show.'}
+          </p>
+          {!isLoading && (
+            <Link to="/sales/crm" className="inline-block mt-5">
+              <Button variant="secondary" className="gap-2">
+                <ArrowLeft className="h-4 w-4" />
+                Back to CRM
+              </Button>
+            </Link>
+          )}
+        </Card>
+      </div>
+    );
   }
 
   return (
@@ -157,15 +217,40 @@ export default function ClientProfilePage() {
           claims the rest — h-full on the grid alone would have overflowed by
           exactly the height of the link. */}
       <div className="px-4 py-3 h-full flex flex-col ">
-        {/* There was no way back to the board from here except the browser
-            button — this page is reached both from a card and from a
-            notification link. */}
-        <Link
-          to="/sales/crm"
-          className="inline-flex items-center gap-1.5 self-start mb-3 text-[13px] text-zinc-400 hover:text-zinc-100 transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" /> Return to CRM
-        </Link>
+        {/* Top row: navigation on the left, the one destructive action on the
+            far right. Delete used to live in the Client Information header
+            beside Edit; the left column is only 23% wide, so no amount of
+            spacing in there kept a destructive control clear of a routine one.
+            Out here it is in the page corner, nowhere near Edit. */}
+        <div className="mb-3 flex items-start justify-between gap-3">
+          {/* There was no way back to the board from here except the browser
+              button — this page is reached both from a card and from a
+              notification link. */}
+          <Link
+            to="/sales/crm"
+            className="inline-flex items-center gap-1.5 text-[13px] text-zinc-400 hover:text-zinc-100 transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" /> Return to CRM
+          </Link>
+
+          {!isEditing && (
+            /* The error reads under the button that caused it rather than in
+               the card the button no longer belongs to. */
+            <div className="flex flex-col items-end gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={isDeleting}
+                onClick={handleDeleteClient}
+                className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                title="Delete client"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+              {deleteError && <p className="text-xs text-red-600">{deleteError}</p>}
+            </div>
+          )}
+        </div>
 
         {/* Client details were a third of the width; they are ~30% narrower now
             (33% -> 23%), which is both what the panel needs once it is compact
@@ -174,29 +259,17 @@ export default function ClientProfilePage() {
           {/* Left Column - Client Information (static; scrolls only itself if long) */}
           <div className="min-h-0 overflow-y-auto">
             <Card className="border-0">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              {/* Edit is the only control left in here — Delete moved to the
+                  page's top-right corner so the two are never mistaken for
+                  each other. */}
+              <CardHeader className="flex flex-row items-center gap-1 space-y-0">
                 <CardTitle className="text-lg font-semibold text-zinc-100">Client Information</CardTitle>
                 {!isEditing && (
-                  <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="sm" onClick={startEditing}>
-                      <Edit2 className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={isDeleting}
-                      onClick={handleDeleteClient}
-                      className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                      title="Delete client"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  <Button variant="ghost" size="sm" onClick={startEditing} title="Edit client">
+                    <Edit2 className="h-4 w-4" />
+                  </Button>
                 )}
               </CardHeader>
-              {deleteError && (
-                <p className="px-6 -mt-2 mb-2 text-xs text-red-400">{deleteError}</p>
-              )}
               <CardContent>
                 {isEditing && editValues ? (
                   <form onSubmit={handleSaveEdit} className="space-y-4">
@@ -254,6 +327,25 @@ export default function ClientProfilePage() {
                       <p className="text-[14px] text-zinc-300 leading-snug mt-0.5 whitespace-pre-wrap">{client.notes || '—'}</p>
                     </div>
 
+                    {/* Card colour lives with the client, not on the board:
+                        a picker on every kanban card was noisy and fought with
+                        drag for the same pointer events. */}
+                    <div className="pt-2.5 border-t border-zinc-800">
+                      <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
+                        Card Colour
+                      </label>
+                      <div className="mt-1">
+                        <ClientAccentPicker
+                          clientId={client.id}
+                          clientName={client.name}
+                          value={client.accentColor}
+                          onSaved={(accentColor) =>
+                            setClient((prev) => (prev ? { ...prev, accentColor } : prev))
+                          }
+                        />
+                      </div>
+                    </div>
+
                     <div className="pt-2.5 border-t border-zinc-800">
                       <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Total Sales</label>
                       <p className="text-[17px] font-bold text-zinc-100 tabular-nums leading-tight mt-0.5">
@@ -271,24 +363,17 @@ export default function ClientProfilePage() {
 
           {/* Right Column - Quotations (header/columns static, rows scroll) */}
           <div className="min-h-0 h-full">
+            {/* Quotations open in the quotation generator, which the list owns
+                itself — this page no longer holds a separate detail modal. */}
             <QuotationsPage
               client={client}
               autoOpenModal={autoOpenNewQuotation}
+              openQuotationId={deepLinkQuotationId}
               onQuotationChanged={fetchClient}
-              onQuotationSelect={setSelectedQuotationId}
             />
           </div>
         </div>
       </div>
-
-      <AnimatePresence>
-        {selectedQuotationId && (
-          <QuotationDetailModal
-            quotationId={selectedQuotationId}
-            onClose={() => setSelectedQuotationId(null)}
-          />
-        )}
-      </AnimatePresence>
     </div>
   );
 }

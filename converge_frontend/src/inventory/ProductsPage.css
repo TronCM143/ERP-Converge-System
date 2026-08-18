@@ -46,7 +46,7 @@
 }
 
 .product-row:hover {
-  background-color: #27272a;
+  background-color: #ffffff;
 }
 
 .product-row td {
@@ -106,7 +106,7 @@
   color: var(--text);
   line-height: 1.8;
   white-space: pre-wrap;
-  background: #18181b;
+  background: #f0f4fa;
   padding: 12px;
   border-radius: 0;
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;

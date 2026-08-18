@@ -15,10 +15,10 @@ export interface PipelineForecast {
 
 // Same stage palette as PipelineTrendChart, for visual continuity.
 const STAGE_COLOR: Record<string, string> = {
-  Leads: '#52525b',
-  Quote: '#71717a',
-  Proposal: '#a1a1aa',
-  Won: '#e4e4e7'
+  Leads: '#9aabc4',
+  Quote: '#7c8ba0',
+  Proposal: '#5b7196',
+  Won: '#3a598f'
 };
 
 const php = (n: number) =>
@@ -55,7 +55,7 @@ export default function PipelineForecastStrip({ data }: { data: PipelineForecast
                 className="h-full rounded-full transition-all duration-500"
                 style={{
                   width: `${(s.weightedValue / maxWeighted) * 100}%`,
-                  backgroundColor: STAGE_COLOR[s.stage] ?? '#71717a'
+                  backgroundColor: STAGE_COLOR[s.stage] ?? '#9aabc4'
                 }}
               />
             </div>

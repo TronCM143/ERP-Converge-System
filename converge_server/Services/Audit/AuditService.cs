@@ -58,14 +58,27 @@ namespace converge_server.Services.Audit
                 .ToListAsync();
         }
 
-        public async Task<List<AuditLogResponseDto>> GetRecentAsync(int limit, string? changedBy = null)
+        public async Task<List<AuditLogResponseDto>> GetRecentAsync(int limit, string? changedBy = null, List<string>? entityTypes = null)
         {
-            // Global activity feed: everything sales/purchasing did, minus notification-dispatch noise
-            // (or just one actor's own activity when changedBy is supplied).
-            return await _context.AuditLogs
+            // Activity feed: everything sales/purchasing did, minus notification-dispatch
+            // noise. Narrowed to one actor when changedBy is supplied, and to one module's
+            // record types when entityTypes is — the filters are composed here rather than
+            // in one expression so EF can translate each to a plain WHERE / IN.
+            var query = _context.AuditLogs
                 .AsNoTracking()
-                .Where(a => a.EntityType != "Notification")
-                .Where(a => changedBy == null || a.ChangedBy == changedBy)
+                .Where(a => a.EntityType != "Notification");
+
+            if (changedBy != null)
+            {
+                query = query.Where(a => a.ChangedBy == changedBy);
+            }
+
+            if (entityTypes != null && entityTypes.Count > 0)
+            {
+                query = query.Where(a => entityTypes.Contains(a.EntityType));
+            }
+
+            return await query
                 .OrderByDescending(a => a.ChangedAt)
                 .Take(limit)
                 .Select(a => new AuditLogResponseDto

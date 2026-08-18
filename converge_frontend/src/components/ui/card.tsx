@@ -9,9 +9,11 @@ const Card = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      // Flat square panel: one grey surface with a hairline border, and a
-      // soft black drop shadow for depth instead of a tinted gradient.
-      "border border-zinc-800 bg-zinc-950/60 text-zinc-50 shadow-[0_0_30px_rgba(0,0,0,0.5)] backdrop-blur-sm",
+      // Flat square panel: a white surface on the grey canvas, with a
+      // hairline border and a barely-there drop shadow. The dark theme used a
+      // 30px black glow for depth; on a light canvas the border does that job
+      // and a heavy shadow only reads as smudge.
+      "border border-zinc-700 bg-zinc-900 text-zinc-50 shadow-[0_1px_2px_rgba(24,24,27,0.04)]",
       className
     )}
     {...props}

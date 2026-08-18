@@ -20,7 +20,7 @@ namespace converge_server.Services.Notifications
             _logger = logger;
         }
 
-        public async Task<UserNotification> AddAsync(string targetRole, string type, string title, string? details = null)
+        public async Task<UserNotification> AddAsync(string targetRole, string type, string title, string? details = null, string? linkUrl = null)
         {
             var notification = new UserNotification
             {
@@ -28,6 +28,7 @@ namespace converge_server.Services.Notifications
                 Type = type,
                 Title = title,
                 Details = details,
+                LinkUrl = linkUrl,
                 IsRead = false,
                 CreatedAt = DateTime.UtcNow
             };
@@ -45,6 +46,7 @@ namespace converge_server.Services.Notifications
                     notification.Type,
                     notification.Title,
                     notification.Details,
+                    notification.LinkUrl,
                     notification.IsRead,
                     notification.CreatedAt
                 });
@@ -109,6 +111,20 @@ namespace converge_server.Services.Notifications
             await _context.UserNotifications
                 .Where(n => n.TargetRole == role && !n.IsRead)
                 .ExecuteUpdateAsync(s => s.SetProperty(n => n.IsRead, true));
+        }
+
+        public async Task<bool> MarkReadAsync(string role, long id)
+        {
+            // Negative ids are the synthetic "delivery today" reminders built in
+            // GetDeliveryTodayRemindersAsync — they have no row to update, so
+            // report false and let the client hide them locally.
+            if (id < 0) return false;
+
+            var updated = await _context.UserNotifications
+                .Where(n => n.Id == id && n.TargetRole == role)
+                .ExecuteUpdateAsync(s => s.SetProperty(n => n.IsRead, true));
+
+            return updated > 0;
         }
     }
 }

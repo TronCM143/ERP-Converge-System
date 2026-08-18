@@ -7,22 +7,9 @@ import { roleHome } from '../app/roleHome';
 import { useNotificationHub, UserNotificationItem } from '../shared/useNotificationHub';
 import NewPrPopup from '../shared/NewPrPopup';
 import ClientSelectorModal from '../shared/ClientSelectorModal';
+import NotificationsPanel from '../shared/NotificationsPanel';
 import ActivityFeed from '../shared/ActivityFeed';
 import './ERPLayout.css';
-
-// The signed-in user's role, shown as a fading wordmark at the top-left corner.
-function roleDisplayName(role: string | null): string {
-  switch (role) {
-    case 'quotation':
-      return 'Sales';
-    case 'purchasing':
-      return 'Purchasing';
-    case 'admin':
-      return 'Admin';
-    default:
-      return '';
-  }
-}
 
 export default function ERPLayout() {
   const { username, role, logout } = useAuth();
@@ -32,8 +19,20 @@ export default function ERPLayout() {
   const isPurchasing = role === 'purchasing';
   const isQuotation = role === 'quotation';
   const isAdmin = role === 'admin';
-  const { notification, clearNotification, userNotifications, unreadCount, markAllRead } =
-    useNotificationHub(isPurchasing || isQuotation);
+  /* The admin module picker. It's a landing page, so the header drops the
+     module tabs and the per-module tools (inventory, activity log) — the page
+     itself is the navigation. Settings and Log out stay: without them there
+     would be no way off this screen except picking a module. */
+  const isAdminHome = location.pathname === '/admin';
+  const {
+    notification,
+    clearNotification,
+    userNotifications,
+    unreadCount,
+    markAllRead,
+    markOneRead
+  } = useNotificationHub(isPurchasing || isQuotation);
+  const [isNotificationsPanelOpen, setIsNotificationsPanelOpen] = useState(false);
   const [isClientPickerOpen, setIsClientPickerOpen] = useState(false);
   const [isActivityLogOpen, setIsActivityLogOpen] = useState(false);
   // Logging out drops unsaved work on the current page, so it always asks first.
@@ -84,59 +83,63 @@ export default function ERPLayout() {
     navigate(`/sales/clients/${clientId}?newQuotation=1`);
   };
 
-  // Clicking a notification that carries a link navigates to the related
-  // record (e.g. the quotation a PO was generated from), closes the panel, and
-  // marks it read so the badge clears without a separate "Mark all read" click.
-  //
-  // The API only exposes a mark-everything-read call, so opening one entry
-  // clears the whole unread set rather than just that row.
+  /* Opening a notification marks THAT entry read and dismisses the dropdown;
+     if it carries a link, it also navigates to the related record.
+
+     Two things changed here. It used to `return` early when there was no
+     linkUrl — and the API never returned linkUrl at all, so every click did
+     nothing. And it called markAllRead, which cleared the badge for every
+     notification the user hadn't looked at; there's now a per-entry endpoint. */
   const handleNotificationClick = (n: UserNotificationItem) => {
-    if (!n.linkUrl) return;
     setIsNotifOpen(false);
-    void markAllRead();
-    navigate(n.linkUrl);
+    setIsNotificationsPanelOpen(false);
+    void markOneRead(n.id);
+    if (n.linkUrl) navigate(n.linkUrl);
   };
 
-  // Shared renderer for both the sales and purchasing dropdowns: a plain entry
-  // when there's no link, a clickable button (hover + pointer) when there is.
-  const renderNotificationEntry = (n: UserNotificationItem) => {
-    const inner = (
-      <>
-        <p className="text-sm text-zinc-200 flex items-start gap-2">
-          {!n.isRead && <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-zinc-200 shrink-0" />}
-          <span>{n.title}</span>
-        </p>
-        <p className="text-[11px] text-zinc-500 mt-0.5">
-          {n.details ? `${n.details} · ` : ''}
-          {new Date(n.createdAt).toLocaleString([], {
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-          })}
-        </p>
-      </>
-    );
-    const base = `px-4 py-2.5 border-b border-zinc-700/50 last:border-0 ${n.isRead ? 'opacity-60' : ''}`;
-    if (n.linkUrl) {
-      return (
-        <button
-          key={n.id}
-          type="button"
-          onClick={() => handleNotificationClick(n)}
-          className={`${base} block w-full text-left hover:bg-zinc-700/40 transition-colors cursor-pointer`}
-          title="Open related record"
-        >
-          {inner}
-        </button>
-      );
-    }
-    return (
-      <div key={n.id} className={base}>
-        {inner}
-      </div>
-    );
+  // The scrolling ticker is a preview of the same unread set. Clicking it marks
+  // those entries read and dismisses the banner, rather than only hiding it.
+  const handleTickerClick = () => {
+    setIsTickerDismissed(true);
+    unread.slice(0, 3).forEach((n) => void markOneRead(n.id));
+    setIsNotifOpen(true);
   };
+
+  /* Shared renderer for both the sales and purchasing dropdowns.
+
+     Always a button now. It used to render a plain, inert <div> whenever the
+     entry had no link — which was every entry, since the API didn't return
+     linkUrl — so nothing in the dropdown could be marked read by clicking it.
+     Clicking always marks read; the link, when present, is a bonus. */
+  const renderNotificationEntry = (n: UserNotificationItem) => (
+    <button
+      key={n.id}
+      type="button"
+      onClick={() => handleNotificationClick(n)}
+      title={n.linkUrl ? 'Open related record' : 'Mark as read'}
+      className={`block w-full border-b border-zinc-800 px-4 py-2.5 text-left transition-colors last:border-0 hover:bg-zinc-950 ${
+        n.isRead ? 'opacity-60' : ''
+      }`}
+    >
+      <p className="flex items-start gap-2 text-sm text-zinc-50">
+        {/* Square unread marker, matching the squared theme. */}
+        <span
+          aria-hidden="true"
+          className={`mt-1.5 h-1.5 w-1.5 shrink-0 ${n.isRead ? 'bg-transparent' : 'bg-orange-500'}`}
+        />
+        <span>{n.title}</span>
+      </p>
+      <p className="mt-0.5 text-[11px] text-zinc-500">
+        {n.details ? `${n.details} · ` : ''}
+        {new Date(n.createdAt).toLocaleString([], {
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        })}
+      </p>
+    </button>
+  );
 
   // Shell and header stay inside the grey band (no fade to pure black) so
   // panels layered on top still read as distinct surfaces.
@@ -160,21 +163,56 @@ export default function ERPLayout() {
               className="h-full  translate-y-[10px] py-1 -ml-4 shrink-0 flex items-center hover:opacity-90 transition-opacity"
             >
               <img
-                src="/Gemini_Generated_Image_7an4rt7an4rt7an4-removebg-preview.png"
+                src="/CSiLogo.png"
                 alt="Converge.IT Solutions Inc."
                 className="max-h-[40px] w-auto object-contain"
               />
             </button>
-            <span
-              className="ml-3 text-2xl translate-y-[17px]  italic tracking-wide select-none pointer-events-none text-transparent bg-clip-text"
-              style={{ backgroundImage: 'linear-gradient(to right, #777777 0% )' }}
-            >
-              {roleDisplayName(role)}
-            </span>
+            {/* The role wordmark ("Sales" / "Admin" / "Purchasing") that sat
+                here has been removed. It was `text-2xl` pushed down 17px inside
+                a 36px header, so its lower half was clipped off on every page —
+                it rendered as a permanently half-cut word rather than a label. */}
+
+            {/* Admin-only module switcher.
+
+                Admin is the only role with more than one module, so this row
+                would be a single dead tab for everyone else. Hidden on the
+                module picker itself (/admin), where the page IS the switcher
+                and the header would only repeat it.
+
+                The active module is matched on the path prefix rather than an
+                exact route, so it stays lit on nested pages (a client profile,
+                a PO detail). */}
+            {isAdmin && !isAdminHome && (
+              <nav className="ml-6 flex items-center gap-1" aria-label="Modules">
+                {[
+                  { label: 'Sales', to: '/sales/crm', prefix: '/sales' },
+                  { label: 'Inventory', to: '/inventory', prefix: '/inventory' },
+                  { label: 'Purchasing', to: '/purchasing/purchase-requests', prefix: '/purchasing' }
+                ].map((m) => {
+                  const active = location.pathname.startsWith(m.prefix);
+                  return (
+                    <button
+                      key={m.label}
+                      type="button"
+                      onClick={() => navigate(m.to)}
+                      aria-current={active ? 'page' : undefined}
+                      className={`border-b-2 px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${
+                        active
+                          ? 'border-orange-500 text-zinc-50'
+                          : 'border-transparent text-zinc-400 hover:text-zinc-50'
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  );
+                })}
+              </nav>
+            )}
           </div>
 
           {/* gap-3 rather than gap-4: at 20px the icons no longer need as much
-              separation, and the tighter row reads as one control cluster. */}
+              separation, and the tight er row reads as one control cluster. */}
           <div className="flex items-center gap-3">
             {/* Purchasing: delivery calendar drawer trigger — the drawer itself
                 lives on PurchaseRequestsPage, opened via a window event since
@@ -189,10 +227,7 @@ export default function ERPLayout() {
                     type="button"
                     className="po-ticker"
                     aria-label="Purchasing notifications"
-                    onClick={() => {
-                      setIsTickerDismissed(true);
-                      setIsNotifOpen(true);
-                    }}
+                    onClick={handleTickerClick}
                   >
                     <div className="po-ticker__track">
                       <span className="po-ticker__text">{tickerText}</span>
@@ -230,16 +265,28 @@ export default function ERPLayout() {
                     >
                       <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-700">
                         <span className="text-xs font-bold text-zinc-300 uppercase">From Purchasing</span>
-                        <button
-                          type="button"
-                          className="text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors"
-                          onClick={() => {
-                            markAllRead();
-                            setIsNotifOpen(false);
-                          }}
-                        >
-                          Mark all read
-                        </button>
+                        <span className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            className="text-[11px] text-zinc-500 hover:text-zinc-50 transition-colors"
+                            onClick={() => {
+                              markAllRead();
+                              setIsNotifOpen(false);
+                            }}
+                          >
+                            Mark all read
+                          </button>
+                          <button
+                            type="button"
+                            className="text-[11px] font-semibold text-orange-600 hover:text-orange-700 transition-colors"
+                            onClick={() => {
+                              setIsNotifOpen(false);
+                              setIsNotificationsPanelOpen(true);
+                            }}
+                          >
+                            Show all
+                          </button>
+                        </span>
                       </div>
                       <div className="max-h-80 overflow-y-auto">
                         {userNotifications.length === 0 ? (
@@ -265,10 +312,7 @@ export default function ERPLayout() {
                     type="button"
                     className="po-ticker"
                     aria-label="Notifications"
-                    onClick={() => {
-                      setIsTickerDismissed(true);
-                      setIsNotifOpen(true);
-                    }}
+                    onClick={handleTickerClick}
                   >
                     <div className="po-ticker__track">
                       <span className="po-ticker__text">{tickerText}</span>
@@ -306,16 +350,28 @@ export default function ERPLayout() {
                     >
                       <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-700">
                         <span className="text-xs font-bold text-zinc-300 uppercase">Notifications</span>
-                        <button
-                          type="button"
-                          className="text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors"
-                          onClick={() => {
-                            markAllRead();
-                            setIsNotifOpen(false);
-                          }}
-                        >
-                          Mark all read
-                        </button>
+                        <span className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            className="text-[11px] text-zinc-500 hover:text-zinc-50 transition-colors"
+                            onClick={() => {
+                              markAllRead();
+                              setIsNotifOpen(false);
+                            }}
+                          >
+                            Mark all read
+                          </button>
+                          <button
+                            type="button"
+                            className="text-[11px] font-semibold text-orange-600 hover:text-orange-700 transition-colors"
+                            onClick={() => {
+                              setIsNotifOpen(false);
+                              setIsNotificationsPanelOpen(true);
+                            }}
+                          >
+                            Show all
+                          </button>
+                        </span>
                       </div>
                       <div className="max-h-80 overflow-y-auto">
                         {userNotifications.length === 0 ? (
@@ -350,29 +406,33 @@ export default function ERPLayout() {
                 destination is one click, in a fixed order — notifications
                 (above), inventory, activity log, settings, logout. The
                 "Profile" entry itself is gone; it was a disabled placeholder. */}
-            <button
-              type="button"
-              title="Inventory"
-              aria-label="Inventory"
-              className={`p-1 transition-colors ${
-                location.pathname === '/inventory'
-                  ? 'text-zinc-50'
-                  : 'text-zinc-300 hover:text-zinc-50'
-              }`}
-              onClick={() => navigate('/inventory')}
-            >
-              <Package className="h-5 w-5" />
-            </button>
+            {!isAdminHome && (
+              <button
+                type="button"
+                title="Inventory"
+                aria-label="Inventory"
+                className={`p-1 transition-colors ${
+                  location.pathname === '/inventory'
+                    ? 'text-zinc-50'
+                    : 'text-zinc-300 hover:text-zinc-50'
+                }`}
+                onClick={() => navigate('/inventory')}
+              >
+                <Package className="h-5 w-5" />
+              </button>
+            )}
 
-            <button
-              type="button"
-              title="Activity Log"
-              aria-label="Activity Log"
-              className="p-1 text-zinc-300 hover:text-zinc-50 transition-colors"
-              onClick={() => setIsActivityLogOpen(true)}
-            >
-              <Activity className="h-5 w-5" />
-            </button>
+            {!isAdminHome && (
+              <button
+                type="button"
+                title="Activity Log"
+                aria-label="Activity Log"
+                className="p-1 text-zinc-300 hover:text-zinc-50 transition-colors"
+                onClick={() => setIsActivityLogOpen(true)}
+              >
+                <Activity className="h-5 w-5" />
+              </button>
+            )}
 
             {/* Settings covers notification-email management, which is why
                 sales has it too — purchasing has no settings page to reach. */}
@@ -396,7 +456,7 @@ export default function ERPLayout() {
               type="button"
               title="Log out"
               aria-label="Log out"
-              className="p-1 text-zinc-300 hover:text-red-400 transition-colors"
+              className="p-1 text-zinc-300 hover:text-red-600 transition-colors"
               onClick={() => setIsLogoutConfirmOpen(true)}
             >
               <LogOut className="h-5 w-5" />
@@ -423,6 +483,19 @@ export default function ERPLayout() {
 
       {isPurchasing && <NewPrPopup notification={notification} onDismiss={clearNotification} />}
 
+      {/* Full notification list, opened from "Show all" in either dropdown. */}
+      <AnimatePresence>
+        {isNotificationsPanelOpen && (
+          <NotificationsPanel
+            notifications={userNotifications}
+            unreadCount={unreadCount}
+            onClose={() => setIsNotificationsPanelOpen(false)}
+            onMarkAllRead={() => void markAllRead()}
+            onOpen={handleNotificationClick}
+          />
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {isQuotation && isClientPickerOpen && (
           <ClientSelectorModal onClose={() => setIsClientPickerOpen(false)} onPick={handleClientPicked} />
@@ -434,7 +507,7 @@ export default function ERPLayout() {
       <AnimatePresence>
         {isLogoutConfirmOpen && (
           <motion.div
-  className="fixed inset-0 z-[80] bg-black/70 flex items-center justify-center p-4"
+  className="fixed inset-0 z-[80] bg-zinc-50/40 flex items-center justify-center p-4"
   initial={{ opacity: 0 }}
   animate={{ opacity: 1 }}
   exit={{ opacity: 0 }}
@@ -481,7 +554,7 @@ export default function ERPLayout() {
       <AnimatePresence>
         {isActivityLogOpen && (
           <motion.div
-            className="fixed inset-0 z-[70] bg-black/50"
+            className="fixed inset-0 z-[70] bg-zinc-50/30"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -496,7 +569,9 @@ export default function ERPLayout() {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 shrink-0">
-                <h3 className="text-[16px] font-bold text-zinc-200">Activity Log</h3>
+                <h3 className="text-[16px] font-bold text-zinc-200">
+                  {isPurchasing ? 'Purchasing Activity' : isQuotation ? 'Sales Activity' : 'Activity Log'}
+                </h3>
                 <button
                   type="button"
                   className="p-1.5 text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800 rounded transition-colors"
@@ -505,8 +580,11 @@ export default function ERPLayout() {
                   <X className="h-4 w-4" />
                 </button>
               </div>
+              {/* Scoped to the signed-in module: purchasing sees receiving,
+                  sourcing and stock; sales sees clients and quotations. Admin
+                  keeps the unfiltered view, which is the oversight role's job. */}
               <div className="flex-1 min-h-0">
-                <ActivityFeed />
+                <ActivityFeed scope={isPurchasing ? 'purchasing' : isQuotation ? 'sales' : 'all'} />
               </div>
             </motion.div>
           </motion.div>

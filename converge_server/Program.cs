@@ -219,6 +219,36 @@ builder.Services.AddHttpClient("Groq", client =>
         new AuthenticationHeaderValue("Bearer", builder.Configuration["Groq:ApiKey"]);
 });
 
+// Odoo (read-only sale-order archive behind the "Matching past work" panel).
+// Credentials come from .env (Odoo__Username, Odoo__ApiKey — the API key is
+// generated in Odoo under Settings → My Profile → Account Security). Without
+// them the service reports IsConfigured=false and every call returns empty, so
+// the panel simply shows local quotations only.
+// Both spellings are accepted — see OdooService.Setting() for why the flat
+// ODOO_* form does not resolve as Odoo:* on its own.
+string? OdooSetting(string dotted, string flat) =>
+    !string.IsNullOrWhiteSpace(builder.Configuration[dotted])
+        ? builder.Configuration[dotted]
+        : builder.Configuration[flat];
+
+var odooConfigured = !string.IsNullOrWhiteSpace(OdooSetting("Odoo:Username", "ODOO_USERNAME"))
+                     && !string.IsNullOrWhiteSpace(OdooSetting("Odoo:ApiKey", "ODOO_API_KEY"));
+Console.WriteLine($"Odoo: {(odooConfigured ? "configured" : "NOT configured — set Odoo__Username and Odoo__ApiKey in converge_server/.env")}");
+builder.Services.AddHttpClient("Odoo", client =>
+{
+    var baseUrl = OdooSetting("Odoo:BaseUrl", "ODOO_URL");
+    if (!string.IsNullOrWhiteSpace(baseUrl))
+    {
+        // Trailing slash matters: the relative "jsonrpc" below resolves against
+        // it, and without one the last path segment would be replaced.
+        client.BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
+    }
+    // Odoo can be slow on a large archive, but this sits behind a debounced
+    // keystroke — a long hang would queue requests up behind the user.
+    client.Timeout = TimeSpan.FromSeconds(15);
+});
+builder.Services.AddScoped<converge_server.Services.Interfaces.IOdooService, converge_server.Services.Odoo.OdooService>();
+
 // M360 SMS sender (typed HttpClient)
 builder.Services.AddHttpClient<converge_server.Services.Notifications.M360SmsSender>();
 

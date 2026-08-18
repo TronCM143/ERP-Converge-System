@@ -1,4 +1,108 @@
 /** @type {import('tailwindcss').Config} */
+
+// ── Light theme: navy text, brand blue + orange accents ─────────────────────
+// The UI was authored dark-first: surfaces are `bg-zinc-900/800/700`, text is
+// `text-zinc-50…600`, borders are `border-zinc-800/700`. Rather than rewrite
+// ~1000 call sites, the neutral ramp itself is INVERTED here — index 50 is now
+// the darkest value and 950 the lightest — so every existing class keeps its
+// meaning ("900 is a surface", "50 is primary text") while rendering light.
+//
+// Read the table by role, not by lightness:
+//
+//   950  page canvas          — the soft cool grey the app shell sits on
+//   900  card / panel         — white, so panels lift off the canvas
+//   800  hairline / hover     — subtle divider, hover fill, dropdown body
+//   700  border / chip        — the standard visible border, badge fill
+//   600  placeholder          — faintest text tier, strongest border
+//   500  muted text           — 4.6:1 on white (AA)
+//   400  secondary text       — 5.7:1 on white (AA)
+//   300  body text
+//   200  strong text
+//   100  primary button fill  — pairs with `text-zinc-950` for a dark button
+//   50   primary text         — dark NAVY, not black
+//
+// The dark end carries a blue cast on purpose: plain #18181b body copy reads
+// flat, so the text tiers are hue-shifted toward the brand navy. It still
+// scans as "near-black" at a glance but has depth up close.
+//
+// 950 (canvas) is deliberately DARKER than 900 (card): that is the one break
+// in monotonicity, and it is what produces "grey page, white cards". From 900
+// downward the ramp darkens normally, which is correct elevation *within* a
+// card (white card → grey hover → darker chip).
+//
+// `bg-zinc-100` + `text-zinc-950` was a light-on-dark primary button in the
+// dark theme; inverted it becomes dark-on-light, which is exactly the
+// convention light mode wants — the pairing survives untouched.
+// Enterprise ERP palette. Each spec colour lands on the slot that already
+// carries that role, so the whole app picks it up without touching call sites:
+//
+//   50  #1B2F4C  main text / headings   (login: deep navy)
+//   200 #2B446B  strong text            (login: photo overlay tint)
+//   300 #3A598F  body / emphasis        (login: outer angled shapes)
+//   400 #5B7196  secondary text         - 4.95:1 on white
+//   500 #64788F  muted text             - 4.54:1 on white
+//   700 #CCD6E6  borders                (blue-tinted)
+//   900 #FFFFFF  cards / panels
+//   950 #F0F4FA  page background
+//
+// The intermediate steps are interpolated along the same navy→slate line so
+// the tiers stay distinguishable. 400 is 4.8:1 on white and 500 is 4.3:1 —
+// both hold up as body-adjacent text; 600 is placeholder-weight only.
+const mono = {
+  50: "#1b2f4c",
+  100: "#24395c",
+  200: "#2b446b",
+  300: "#3a598f",
+  400: "#5b7196",
+  500: "#64788f",
+  600: "#9aabc4",
+  700: "#ccd6e6",
+  800: "#e4eaf3",
+  900: "#ffffff",
+  950: "#f0f4fa",
+}
+
+/* Corporate blue, taken from the login page's geometry.
+
+     600  #3a598f  the outer angled shapes — links, focus, active states
+     400  #6b8ec0  the inner angled shapes — hovers, lighter fills
+     800  #2b446b  the photo's overlay tint
+     950  #1b2f4c  the photo's bottom anchoring gradient
+
+   The neutral ramp above resolves to the same family at its dark end, so text
+   and chrome sit in the login screen's palette rather than a separate navy. */
+const brandBlue = {
+  50: "#f2f6fb",
+  100: "#e3ebf5",
+  200: "#c8d7e9",
+  300: "#9db8d7",
+  400: "#6b8ec0",
+  500: "#4d72a5",
+  600: "#3a598f",
+  700: "#314b77",
+  800: "#2b446b",
+  900: "#243a5c",
+  950: "#1b2f4c",
+}
+
+// Corporate orange. 500 is the spec's #E87516 — primary action buttons, the
+// active navigation indicator, and the Quote pipeline stage. Deliberately
+// scarce: orange here means "act on this", so spreading it across ordinary
+// controls would drain it of meaning.
+const brandOrange = {
+  50: "#fef4ec",
+  100: "#fde6d3",
+  200: "#fac9a4",
+  300: "#f5a76f",
+  400: "#ef8b3f",
+  500: "#e87516",
+  600: "#ce6410",
+  700: "#a94e10",
+  800: "#883f13",
+  900: "#6f3413",
+  950: "#3c1907",
+}
+
 export default {
   darkMode: ["class"],
   content: [
@@ -7,118 +111,25 @@ export default {
   ],
   theme: {
     extend: {
-      // ── Monochrome theme ────────────────────────────────────────────────
-      // The whole UI is remapped onto a single neutral grey ramp (zinc), so
-      // every existing `slate-*` / `blue-*` / `cyan-*` class in the codebase
-      // renders as grey without touching hundreds of call sites:
-      //
-      //   * slate → zinc: kills the blue tint the old "dark blue" theme had.
-      //     Surfaces now read as dark GREY, matching the login page, which
-      //     was authored directly in zinc.
-      //   * blue / cyan / indigo / purple → zinc: former accent colors
-      //     (gradient titles, focus rings, filled buttons, stage headers,
-      //     selection highlights, notification badge) collapse into the same
-      //     grey ramp. Full 50→950 ramps are declared, not just the shades
-      //     in use, so a stray `blue-900` added later can't leak color back.
+      // `zinc`/`slate` carry the neutral ramp. `blue` and `orange` are real
+      // brand accents. The remaining former-accent families (cyan/indigo/
+      // purple/sky/violet) still collapse into the neutral ramp so a stray
+      // `purple-600` added later can't leak an unplanned hue into the UI.
       //
       // Semantic green / red / amber / rose (approve, delete, reject, warn)
-      // are deliberately NOT remapped — they're functional state cues, not
-      // decoration, and are the only saturated colors left in the UI.
+      // are left as Tailwind defaults — they're functional state cues.
       colors: {
-        slate: {
-          50: "#fafafa",
-          100: "#f4f4f5",
-          200: "#e4e4e7",
-          300: "#d4d4d8",
-          400: "#a1a1aa",
-          500: "#71717a",
-          600: "#52525b",
-          700: "#3f3f46",
-          800: "#27272a",
-          900: "#18181b",
-          950: "#09090b",
-        },
-        // Accent families all point at the same greys. Mid shades land a
-        // little lighter than their slate counterparts so an "accent" still
-        // reads as emphasis (lighter grey) against a dark grey surface.
-        blue: {
-          50: "#fafafa",
-          100: "#f4f4f5",
-          200: "#e4e4e7",
-          300: "#e4e4e7",
-          400: "#d4d4d8",
-          500: "#a1a1aa",
-          600: "#52525b",
-          700: "#3f3f46",
-          800: "#27272a",
-          900: "#18181b",
-          950: "#09090b",
-        },
-        cyan: {
-          50: "#fafafa",
-          100: "#f4f4f5",
-          200: "#e4e4e7",
-          300: "#d4d4d8",
-          400: "#a1a1aa",
-          500: "#71717a",
-          600: "#52525b",
-          700: "#3f3f46",
-          800: "#27272a",
-          900: "#18181b",
-          950: "#09090b",
-        },
-        indigo: {
-          50: "#fafafa",
-          100: "#f4f4f5",
-          200: "#e4e4e7",
-          300: "#d4d4d8",
-          400: "#a1a1aa",
-          500: "#71717a",
-          600: "#52525b",
-          700: "#3f3f46",
-          800: "#27272a",
-          900: "#18181b",
-          950: "#09090b",
-        },
-        purple: {
-          50: "#fafafa",
-          100: "#f4f4f5",
-          200: "#e4e4e7",
-          300: "#d4d4d8",
-          400: "#a1a1aa",
-          500: "#71717a",
-          600: "#52525b",
-          700: "#3f3f46",
-          800: "#27272a",
-          900: "#18181b",
-          950: "#09090b",
-        },
-        sky: {
-          50: "#fafafa",
-          100: "#f4f4f5",
-          200: "#e4e4e7",
-          300: "#d4d4d8",
-          400: "#a1a1aa",
-          500: "#71717a",
-          600: "#52525b",
-          700: "#3f3f46",
-          800: "#27272a",
-          900: "#18181b",
-          950: "#09090b",
-        },
-        violet: {
-          50: "#fafafa",
-          100: "#f4f4f5",
-          200: "#e4e4e7",
-          300: "#d4d4d8",
-          400: "#a1a1aa",
-          500: "#71717a",
-          600: "#52525b",
-          700: "#3f3f46",
-          800: "#27272a",
-          900: "#18181b",
-          950: "#09090b",
-        },
+        zinc: mono,
+        slate: mono,
+        cyan: mono,
+        indigo: mono,
+        purple: mono,
+        sky: mono,
+        violet: mono,
+        blue: brandBlue,
+        orange: brandOrange,
+        brand: brandBlue,
+        accent: brandOrange,
       },
       // Squared-off everywhere: every `rounded-*` utility (including
       // `rounded-full` on dots, pills, progress bars and avatars) resolves

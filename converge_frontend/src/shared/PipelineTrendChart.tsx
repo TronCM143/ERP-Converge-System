@@ -22,12 +22,17 @@ export interface PipelineTrendPoint {
 //     pale and bury the lines it's meant to support.
 //   * dash / width — Lost is dashed and Won is drawn thicker, so the two
 //     extremes stay identifiable even where lightness alone is close.
+// On a white plot the ramp runs the other way from the dark theme: prominence
+// now comes from DARKER, more saturated ink, so Won takes the brand blue and
+// the rest step back through the navy greys. The fillTop figures are unchanged
+// — they still scale down as the series gets more prominent, which is now the
+// darker end.
 const SERIES = [
-  { key: 'lost', name: 'Lost', color: '#52525b', fillTop: 0.3, width: 2, dash: '5 4' },
-  { key: 'quote', name: 'Quote', color: '#8a8a94', fillTop: 0.22, width: 2, dash: undefined },
-  { key: 'leads', name: 'Leads', color: '#bfbfc7', fillTop: 0.16, width: 2, dash: undefined },
-  { key: 'proposal', name: 'Proposal', color: '#e4e4e7', fillTop: 0.12, width: 2, dash: undefined },
-  { key: 'won', name: 'Won', color: '#ffffff', fillTop: 0.12, width: 2.5, dash: undefined }
+  { key: 'lost', name: 'Lost', color: '#ccd6e6', fillTop: 0.3, width: 2, dash: '5 4' },
+  { key: 'quote', name: 'Quote', color: '#9aabc4', fillTop: 0.22, width: 2, dash: undefined },
+  { key: 'leads', name: 'Leads', color: '#7c8ba0', fillTop: 0.16, width: 2, dash: undefined },
+  { key: 'proposal', name: 'Proposal', color: '#5b7196', fillTop: 0.12, width: 2, dash: undefined },
+  { key: 'won', name: 'Won', color: '#3a598f', fillTop: 0.12, width: 2.5, dash: undefined }
 ] as const;
 
 type Series = (typeof SERIES)[number];
@@ -86,7 +91,7 @@ export default function PipelineTrendChart({ data, height = 220 }: { data: Pipel
           r={isHovered ? 4.5 : 2}
           fill={s.color}
           fillOpacity={isHovered ? 1 : 0.75}
-          stroke={isHovered ? '#09090b' : 'none'}
+          stroke={isHovered ? '#ffffff' : 'none'}
           strokeWidth={isHovered ? 1.5 : 0}
           style={{ pointerEvents: 'none' }}
         />
@@ -109,10 +114,10 @@ export default function PipelineTrendChart({ data, height = 220 }: { data: Pipel
             ))}
           </defs>
 
-          <CartesianGrid vertical={false} stroke="#27272a" strokeDasharray="3 3" />
-          <XAxis dataKey="period" stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} />
+          <CartesianGrid vertical={false} stroke="#e4eaf3" strokeDasharray="3 3" />
+          <XAxis dataKey="period" stroke="#5b7196" fontSize={11} tickLine={false} axisLine={false} />
           <YAxis
-            stroke="#71717a"
+            stroke="#5b7196"
             fontSize={11}
             tickLine={false}
             axisLine={false}

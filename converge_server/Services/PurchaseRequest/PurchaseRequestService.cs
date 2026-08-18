@@ -180,7 +180,22 @@ namespace converge_server.Services
                     Unit = item.Unit,
                     Status = status,
                     QuantityToPurchase = status == "Unavailable" ? item.Quantity : 0,
-                    Remarks = string.IsNullOrWhiteSpace(quotationItem?.Specification) ? null : quotationItem.Specification
+                    Remarks = string.IsNullOrWhiteSpace(quotationItem?.Specification) ? null : quotationItem.Specification,
+
+                    /* Carry the quotation's pricing onto the BOM line. The
+                       matching quotation item was already being resolved above
+                       (for the specification note) but its price was thrown
+                       away, so every BOM line was created with a null price and
+                       the PO/PR totals could only ever sum to zero.
+
+                       Falls back to the catalog price when the line has no
+                       quotation behind it (a BOM raised directly, not from a
+                       quotation), and stays null when there's neither — a
+                       priceless line is excluded from totals rather than
+                       counted as free. */
+                    UnitPrice = quotationItem?.UnitPrice ?? product?.Price,
+                    DiscountAmount = quotationItem?.DiscountAmount ?? 0m,
+                    TaxPercent = quotationItem?.TaxPercent ?? 0m
                 });
             }
 

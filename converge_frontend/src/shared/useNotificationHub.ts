@@ -99,5 +99,31 @@ export function useNotificationHub(enabled: boolean) {
     }
   };
 
-  return { notification, clearNotification, userNotifications, unreadCount, markAllRead };
+  /* Mark ONE notification read. Opening a single entry used to call
+     markAllRead, which cleared the badge for everything the user hadn't looked
+     at — the API had no per-notification endpoint until now.
+
+     Negative ids are the synthetic "delivery today" reminders the server
+     recomputes on each load rather than storing. They have no row to update, so
+     they're flipped locally and no request is sent. */
+  const markOneRead = async (id: number) => {
+    setUserNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
+    );
+    if (id < 0) return;
+    try {
+      await apiFetch(`/api/notifications/${id}/read`, { method: 'PUT' });
+    } catch (err) {
+      console.error('Failed to mark notification read:', err);
+    }
+  };
+
+  return {
+    notification,
+    clearNotification,
+    userNotifications,
+    unreadCount,
+    markAllRead,
+    markOneRead
+  };
 }

@@ -225,7 +225,7 @@ export default function AdminSettingsPage() {
                     <td className="admin-settings__email">{recipient.email || '—'}</td>
                     <td className="admin-settings__phone">{recipient.phone || '—'}</td>
                    
-                    <td>{recipient.isActive ? <Check className="h-4 w-4 text-emerald-400" /> : '—'}</td>
+                    <td>{recipient.isActive ? <Check className="h-4 w-4 text-emerald-600" /> : '—'}</td>
                     <td>
                       <button
                         className="btn btn--small"
@@ -253,8 +253,8 @@ export default function AdminSettingsPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           {googleStatus?.connected ? (
             <>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#e4e4e7' }}>
-                <Check className="h-4 w-4 text-emerald-400" /> Connected as {googleStatus.email}
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#1b2f4c' }}>
+                <Check className="h-4 w-4 text-emerald-600" /> Connected as {googleStatus.email}
               </span>
               <button className="btn btn--small" type="button" onClick={handleDisconnectGoogle}>
                 Disconnect
@@ -287,7 +287,7 @@ export default function AdminSettingsPage() {
           <h2>Department Emails</h2>
         </div>
 
-        <p style={{ fontSize: '13px', color: '#a1a1aa', marginBottom: '16px' }}>
+        <p style={{ fontSize: '13px', color: '#5b7196', marginBottom: '16px' }}>
           One notification address per department. Purchasing gets an email whenever a quotation
           is sent to purchasing.
         </p>
@@ -295,7 +295,7 @@ export default function AdminSettingsPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '480px' }}>
           {departmentEmails.map((d) => (
             <div key={d.department} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <label style={{ width: '100px', fontSize: '13px', fontWeight: 600, color: '#d4d4d8' }}>
+              <label style={{ width: '100px', fontSize: '13px', fontWeight: 600, color: '#2b446b' }}>
                 {DEPARTMENT_LABELS[d.department] ?? d.department}
               </label>
               <input

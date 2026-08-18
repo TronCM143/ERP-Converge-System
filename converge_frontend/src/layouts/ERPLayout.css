@@ -4,6 +4,13 @@
    highlight, so an unread notification is obvious without adding a hue. Both
    the wash and the underline are faded by the same mask as the text, so the
    banner dissolves into the header on its left edge. */
+/* Scrolling notification banner.
+
+   No fill, no border, no shadow — just the moving text. It used to carry a navy
+   gradient, a bottom rule and a breathing inset shadow, which made a slab in
+   the middle of an otherwise flat header. The mask on the left is kept: it
+   fades text in as it scrolls rather than clipping it at a hard edge, which is
+   what makes the motion read as a ticker instead of a marquee box. */
 .po-ticker {
   position: relative;
   overflow: hidden;
@@ -12,29 +19,17 @@
   height: 34px;
   display: flex;
   align-items: center;
-  padding: 0 12px;
-  background: linear-gradient(90deg, rgba(63, 63, 70, 0.5) 0%, rgba(39, 39, 42, 0.3) 100%);
+  padding: 0;
+  background: none;
   border: none;
-  border-bottom: 1px solid #52525b;
   cursor: pointer;
-  animation: po-ticker-breathe 2.6s ease-in-out infinite;
-  /* Left side slowly fades/disappears */
-  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 30%, black 100%);
-  mask-image: linear-gradient(to right, transparent 0%, black 30%, black 100%);
+  /* Left side fades out, so text appears rather than pops in. */
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 22%, black 100%);
+  mask-image: linear-gradient(to right, transparent 0%, black 22%, black 100%);
 }
 
-.po-ticker:hover {
-  background: linear-gradient(90deg, rgba(82, 82, 91, 0.6) 0%, rgba(63, 63, 70, 0.4) 100%);
-}
-
-@keyframes po-ticker-breathe {
-  0%,
-  100% {
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
-  }
-  50% {
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
-  }
+.po-ticker:hover .po-ticker__text {
+  color: #3a598f;
 }
 
 .po-ticker__track {
@@ -46,9 +41,10 @@
 .po-ticker__text {
   display: inline-block;
   padding-right: 60px;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
-  color: #e4e4e7;
+  color: #1b2f4c;
+  transition: color 0.15s ease;
 }
 
 @keyframes po-ticker-scroll {

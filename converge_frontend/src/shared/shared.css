@@ -1,5 +1,5 @@
 :root {
-  --page-bg: #18181b;
+  --page-bg: #f0f4fa;
 }
 
 .page-header {
@@ -16,7 +16,7 @@
   font-weight: 800;
   letter-spacing: -0.02em;
   color: var(--text);
-  background: linear-gradient(135deg, #d4d4d8 0%, #71717a 100%);
+  background: linear-gradient(135deg, #1b2f4c 0%, #2b446b 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -24,7 +24,7 @@
 
 .page-header__subtitle {
   margin-top: 6px;
-  color: #a1a1aa;
+  color: #5b7196;
   font-size: 13px;
 }
 
@@ -35,23 +35,23 @@
 }
 
 .card {
-  background: #18181b;
-  border: 1px solid #3f3f46;
+  background: #ffffff;
+  border: 1px solid #ccd6e6;
   border-radius: 0;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 2px rgba(27, 47, 76, 0.04);
   padding: 24px;
   transition: all 0.3s ease;
 }
 
 .card:hover {
-  box-shadow: 0 10px 15px -3px rgba(161, 161, 170, 0.1);
+  box-shadow: 0 4px 12px -2px rgba(27, 47, 76, 0.08);
 }
 
 /* Same treatment as the Tailwind <Button> primitive: squared, grey, and a
    small uppercase label with wide tracking. */
 .btn {
-  border: 1px solid #52525b;
-  background: #27272a;
+  border: 1px solid #ccd6e6;
+  background: #ffffff;
   border-radius: 0;
   padding: 10px 16px;
   cursor: pointer;
@@ -60,14 +60,14 @@
   text-transform: uppercase;
   letter-spacing: 0.12em;
   transition: all 0.2s ease;
-  color: #d4d4d8;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  color: #1b2f4c;
+  box-shadow: 0 1px 2px rgba(27, 47, 76, 0.04);
 }
 
 .btn:hover:not(:disabled) {
-  border-color: #71717a;
-  background: #3f3f46;
-  box-shadow: 0 2px 4px rgba(161, 161, 170, 0.1);
+  border-color: #9aabc4;
+  background: #f0f4fa;
+  box-shadow: 0 2px 6px rgba(27, 47, 76, 0.08);
   transform: translateY(-1px);
 }
 
@@ -80,20 +80,52 @@
   cursor: not-allowed;
 }
 
-/* Primary is a light-on-dark inversion, not a colored fill - same rule as the
-   login button and the <Button> primitive's default variant. */
+/* Primary is an inversion of the surface, not a colored fill - same rule as
+   the login button and the <Button> primitive's default variant. On a light
+   canvas that means a near-black fill with a near-white label. */
 .btn--primary {
-  background: #f4f4f5;
-  border-color: #f4f4f5;
-  color: #09090b;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  background: #1b2f4c;
+  border-color: #1b2f4c;
+  color: #f5f8fc;
+  box-shadow: 0 2px 8px rgba(27, 47, 76, 0.16);
 }
 
 .btn--primary:hover:not(:disabled) {
-  background: #ffffff;
-  border-color: #ffffff;
-  box-shadow: 0 0 20px rgba(255, 255, 255, 0.15);
+  background: #1b2f4c;
+  border-color: #1b2f4c;
+  box-shadow: 0 4px 12px rgba(27, 47, 76, 0.22);
   transform: translateY(-2px);
+}
+
+/* Minimal / compact action, the legacy counterpart of the <Button>
+   `ghost` and `outline` variants — and the one place the brand orange
+   appears in this stylesheet. Low visual weight, but findable.
+
+   NOTE: `.btn--small` was already in use on two buttons but had no rule at
+   all, so those rendered as full-size neutral buttons. */
+.btn--small {
+  padding: 6px 10px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  background: transparent;
+  border-color: #e87516;
+  color: #ce6410;
+  box-shadow: none;
+}
+
+.btn--small:hover:not(:disabled) {
+  background: #fef4ec;
+  border-color: #ce6410;
+  color: #a94e10;
+  box-shadow: 0 2px 6px rgba(232, 119, 15, 0.16);
+}
+
+/* Focus is brand blue everywhere, so it never collides with the orange
+   (minimal actions) or red (destructive) state colors. */
+.btn:focus-visible,
+.form-control:focus-visible {
+  outline: 2px solid #3a598f;
+  outline-offset: 2px;
 }
 
 /* Red stays - a destructive action is state, not decoration - but the
@@ -102,7 +134,7 @@
   background: #b91c1c;
   border-color: #b91c1c;
   color: white;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 2px 8px rgba(185, 28, 28, 0.2);
 }
 
 .btn--danger:hover:not(:disabled) {
@@ -117,24 +149,32 @@
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: #a1a1aa;
+  color: #5b7196;
   margin-bottom: 8px;
 }
 
 .breadcrumbs__link {
-  color: #d4d4d8;
+  color: #3a598f;
   font-weight: 600;
 }
 
+.breadcrumbs__link:hover {
+  color: #314b77;
+  text-decoration: underline;
+}
+
 .breadcrumbs__sep {
-  color: #71717a;
+  color: #9aabc4;
 }
 
 .breadcrumbs__current {
-  color: #a1a1aa;
+  color: #5b7196;
 }
 
-/* Badges */
+/* Badges. Each state is a pale tint with a saturated label — the inverse of
+   the dark theme's deep fill + pale label. The neutral states use the grey
+   ramp; the semantic ones (amber/green/red) keep their hue because they
+   carry meaning. */
 .badge {
   display: inline-flex;
   align-items: center;
@@ -144,32 +184,32 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 2px rgba(27, 47, 76, 0.04);
   border: 1px solid currentColor;
   opacity: 0.9;
 }
 
-.badge--pending { background: #78350f; color: #fcd34d; }
-.badge--processing { background: #18181b; color: #e4e4e7; }
-.badge--ordered { background: #27272a; color: #d4d4d8; }
-.badge--completed { background: #166534; color: #86efac; }
-.badge--cancelled { background: #7f1d1d; color: #fca5a5; }
-.badge--waiting { background: #3f3f46; color: #d4d4d8; }
-.badge--ready { background: #166534; color: #86efac; }
-.badge--received { background: #047857; color: #a7f3d0; }
-.badge--draft { background: #3f3f46; color: #d4d4d8; }
-.badge--sent { background: #18181b; color: #e4e4e7; }
-.badge--approved { background: #166534; color: #86efac; }
-.badge--rejected { background: #7f1d1d; color: #fca5a5; }
+.badge--pending { background: #fef3c7; color: #92400e; }
+.badge--processing { background: #f0f4fa; color: #1b2f4c; }
+.badge--ordered { background: #e4eaf3; color: #1b2f4c; }
+.badge--completed { background: #dcfce7; color: #166534; }
+.badge--cancelled { background: #fee2e2; color: #991b1b; }
+.badge--waiting { background: #e4eaf3; color: #2b446b; }
+.badge--ready { background: #dcfce7; color: #166534; }
+.badge--received { background: #d1fae5; color: #047857; }
+.badge--draft { background: #e4eaf3; color: #2b446b; }
+.badge--sent { background: #f0f4fa; color: #1b2f4c; }
+.badge--approved { background: #dcfce7; color: #166534; }
+.badge--rejected { background: #fee2e2; color: #991b1b; }
 
 /* CRM pipeline stages */
-.badge--leads { background: #3f3f46; color: #d4d4d8; }
-.badge--quote { background: #18181b; color: #e4e4e7; }
-.badge--rfq { background: #18181b; color: #e4e4e7; }
-.badge--proposal { background: #27272a; color: #d4d4d8; }
-.badge--negotiation { background: #78350f; color: #fcd34d; }
-.badge--won { background: #166534; color: #86efac; }
-.badge--lost { background: #7f1d1d; color: #fca5a5; }
+.badge--leads { background: #e4eaf3; color: #2b446b; }
+.badge--quote { background: #f0f4fa; color: #1b2f4c; }
+.badge--rfq { background: #f0f4fa; color: #1b2f4c; }
+.badge--proposal { background: #e4eaf3; color: #1b2f4c; }
+.badge--negotiation { background: #fef3c7; color: #92400e; }
+.badge--won { background: #dcfce7; color: #166534; }
+.badge--lost { background: #fee2e2; color: #991b1b; }
 
 /* Tables */
 .table-container {
@@ -187,11 +227,11 @@
 }
 
 .custom-table th {
-  background: linear-gradient(180deg, #27272a 0%, #18181b 100%);
+  background: linear-gradient(180deg, #f5f8fc 0%, #f0f4fa 100%);
   padding: 14px 16px;
   font-weight: 700;
-  color: #d4d4d8;
-  border-bottom: 2px solid #3f3f46;
+  color: #1b2f4c;
+  border-bottom: 2px solid #ccd6e6;
   text-transform: uppercase;
   font-size: 11px;
   letter-spacing: 0.5px;
@@ -199,9 +239,9 @@
 
 .custom-table td {
   padding: 16px;
-  border-bottom: 1px solid #3f3f46;
+  border-bottom: 1px solid #e4eaf3;
   vertical-align: middle;
-  color: #d4d4d8;
+  color: #1b2f4c;
 }
 
 .custom-table tbody tr {
@@ -209,12 +249,12 @@
 }
 
 .custom-table tbody tr:hover {
-  background: #27272a;
-  box-shadow: inset 0 0 10px rgba(161, 161, 170, 0.08);
+  background: #f5f8fc;
+  box-shadow: inset 0 0 10px rgba(27, 47, 76, 0.03);
 }
 
 .custom-table tbody tr.row-selected {
-  background: #18181b;
+  background: #f0f4fa;
 }
 
 /* Forms */
@@ -226,7 +266,7 @@
   display: block;
   font-size: 12px;
   font-weight: 700;
-  color: #d4d4d8;
+  color: #1b2f4c;
   margin-bottom: 8px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -234,48 +274,48 @@
 
 .form-control {
   width: 100%;
-  border: 1.5px solid #52525b;
+  border: 1.5px solid #ccd6e6;
   border-radius: 0;
   padding: 11px 13px;
   font-size: 13px;
-  background: #18181b;
+  background: #ffffff;
   transition: all 0.2s;
   line-height: 1.5;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-  color: #d4d4d8;
+  box-shadow: 0 1px 2px rgba(27, 47, 76, 0.03);
+  color: #1b2f4c;
 }
 
 .form-control:hover {
-  border-color: #71717a;
+  border-color: #9aabc4;
 }
 
 .form-control:focus {
   outline: none;
-  border-color: #a1a1aa;
-  box-shadow: 0 0 0 4px rgba(161, 161, 170, 0.15), 0 2px 4px rgba(0, 0, 0, 0.3);
+  border-color: #2b446b;
+  box-shadow: 0 0 0 4px rgba(58, 89, 143, 0.1), 0 1px 2px rgba(27, 47, 76, 0.04);
 }
 
 .form-control::placeholder {
-  color: #71717a;
+  color: #9aabc4;
   font-style: italic;
 }
 
 /* Read-only display variant of .form-control - used wherever a value is locked
    (e.g. client info inside a client-scoped quotation, view-mode profile fields) */
 .form-control--static {
-  background: #27272a;
-  color: #d4d4d8;
+  background: #f0f4fa;
+  color: #2b446b;
   cursor: default;
   padding: 10px 12px;
-  border-color: #3f3f46;
+  border-color: #e4eaf3;
 }
 
 /* Dynamic item builder rows (used by PR items, quotation materials/labor, etc.) */
 .item-builder {
-  border: 1px dashed #52525b;
+  border: 1px dashed #ccd6e6;
   padding: 12px;
   border-radius: 0;
-  background: #18181b;
+  background: #f5f8fc;
   margin-bottom: 14px;
 }
 
@@ -288,7 +328,7 @@
 }
 
 .btn-remove-item {
-  color: #f87171;
+  color: #dc2626;
   border: none;
   background: transparent;
   cursor: pointer;
@@ -299,7 +339,7 @@
 .empty-state {
   text-align: center;
   padding: 40px 20px;
-  color: #a1a1aa;
+  color: #5b7196;
 }
 
 .empty-state__icon {
@@ -320,34 +360,34 @@
   gap: 10px;
   margin-top: 16px;
   padding-top: 14px;
-  border-top: 1px solid #3f3f46;
+  border-top: 1px solid #e4eaf3;
 }
 
 .po-summary-box {
-  background: #27272a;
+  background: #f0f4fa;
   border-radius: 0;
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 8px;
   margin-top: 14px;
-  border: 1px solid #3f3f46;
+  border: 1px solid #e4eaf3;
 }
 
 .po-summary-row {
   display: flex;
   justify-content: space-between;
   font-size: 13px;
-  color: #d4d4d8;
+  color: #1b2f4c;
 }
 
 .po-summary-row--total {
   font-weight: 700;
   font-size: 15px;
-  border-top: 1px solid #3f3f46;
+  border-top: 1px solid #ccd6e6;
   padding-top: 8px;
   margin-top: 4px;
-  color: #d4d4d8;
+  color: #1b2f4c;
 }
 
 .panel-header {
@@ -356,15 +396,15 @@
   justify-content: space-between;
   margin-bottom: 20px;
   padding-bottom: 16px;
-  border-bottom: 2px solid #3f3f46;
+  border-bottom: 2px solid #e4eaf3;
 }
 
 .panel-header h2 {
   font-size: 16px;
   font-weight: 700;
   margin: 0;
-  color: #d4d4d8;
-  background: linear-gradient(90deg, #d4d4d8 0%, #71717a 100%);
+  color: #1b2f4c;
+  background: linear-gradient(90deg, #1b2f4c 0%, #2b446b 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -389,9 +429,9 @@
   color: white;
   font-size: 13px;
   font-weight: 600;
-  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.3), 0 5px 15px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 12px 28px rgba(27, 47, 76, 0.16), 0 4px 10px rgba(27, 47, 76, 0.08);
   backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(27, 47, 76, 0.08);
 }
 
 .toast--error {
@@ -406,7 +446,7 @@
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(27, 47, 76, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -420,8 +460,8 @@
   max-width: 1080px;
   max-height: 90vh;
   overflow-y: auto;
-  background: #18181b;
+  background: #ffffff;
   border-radius: 0;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 10px 15px -3px rgba(0, 0, 0, 0.3);
-  border: 1px solid #3f3f46;
+  box-shadow: 0 24px 48px -12px rgba(27, 47, 76, 0.18), 0 8px 16px -8px rgba(27, 47, 76, 0.1);
+  border: 1px solid #ccd6e6;
 }

@@ -1,4 +1,4 @@
-using converge_server.Data;
+﻿using converge_server.Data;
 using converge_server.Models.DTOs.Client;
 using converge_server.Models.Entities;
 using converge_server.Services.Caching;
@@ -51,8 +51,20 @@ namespace converge_server.Services.Clients
                     Email = c.Email,
                     Notes = c.Notes,
                     Stage = c.Stage.ToString(),
+                    AccentColor = c.AccentColor,
                     QuotationCount = c.Quotations.Count,
                     TotalSales = c.Quotations.Where(q => q.Status == QuotationStatus.Approved).Sum(q => (decimal?)q.GrandTotal) ?? 0,
+                    // Newest quotation regardless of status — this is what the
+                    // board card shows, so a client with a live (unapproved)
+                    // deal reads as its real value instead of a flat 0.
+                    CurrentOpportunity = c.Quotations
+                        .OrderByDescending(q => q.CreatedAt)
+                        .Select(q => (decimal?)q.GrandTotal)
+                        .FirstOrDefault(),
+                    CurrentService = c.Quotations
+                        .OrderByDescending(q => q.CreatedAt)
+                        .Select(q => q.QuotationName)
+                        .FirstOrDefault(),
                     LastUpdated = c.Quotations.Any() ? c.Quotations.Max(q => q.UpdatedAt) : c.CreatedAt,
                     CreatedAt = c.CreatedAt
                 })
@@ -76,8 +88,20 @@ namespace converge_server.Services.Clients
                     Email = c.Email,
                     Notes = c.Notes,
                     Stage = c.Stage.ToString(),
+                    AccentColor = c.AccentColor,
                     QuotationCount = c.Quotations.Count,
                     TotalSales = c.Quotations.Where(q => q.Status == QuotationStatus.Approved).Sum(q => (decimal?)q.GrandTotal) ?? 0,
+                    // Newest quotation regardless of status — this is what the
+                    // board card shows, so a client with a live (unapproved)
+                    // deal reads as its real value instead of a flat 0.
+                    CurrentOpportunity = c.Quotations
+                        .OrderByDescending(q => q.CreatedAt)
+                        .Select(q => (decimal?)q.GrandTotal)
+                        .FirstOrDefault(),
+                    CurrentService = c.Quotations
+                        .OrderByDescending(q => q.CreatedAt)
+                        .Select(q => q.QuotationName)
+                        .FirstOrDefault(),
                     LastUpdated = c.Quotations.Any() ? c.Quotations.Max(q => q.UpdatedAt) : c.CreatedAt,
                     CreatedAt = c.CreatedAt
                 })
@@ -133,6 +157,30 @@ namespace converge_server.Services.Clients
             return await GetClientAsync(clientId);
         }
 
+        public async Task<ClientResponseDto?> UpdateClientAccentAsync(int clientId, string? accentColor)
+        {
+            var client = await _context.Clients.FindAsync(clientId);
+            if (client == null)
+            {
+                return null;
+            }
+
+            // Normalised to lowercase so "#1F6FB2" and "#1f6fb2" don't render as
+            // two different-looking values in the picker's "current colour" dot.
+            client.AccentColor = string.IsNullOrWhiteSpace(accentColor)
+                ? null
+                : accentColor.Trim().ToLowerInvariant();
+
+            await _context.SaveChangesAsync();
+            await _cache.RemoveAsync(CacheKeys.Clients);
+
+            // Deliberately not audit-logged: a card colour is a display
+            // preference, and logging it would bury real pipeline changes in
+            // the activity feed.
+
+            return await GetClientAsync(clientId);
+        }
+
         public async Task<(ClientResponseDto? Client, bool WonSheetSaved)> UpdateClientStageAsync(int clientId, ClientStage stage)
         {
             var client = await _context.Clients.FindAsync(clientId);
@@ -155,14 +203,26 @@ namespace converge_server.Services.Clients
 
                 if (result.EnteredWon)
                 {
+                    var approved = await ApproveWonQuotationAsync(client, "system");
+                    if (approved != null) await _context.SaveChangesAsync();
+
                     wonSheetSaved = await HandleWonAsync(client);
+                }
+                // Kept in step with the board's reorder path: whichever route a
+                // client reaches Lost by, its sent quotation is settled the same
+                // way. No reason is available here — this endpoint has no dialog
+                // behind it.
+                else if (result.EnteredLost)
+                {
+                    var rejected = await RejectLostQuotationAsync(client, "system", null);
+                    if (rejected != null) await _context.SaveChangesAsync();
                 }
             }
 
             return (await GetClientAsync(clientId), wonSheetSaved);
         }
 
-        public async Task<(bool Success, bool WonSheetSaved)> ReorderClientsAsync(ClientStage stage, List<int> orderedClientIds, string actorUsername, List<string>? wonNotifyEmails = null)
+        public async Task<(bool Success, bool WonSheetSaved, string? DecidedQuotationNumber, decimal? DecidedAmount)> ReorderClientsAsync(ClientStage stage, List<int> orderedClientIds, string actorUsername, List<string>? wonNotifyEmails = null, string? lossReason = null)
         {
             var clientsToUpdate = await _context.Clients
                 .Where(c => orderedClientIds.Contains(c.Id))
@@ -170,7 +230,7 @@ namespace converge_server.Services.Clients
 
             if (clientsToUpdate.Count == 0)
             {
-                return (false, false);
+                return (false, false, null, null);
             }
 
             // At most one card changes column per drag; the rest are same-column reorders.
@@ -191,19 +251,39 @@ namespace converge_server.Services.Clients
             await _cache.RemoveAsync(CacheKeys.Clients);
 
             var wonSheetSaved = false;
+            Quotation? decided = null;
             if (stageChange != null && movedClient != null)
             {
-                await _auditService.LogAsync("Client", movedClient.Id.ToString(), "StageChanged", actorUsername, stageChange.OldStage.ToString(), stageChange.NewStage.ToString(), $"Stage changed from {stageChange.OldStage} to {stageChange.NewStage}");
+                // The loss reason the board collected has no column of its own on Client,
+                // so the audit entry is where it is kept — otherwise the dialog
+                // asks "why?" and throws the answer away.
+                var stageDetail = $"Stage changed from {stageChange.OldStage} to {stageChange.NewStage}"
+                    + (stageChange.EnteredLost && !string.IsNullOrWhiteSpace(lossReason) ? $" — {lossReason.Trim()}" : "");
+                await _auditService.LogAsync("Client", movedClient.Id.ToString(), "StageChanged", actorUsername, stageChange.OldStage.ToString(), stageChange.NewStage.ToString(), stageDetail);
 
                 await _dispatchService.DispatchAsync(Models.Entities.NotificationType.StageChanged, "Client Stage Changed", $"Client {movedClient.Name} moved from {stageChange.OldStage} to {stageChange.NewStage}.");
 
                 if (stageChange.EnteredWon)
                 {
+                    // Book the deal BEFORE the sheet/email so the row logged to
+                    // the spreadsheet reflects an approved quotation.
+                    decided = await ApproveWonQuotationAsync(movedClient, actorUsername);
+                    if (decided != null) await _context.SaveChangesAsync();
+
                     wonSheetSaved = await HandleWonAsync(movedClient, wonNotifyEmails);
+                }
+                else if (stageChange.EnteredLost)
+                {
+                    // The mirror of the Won booking. Every "lost" figure in the
+                    // app — the won/lost chart included — counts REJECTED
+                    // quotations, so a card in Lost whose quotation is still
+                    // sitting at Sent registers nowhere.
+                    decided = await RejectLostQuotationAsync(movedClient, actorUsername, lossReason);
+                    if (decided != null) await _context.SaveChangesAsync();
                 }
             }
 
-            return (true, wonSheetSaved);
+            return (true, wonSheetSaved, decided?.QuotationNumber, decided?.GrandTotal);
         }
 
         // Fires everything tied to a client entering Won: the notification
@@ -251,8 +331,92 @@ namespace converge_server.Services.Clients
             var oldStage = trackedClient.Stage;
             trackedClient.Stage = newStage;
             var enteredWon = oldStage != ClientStage.Won && newStage == ClientStage.Won;
+            var enteredLost = oldStage != ClientStage.Lost && newStage == ClientStage.Lost;
 
-            return new StageChangeResult(oldStage, newStage, enteredWon);
+            return new StageChangeResult(oldStage, newStage, enteredWon, enteredLost);
+        }
+
+        /* Books the deal when a client is dragged into Won.
+
+           The link between the board and the money was one-way: approving a
+           quotation moved its client to Won, but moving a card to Won did
+           nothing to any quotation. Since every revenue figure in the app is
+           derived from APPROVED quotations — "Sales this month", the client's
+           Total Sales, the whole analytics page — a card dragged to Won
+           produced no revenue anywhere, which reads as the dashboard being
+           broken.
+
+           Approves the most recently updated SENT quotation. Deliberately not
+           all of them: several sent quotations for one client are usually
+           competing versions of the same job, and approving every one would
+           multiply the booked value. Draft quotations are skipped — the
+           existing rule is that a quotation reaches purchasing before it can be
+           approved, and that rule isn't this method's to overturn.
+
+           Returns the approved quotation, or null when there was nothing
+           approvable, so the caller can tell the user which happened instead of
+           silently booking nothing. */
+        /* The Lost counterpart of ApproveWonQuotationAsync.
+
+           Rejects the most recently updated SENT quotation, for the same reason
+           and with the same restraint: several sent quotations for one client
+           are usually competing versions of one job, so rejecting all of them
+           would multiply the lost value. Drafts are left alone — a draft was
+           never put to the client, so it cannot have been lost.
+
+           Returns null when there is nothing at Sent. That is a real outcome,
+           not a failure: the card still moves to Lost, there is simply no
+           quotation for the chart to count. */
+        private async Task<Quotation?> RejectLostQuotationAsync(Client client, string actorUsername, string? lossReason)
+        {
+            var quotation = await _context.Quotations
+                .Where(q => q.ClientId == client.Id && q.Status == QuotationStatus.Sent)
+                .OrderByDescending(q => q.UpdatedAt)
+                .FirstOrDefaultAsync();
+
+            if (quotation == null)
+            {
+                return null;
+            }
+
+            quotation.Status = QuotationStatus.Rejected;
+            // Same stamp as the approval path: the monthly buckets on the
+            // analytics endpoints are keyed on UpdatedAt, so without this the
+            // rejection would land in whatever month the quotation last changed.
+            quotation.UpdatedAt = DateTime.UtcNow;
+
+            var reason = string.IsNullOrWhiteSpace(lossReason) ? "" : $" — {lossReason.Trim()}";
+            await _auditService.LogAsync(
+                "Quotation", quotation.Id.ToString(), "Rejected", actorUsername,
+                null, quotation.QuotationNumber,
+                $"Rejected automatically — {client.Name} moved to Lost{reason}");
+
+            return quotation;
+        }
+
+        private async Task<Quotation?> ApproveWonQuotationAsync(Client client, string actorUsername)
+        {
+            var quotation = await _context.Quotations
+                .Where(q => q.ClientId == client.Id && q.Status == QuotationStatus.Sent)
+                .OrderByDescending(q => q.UpdatedAt)
+                .FirstOrDefaultAsync();
+
+            if (quotation == null)
+            {
+                return null;
+            }
+
+            quotation.Status = QuotationStatus.Approved;
+            // Stamps the booking date — this is what the monthly sales figures
+            // and the analytics page bucket on.
+            quotation.UpdatedAt = DateTime.UtcNow;
+
+            await _auditService.LogAsync(
+                "Quotation", quotation.Id.ToString(), "Approved", actorUsername,
+                null, quotation.QuotationNumber,
+                $"Approved automatically — {client.Name} moved to Won");
+
+            return quotation;
         }
     }
 }

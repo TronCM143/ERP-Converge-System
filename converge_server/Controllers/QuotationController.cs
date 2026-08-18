@@ -239,6 +239,9 @@ namespace converge_server.Controllers
                     Unit = i.Unit,
                     UnitPrice = i.UnitPrice,
                     TaxPercent = i.TaxPercent,
+                    // Without this, reopening a saved quotation showed every
+                    // line's discount reset to 0 even once it was persisted.
+                    DiscountAmount = i.DiscountAmount,
                     LineTotal = i.LineTotal
                 }).ToList(),
                 LaborItems = quotation.LaborItems.Select(i => new QuotationLaborItemResponseDto

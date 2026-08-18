@@ -20,8 +20,8 @@ export interface RevenueMonthPoint {
 // Monochrome theme: series are separated by lightness, not hue — Won reads
 // bright, Lost reads dim grey — so the chart matches the greyscale UI.
 const SERIES = [
-  { key: 'won', name: 'Won', color: '#e4e4e7' },
-  { key: 'lost', name: 'Lost', color: '#71717a' }
+  { key: 'won', name: 'Won', color: '#3a598f' },
+  { key: 'lost', name: 'Lost', color: '#9aabc4' }
 ] as const;
 
 // Non-linear "banded" Y axis the user asked for: these peso values are spaced
@@ -95,10 +95,10 @@ export default function RevenueWonLostChart({
           ))}
         </defs>
 
-        <CartesianGrid vertical={false} stroke="#27272a" strokeDasharray="3 3" />
-        <XAxis dataKey="period" stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} />
+        <CartesianGrid vertical={false} stroke="#e4eaf3" strokeDasharray="3 3" />
+        <XAxis dataKey="period" stroke="#5b7196" fontSize={11} tickLine={false} axisLine={false} />
         <YAxis
-          stroke="#71717a"
+          stroke="#5b7196"
           fontSize={11}
           tickLine={false}
           axisLine={false}
@@ -107,14 +107,14 @@ export default function RevenueWonLostChart({
           ticks={TICKS.map((_, i) => i)}
           tickFormatter={(idx: number) => formatShort(TICKS[idx])}
         />
-        <Tooltip content={ChartTooltip} cursor={{ stroke: '#3f3f46', strokeWidth: 1 }} />
+        <Tooltip content={ChartTooltip} cursor={{ stroke: '#ccd6e6', strokeWidth: 1 }} />
         <Legend
           verticalAlign="top"
           align="right"
           height={20}
           iconType="circle"
           iconSize={8}
-          wrapperStyle={{ fontSize: 11, color: '#a1a1aa' }}
+          wrapperStyle={{ fontSize: 11, color: '#9aabc4' }}
         />
 
         {SERIES.map((s) => (

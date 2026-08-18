@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { CheckCircle2, Database, Download, GripVertical, History, Info, Mail, Pencil, Plus, Sparkles, SquarePen, Upload, X } from 'lucide-react';
+import { CheckCircle2, CloudUpload, Database, Download, GripVertical, History, Info, Mail, Pencil, Plus, Sparkles, SquarePen, Upload, X } from 'lucide-react';
 import { DndContext, DragEndEvent, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -11,7 +11,9 @@ import { ClientSummary } from '../crm/ClientFormModal';
 import ProductFormModal from '../../inventory/ProductFormModal';
 import { Product as InventoryProduct } from '../../inventory/ProductsPage';
 import SendQuotationPdfDialog from './SendQuotationPdfDialog';
+import ProductSearchField from './ProductSearchField';
 import { EmailCandidate } from '../../shared/EmailRecipientPickerDialog';
+import HistoryTimeline from '../../shared/HistoryTimeline';
 
 // Reuse the full inventory Product shape directly (specs, subcategory, sku,
 // etc.) instead of a narrower duplicate - GET /api/products already returns
@@ -115,6 +117,10 @@ export interface EditableQuotation {
   quotationNumber: string;
   quotationName: string;
   clientName: string;
+  /* 'Draft' | 'Sent' | 'Approved' | 'Rejected'. This screen is the only
+     quotation view there is — a finished quotation opens here too — so it needs
+     to know when to stop writing. See isLocked. */
+  status: string;
   originalPrompt: string | null;
   notes: string | null;
   salesPerson: string | null;
@@ -211,7 +217,8 @@ export default function QuotationFormModal({
   client,
   quotation,
   onClose,
-  onCreated
+  onCreated,
+  readOnly
 }: {
   /** When provided the quotation is locked to this client; otherwise the form shows a client picker. */
   client?: ClientSummary | null;
@@ -219,6 +226,8 @@ export default function QuotationFormModal({
   quotation?: EditableQuotation | null;
   onClose: () => void;
   onCreated?: (quotationNumber: string, clientId: number) => void;
+  /** Forces view-only regardless of status — used for roles that may look but not write (admin). */
+  readOnly?: boolean;
 }) {
   const [products, setProducts] = useState<Product[]>(
     () => queryCache.get<Product[]>(CACHE_KEYS.products) ?? []
@@ -281,6 +290,11 @@ export default function QuotationFormModal({
   const [isImportingFile, setIsImportingFile] = useState(false);
   const importFileInputRef = useRef<HTMLInputElement>(null);
   const odooSearchTimer = useRef<number | undefined>(undefined);
+  /* Whether the server has Odoo credentials. Without this the panel can't tell
+     "Odoo has no matching orders" apart from "Odoo isn't connected" — both
+     render as an empty list, and the archive silently looks empty. */
+  const [isOdooConfigured, setIsOdooConfigured] = useState<boolean | null>(null);
+  const [isOdooSearching, setIsOdooSearching] = useState(false);
   const [notes, setNotes] = useState(quotation?.notes ?? '');
   // Rep who owns this sale — carried onto the PR/PO and the won-deal log.
   const [salesPerson, setSalesPerson] = useState(quotation?.salesPerson ?? '');
@@ -325,10 +339,43 @@ export default function QuotationFormModal({
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [sendDialogCandidates, setSendDialogCandidates] = useState<EmailCandidate[] | null>(null);
   const [postSaveMessage, setPostSaveMessage] = useState<string | null>(null);
+  // Audit-trail drawer, opened from the header's "View activity".
+  const [isActivityOpen, setIsActivityOpen] = useState(false);
+
+  /* Header feedback for the PDF actions (emailed / saved to Drive). This modal
+     has no toast container, and postSaveMessage only renders on the post-create
+     screen, so the message sits in the header next to the autosave state and
+     clears itself. */
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [isSavingToDrive, setIsSavingToDrive] = useState(false);
+  /* Whether a Drive folder is actually wired up for this client. Same probe the
+     quotations list uses, for the same reason: without it the Drive button is
+     offered on installations that have no Drive connected and just fails. */
+  const [driveConfigured, setDriveConfigured] = useState(false);
+
+  /* Every quotation opens in this screen, finished ones included — there is no
+     separate viewer. Writing is switched off when there is nothing to write:
+     the server only accepts edits to a Draft (UpdateQuotationAsync throws
+     otherwise) and only the `quotation` role may mutate at all, admins having
+     read-only oversight. */
+  const isLocked = Boolean(readOnly) || (quotation != null && quotation.status !== 'Draft');
 
   useEffect(() => {
     return () => {
       Object.values(suggestionTimers.current).forEach((id) => window.clearTimeout(id));
+    };
+  }, []);
+
+  /* Lock the page behind the modal. This panel covers the viewport and never
+     scrolls itself, so without this the wheel chains through to <body> and the
+     quotations list scrolls underneath — which reads as "the page scrolls" even
+     though the modal is fixed. Restores the previous value on unmount rather
+     than hard-coding 'auto', so it can't clobber another lock. */
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previous;
     };
   }, []);
 
@@ -341,6 +388,56 @@ export default function QuotationFormModal({
   // otherwise the server's preview of the number this will be given.
   const displayQuotationNumber =
     createdQuotation?.quotationNumber ?? savedQuotationNumber ?? previewNumber ?? 'Quotation';
+
+  /* The record the PDF actions act on: the one just created, else the draft
+     autosave has persisted, else the quotation this screen was opened with.
+     Null means nothing is saved yet and there is no PDF to download, email or
+     archive — which is what disables all three. */
+  const pdfQuotationId = createdQuotation?.id ?? savedQuotationId;
+
+  /* Escape closes, but only for a locked (view-only) quotation: there is nothing
+     to lose. While editing it stays unbound — Escape over a half-typed quotation
+     is the classic way to lose work, and the footer's Cancel is explicit. Held
+     back while a nested dialog is open so that dialog cancels first. */
+  useEffect(() => {
+    if (!isLocked) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !sendDialogCandidates && !isActivityOpen && !editingProduct) onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isLocked, onClose, sendDialogCandidates, isActivityOpen, editingProduct]);
+
+  // Header feedback is transient — it reports that something was sent or
+  // archived, not a state worth keeping on screen.
+  useEffect(() => {
+    if (!actionMessage) return;
+    const t = window.setTimeout(() => setActionMessage(null), 3000);
+    return () => window.clearTimeout(t);
+  }, [actionMessage]);
+
+  /* Is Drive connected for this client? The endpoint answers with
+     { configured, files }, and anything else (including no Drive support on the
+     server at all) leaves it false, which hides the Drive button rather than
+     offering an action that can only fail. */
+  useEffect(() => {
+    const clientId = selectedClient?.id;
+    if (!clientId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await apiFetch(`/api/drive/clients/${clientId}/quotations`);
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        setDriveConfigured(Boolean(data.configured));
+      } catch {
+        // best-effort probe; the button simply stays hidden
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedClient?.id]);
 
   // Ask the server what the next reference will be, so the header shows
   // "Q260701" rather than "New Quotation" from the moment the form opens.
@@ -367,6 +464,9 @@ export default function QuotationFormModal({
   useEffect(() => {
     // The post-create screen is a terminal state; nothing left to autosave.
     if (createdQuotation) return;
+    // Nothing to save on a finished quotation — the PUT would be rejected and
+    // the header would flash "Not saved" at someone who is only reading.
+    if (isLocked) return;
 
     const hasClient = Boolean(selectedClient);
     const hasLine = productRows.some((r) => r.productId && r.quantity > 0);
@@ -676,16 +776,31 @@ export default function QuotationFormModal({
     }
     odooSearchTimer.current = window.setTimeout(async () => {
       try {
+        setIsOdooSearching(true);
         const res = await apiFetch(`/api/odoo/quote-search?q=${encodeURIComponent(needle)}&limit=12`);
         if (res.ok) setOdooSuggestions(await res.json());
       } catch (err) {
         console.error('Odoo quote search failed:', err);
+      } finally {
+        setIsOdooSearching(false);
       }
     }, 450);
     return () => {
       if (odooSearchTimer.current) window.clearTimeout(odooSearchTimer.current);
     };
   }, [promptDraft]);
+
+  // Asked once per open, not per keystroke — it can't change mid-session.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiFetch('/api/odoo/status');
+        if (res.ok) setIsOdooConfigured((await res.json()).configured === true);
+      } catch {
+        setIsOdooConfigured(false);
+      }
+    })();
+  }, []);
 
   // Close the suggestions panel on any click outside it. mousedown rather than
   // click so it closes before a button underneath receives the press.
@@ -801,6 +916,32 @@ export default function QuotationFormModal({
       showNote: Boolean(mi.note)
     }));
     setProductRows(rows.length > 0 ? rows : [emptyProductRow()]);
+  };
+
+  /* A product chosen from the search dropdown. Distinct from typing: the
+     product is already resolved, so there's no name-matching to redo and no
+     reason to fire the external suggestion lookup. Selecting by specs ("8mp")
+     also means the typed text won't equal the product name, which is exactly
+     the case handleProductChange cannot resolve on its own. */
+  const handleProductPicked = (idx: number, product: InventoryProduct) => {
+    if (suggestionTimers.current[idx]) {
+      window.clearTimeout(suggestionTimers.current[idx]);
+      delete suggestionTimers.current[idx];
+    }
+    setSuggestionsByRow((prev) => (prev[idx]?.length ? { ...prev, [idx]: [] } : prev));
+
+    setProductRows((rows) =>
+      rows.map((row, i) =>
+        i === idx
+          ? {
+              ...row,
+              productLabel: formatProductName(product.productName),
+              productId: product.id,
+              unitPrice: product.price
+            }
+          : row
+      )
+    );
   };
 
   const handleProductChange = (idx: number, rawValue: string) => {
@@ -1062,7 +1203,7 @@ export default function QuotationFormModal({
     }
   };
 
-  const handleOpenSendDialogForCreated = async () => {
+  const handleOpenSendDialog = async () => {
     let candidates: EmailCandidate[] = [];
     try {
       const res = await apiFetch('/api/admin/notification-recipients');
@@ -1081,36 +1222,70 @@ export default function QuotationFormModal({
   // Only ever fires with a user-picked, non-empty list - the dialog's own
   // Cancel/Skip paths never reach this with emails, matching the standing
   // rule that a Won/quotation email only goes out after an explicit click.
-  const handleSendCreatedPdfConfirm = (emails: string[]) => {
+  //
+  // Works off pdfQuotationId rather than createdQuotation: the same dialog now
+  // serves the header's Email button on a quotation saved long ago, not just the
+  // one that was created a moment before.
+  const handleSendPdfConfirm = (emails: string[]) => {
     setSendDialogCandidates(null);
-    if (!createdQuotation || emails.length === 0) return;
+    if (!pdfQuotationId || emails.length === 0) return;
     void (async () => {
       try {
-        const res = await apiFetch(`/api/quotations/${createdQuotation.id}/send-pdf`, {
+        const res = await apiFetch(`/api/quotations/${pdfQuotationId}/send-pdf`, {
           method: 'POST',
           body: JSON.stringify({ emails })
         });
         if (!res.ok) throw new Error(`Send failed with ${res.status}`);
-        setPostSaveMessage(`Sent to ${emails.length} recipient(s).`);
+        const message = `Sent to ${emails.length} recipient(s).`;
+        setPostSaveMessage(message);
+        setActionMessage(message);
       } catch (err) {
         console.error('Failed to send quotation PDF:', err);
         setPostSaveMessage('Failed to send quotation PDF.');
+        setErrorMessage('Failed to send quotation PDF.');
       }
     })();
   };
 
+  const handleSaveToDrive = async () => {
+    if (!pdfQuotationId) return;
+    setIsSavingToDrive(true);
+    setErrorMessage(null);
+    try {
+      const res = await apiFetch(`/api/quotations/${pdfQuotationId}/save-to-drive`, { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to save to Drive.');
+      }
+      setActionMessage('Saved to Google Drive.');
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Failed to save to Drive.');
+    } finally {
+      setIsSavingToDrive(false);
+    }
+  };
+
   return (
     <motion.div
-      className="fixed inset-0 bg-black/70 z-50"
+      className="fixed inset-0 bg-zinc-50/40 z-50"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
     >
       <motion.div
-        // overflow-hidden, not overflow-y-auto: the panel itself no longer
-        // scrolls. Header and footer stay put and the product table is the only
-        // thing that moves - see the grid below.
-        className="app-surface w-screen h-screen overflow-hidden flex flex-col"
+        // `absolute inset-0` rather than `w-screen h-screen`: 100vw INCLUDES the
+        // scrollbar gutter, so on Windows the panel was ~17px wider than the
+        // viewport and forced a horizontal scrollbar, which in turn let the
+        // whole page scroll. Filling the fixed parent sidesteps the vw/vh units
+        // entirely.
+        //
+        // overflow-hidden, not overflow-y-auto: the panel itself never scrolls.
+        // Header stays put and the product table is the only thing that moves —
+        // see the grid below.
+        // Explicit opaque fill rather than `app-surface`, which is transparent
+        // so the body's wave band can show through page shells. This is a
+        // full-screen OVERLAY — see-through would reveal the page underneath.
+        className="bg-zinc-950 absolute inset-0 overflow-hidden flex flex-col"
         initial={{ opacity: 0, y: 20, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 12, scale: 0.98 }}
@@ -1123,36 +1298,108 @@ export default function QuotationFormModal({
             <h2 className="text-2xl font-bold text-zinc-50 tracking-[0.04em]">
               {displayQuotationNumber}
             </h2>
-            {/* Autosave state, so it's clear the draft is safe without a click. */}
-            {autoSaveState === 'saving' && <span className="text-[11px] text-zinc-500 italic">Saving…</span>}
-            {autoSaveState === 'saved' && (
-              <span className="text-[11px] text-zinc-500 italic">Draft saved</span>
+            {/* On a finished quotation the autosave line is replaced by its
+                status: nothing is being saved, and the reason the fields no
+                longer commit should be visible rather than inferred. */}
+            {isLocked ? (
+              <span className="text-[11px] text-zinc-500 italic">
+                {quotation?.status ?? 'View'} · view only
+              </span>
+            ) : (
+              <>
+                {/* Autosave state, so it's clear the draft is safe without a click. */}
+                {autoSaveState === 'saving' && <span className="text-[11px] text-zinc-500 italic">Saving…</span>}
+                {autoSaveState === 'saved' && (
+                  <span className="text-[11px] text-zinc-500 italic">Draft saved</span>
+                )}
+                {autoSaveState === 'error' && (
+                  <span className="text-[11px] text-rose-600 italic">Not saved</span>
+                )}
+              </>
             )}
-            {autoSaveState === 'error' && (
-              <span className="text-[11px] text-rose-300 italic">Not saved</span>
-            )}
+            {actionMessage && <span className="text-[11px] text-emerald-700 italic">{actionMessage}</span>}
           </div>
           <div className="flex items-center gap-3">
-            {errorMessage && <span className="text-sm text-red-400">{errorMessage}</span>}
-            {/* Download replaces the old close button. Closing is still the
-                footer's Cancel; a PDF needs a saved record, so this is disabled
-                until the draft has an id. */}
+            {errorMessage && <span className="text-sm text-red-600">{errorMessage}</span>}
+
+            {/* Tamper trail. Sits left of Download and, like it, needs a saved
+                record — there is nothing to audit until the quotation exists.
+                Reads the same audit log the activity feed does, scoped to this
+                quotation, so every edit/approve/reject/send is attributable. */}
+            <button
+              type="button"
+              onClick={() => setIsActivityOpen(true)}
+              disabled={!savedQuotationId}
+              className="inline-flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-orange-600 hover:bg-orange-50 hover:text-orange-700 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+              title={
+                savedQuotationId
+                  ? 'View everything that has changed on this quotation'
+                  : 'Save the draft first to see its activity'
+              }
+            >
+              <History className="h-4 w-4" /> View activity
+            </button>
+
+            {/* The three PDF actions. Download replaces the old close button —
+                closing is still the footer's Cancel. All three need a saved
+                record, so all three are disabled until the draft has an id; they
+                are equally available on a finished quotation, which is the whole
+                point of this screen also being the viewer. */}
             <button
               type="button"
               onClick={handleDownloadPdf}
-              disabled={!savedQuotationId || isDownloadingPdf}
+              disabled={!pdfQuotationId || isDownloadingPdf}
               className="p-2 hover:bg-zinc-700/50 rounded transition-colors text-zinc-400 hover:text-zinc-50 disabled:opacity-40 disabled:hover:bg-transparent"
-              title={savedQuotationId ? 'Download PDF' : 'Save the draft first to download a PDF'}
+              title={pdfQuotationId ? 'Download PDF' : 'Save the draft first to download a PDF'}
             >
               <Download className="h-5 w-5" />
             </button>
+
+            <button
+              type="button"
+              onClick={handleOpenSendDialog}
+              disabled={!pdfQuotationId}
+              className="p-2 hover:bg-zinc-700/50 rounded transition-colors text-zinc-400 hover:text-zinc-50 disabled:opacity-40 disabled:hover:bg-transparent"
+              title={pdfQuotationId ? 'Send PDF by email' : 'Save the draft first to email a PDF'}
+            >
+              <Mail className="h-5 w-5" />
+            </button>
+
+            {/* Hidden unless this client actually has a Drive folder wired up —
+                see the driveConfigured probe. */}
+            {driveConfigured && (
+              <button
+                type="button"
+                onClick={handleSaveToDrive}
+                disabled={!pdfQuotationId || isSavingToDrive}
+                className="p-2 hover:bg-zinc-700/50 rounded transition-colors text-zinc-400 hover:text-zinc-50 disabled:opacity-40 disabled:hover:bg-transparent"
+                title={pdfQuotationId ? 'Save PDF to Google Drive' : 'Save the draft first to archive a PDF'}
+              >
+                <CloudUpload className="h-5 w-5" />
+              </button>
+            )}
+
+            {/* The only exit when locked — the footer's Cancel is gone with the
+                rest of the disabled fieldset. Editing keeps its footer Cancel and
+                deliberately has no X, so a half-typed quotation can't be lost to
+                a stray click in the corner. */}
+            {isLocked && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-2 hover:bg-zinc-700/50 rounded transition-colors text-zinc-400 hover:text-zinc-50"
+                title="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            )}
           </div>
         </div>
 
         {createdQuotation ? (
           <div className="flex-1 flex items-center justify-center p-6">
             <div className="max-w-sm w-full text-center space-y-5">
-              <CheckCircle2 className="h-10 w-10 text-emerald-400 mx-auto" />
+              <CheckCircle2 className="h-10 w-10 text-emerald-600 mx-auto" />
               <div>
                 <h3 className="text-lg font-bold text-zinc-50">Quotation {createdQuotation.quotationNumber} created</h3>
                 <p className="text-sm text-zinc-400 mt-1">Share it now, or find it later from the quotations list.</p>
@@ -1168,7 +1415,7 @@ export default function QuotationFormModal({
                 </button>
                 <button
                   type="button"
-                  onClick={handleOpenSendDialogForCreated}
+                  onClick={handleOpenSendDialog}
                   className="w-full px-3 py-2 border border-zinc-700/60 bg-zinc-900/40 hover:bg-zinc-700/40 text-zinc-50 rounded-md transition-colors flex items-center justify-center gap-2"
                 >
                   <Mail className="h-4 w-4" /> Email it
@@ -1201,8 +1448,14 @@ export default function QuotationFormModal({
         {/* min-h-0 is what makes the nested scrolling work: without it a flex/grid
             child refuses to shrink below its content, so the inner scroll areas
             never get a bounded height and the whole panel scrolls instead. */}
-        <div
-          className="px-6 pb-6 pt-3 grid gap-6 flex-1 min-h-0"
+        {/* A fieldset, not a div: `disabled` on it disables every control inside
+            in one stroke, which is what makes "view only" true for a finished
+            quotation rather than letting someone type into fields that will
+            never commit. min-w-0 undoes the fieldset's `min-width: min-content`,
+            which would otherwise stop the grid shrinking. */}
+        <fieldset
+          disabled={isLocked}
+          className="px-6 pb-6 pt-3 grid gap-6 flex-1 min-h-0 min-w-0"
           style={{
             gridTemplateColumns: '320px 1fr 280px',
             // Without this the single implicit row is auto-sized: it grows to fit
@@ -1322,7 +1575,7 @@ export default function QuotationFormModal({
               </button>
 
               <motion.button
-                className="w-full px-3 py-2 bg-zinc-100 text-zinc-950 rounded hover:shadow-[0_0_20px_rgba(255,255,255,0.15)] transition-all disabled:opacity-50"
+                className="w-full px-3 py-2 bg-zinc-100 text-zinc-950 rounded hover:shadow-[0_4px_14px_rgba(15,35,64,0.18)] transition-all disabled:opacity-50"
                 type="button"
                 whileTap={{ scale: 0.97 }}
                 disabled={isGenerating || !promptDraft.trim()}
@@ -1367,6 +1620,22 @@ export default function QuotationFormModal({
             {/* Odoo history for the same prompt text. Sits above the local list
                 because it's the deeper archive - 568 orders against a handful of
                 Converge quotations - so it's usually where a match will be. */}
+
+            {/* Status line. The Odoo section below only renders when there are
+                hits, so without this an empty archive, a still-running search
+                and a disconnected Odoo all look identical — the panel would
+                just show local quotations and give no reason why. */}
+            {promptDraft.trim().length >= 3 && odooSuggestions.length === 0 && (
+              <p className="text-[10px] italic text-zinc-500 flex items-center gap-1.5">
+                <Database className="h-3 w-3 shrink-0" />
+                {isOdooConfigured === false
+                  ? 'Odoo not connected — showing local quotations only.'
+                  : isOdooSearching
+                    ? 'Searching Odoo…'
+                    : 'No matching Odoo orders.'}
+              </p>
+            )}
+
             {odooSuggestions.length > 0 && (
               <div className="space-y-1.5">
                 <p className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wide flex items-center gap-1.5">
@@ -1444,11 +1713,10 @@ export default function QuotationFormModal({
           {/* Middle column: product rows. Its own flex column so the table can
               take the leftover height and scroll inside it. */}
           <div className="min-h-0 flex flex-col">
-            <datalist id="quotation-product-list">
-              {products.map((p) => (
-                <option key={p.id} value={formatProductName(p.productName)} />
-              ))}
-            </datalist>
+            {/* The product datalist that used to live here is gone — see
+                ProductSearchField. A datalist can only filter on an option's
+                `value`, and that value is also the text inserted on selection,
+                so a product's specs could never be part of the search. */}
             <datalist id="quotation-unit-list">
               <option value="pcs" />
               <option value="set" />
@@ -1499,7 +1767,7 @@ export default function QuotationFormModal({
                 // Alternating row shade (1st shaded, 2nd not, 3rd shaded, ...)
                 // for scan-ability - skipped for unavailable rows since the
                 // red tint already carries the "look at me" signal.
-                const zebra = idx % 2 === 0 ? 'bg-black/15' : '';
+                const zebra = idx % 2 === 0 ? 'bg-zinc-950' : '';
                 return (
                 <SortableProductRow
                   key={row.id}
@@ -1530,20 +1798,20 @@ export default function QuotationFormModal({
                     className={`p-0 align-top ${isUnavailable ? 'border-l-2 border-l-red-500' : ''}`}
                   >
                     <div className="relative">
-                      <input
-                        type="text"
-                        list="quotation-product-list"
+                      <ProductSearchField
+                        products={products}
+                        value={row.productLabel}
+                        placeholder="search name or specs..."
                         className={`w-full px-3 py-2 bg-transparent text-zinc-50 text-sm placeholder-zinc-500 focus:outline-none ${
                           isUnavailable || row.productId ? 'pr-14' : 'pr-8'
                         }`}
-                        placeholder="search..."
-                        value={row.productLabel}
-                        onChange={(e) => handleProductChange(idx, e.target.value)}
+                        onTextChange={(v) => handleProductChange(idx, v)}
+                        onSelect={(p) => handleProductPicked(idx, p)}
                       />
                       {isUnavailable && (
                         <button
                           type="button"
-                          className="absolute right-8 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-emerald-400 transition-colors"
+                          className="absolute right-8 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-emerald-600 transition-colors"
                           title="Add this item to Inventory"
                           onClick={() => setAddMenuRowIndex((cur) => (cur === idx ? null : idx))}
                         >
@@ -1671,7 +1939,7 @@ export default function QuotationFormModal({
                         </button>
                         <button
                           type="button"
-                          className="px-2 py-1 text-[11px] rounded bg-zinc-100 text-zinc-950 hover:bg-white transition-colors"
+                          className="px-2 py-1 text-[11px] rounded bg-zinc-100 text-zinc-950 hover:bg-zinc-200 transition-colors"
                           onClick={() => handleOpenSpecsModal(idx)}
                         >
                           Add with specs
@@ -1820,7 +2088,7 @@ export default function QuotationFormModal({
                   <td className="px-2 py-2 align-top text-center">
                     <button
                       type="button"
-                      className="p-1.5 text-red-400 hover:bg-red-600/10 rounded transition-colors disabled:opacity-50 text-sm"
+                      className="p-1.5 text-red-600 hover:bg-red-600/10 rounded transition-colors disabled:opacity-50 text-sm"
                       disabled={productRows.length <= 1}
                       title="Remove product"
                       onClick={() => setProductRows((rows) => rows.filter((_, i) => i !== idx))}
@@ -1852,11 +2120,13 @@ export default function QuotationFormModal({
           </div>
 
           {/* Right column: labor + totals */}
-          {/* flex-col so the summary scrolls on its own if it ever outgrows the
-              viewport, while the action row at the bottom of this column stays
-              pinned — rather than pushing the whole panel into a scroll. */}
-          <div className="col-span-1 flex flex-col gap-3 min-h-0">
-          <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pr-0.5">
+          {/* The whole column scrolls as one unit, and the summary block is its
+              natural height rather than `flex-1`. Previously the summary was
+              stretched to fill the column, which pushed Cancel/Create down to
+              the very bottom of the viewport, far from the total they act on.
+              Now the buttons sit immediately under the Grand Total. */}
+          <div className="col-span-1 flex flex-col gap-3 min-h-0 overflow-y-auto pr-0.5">
+          <div className="space-y-4">
             <h3 className="text-sm font-bold text-zinc-300 uppercase">Summary</h3>
 
             <div className="border border-zinc-700/60 rounded-md overflow-hidden bg-zinc-900/40">
@@ -1917,7 +2187,7 @@ export default function QuotationFormModal({
                 {discountTotal > 0 && (
                   <div className="flex justify-between text-sm">
                     <span className="text-zinc-400">Total Discount</span>
-                    <span className="text-rose-300 font-semibold">−{peso(discountTotal)}</span>
+                    <span className="text-rose-600 font-semibold">−{peso(discountTotal)}</span>
                   </div>
                 )}
 
@@ -1953,7 +2223,7 @@ export default function QuotationFormModal({
                           </span>
                           <span
                             className={`font-semibold ${
-                              grandTotal <= promptBudget.amount ? 'text-emerald-300' : 'text-rose-300'
+                              grandTotal <= promptBudget.amount ? 'text-emerald-700' : 'text-rose-600'
                             }`}
                           >
                             {peso(Math.abs(promptBudget.amount - grandTotal))}
@@ -1978,30 +2248,86 @@ export default function QuotationFormModal({
             </div>
           </div>
 
-            {/* Moved here from a full-width footer at the bottom of the modal:
-                the commit action belongs beside the total it commits. shrink-0
-                so it stays pinned while the summary above it scrolls. */}
-            <div className="shrink-0 flex gap-2">
-              <button
-                className="flex-1 px-4 py-2 bg-zinc-700 text-zinc-300 hover:bg-zinc-600 rounded transition-colors"
-                type="button"
-                onClick={onClose}
-              >
-                Cancel
-              </button>
-              <button
-                className="flex-[2] px-4 py-2 bg-zinc-100 text-zinc-950 rounded hover:shadow-[0_0_20px_rgba(255,255,255,0.15)] transition-all disabled:opacity-50"
-                type="submit"
-                disabled={isSubmitting}
-              >
-                {quotation ? 'Save Changes' : 'Create Quotation'}
-              </button>
-            </div>
+            {/* Directly below the Grand Total — the commit action belongs beside
+                the figure it commits. shrink-0 so it keeps its height if the
+                column ever has to scroll.
+
+                Dropped entirely when locked: both buttons are inside the
+                disabled fieldset, so they would render greyed out and dead.
+                Cancel/Create have nothing to do on a finished quotation anyway —
+                the header's X is the way out. */}
+            {!isLocked && (
+              <div className="shrink-0 flex gap-2">
+                <button
+                  className="flex-1 px-4 py-2 border border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800 transition-colors"
+                  type="button"
+                  onClick={onClose}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="flex-[2] px-4 py-2 bg-zinc-100 text-zinc-950 border border-zinc-100 hover:bg-zinc-200 transition-all disabled:opacity-50"
+                  type="submit"
+                  disabled={isSubmitting}
+                >
+                  {quotation ? 'Save Changes' : 'Create Quotation'}
+                </button>
+              </div>
+            )}
           </div>
-        </div>
+        </fieldset>
         </form>
         )}
       </motion.div>
+
+      {/* Activity drawer — the tamper trail for this quotation. Slides in from
+          the right over the form, rather than opening as a centred dialog, so
+          the quotation stays visible behind it while you read what changed. */}
+      <AnimatePresence>
+        {isActivityOpen && savedQuotationId && (
+          <motion.div
+            className="fixed inset-0 z-[70] bg-zinc-50/30"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIsActivityOpen(false)}
+          >
+            <motion.aside
+              className="fixed inset-y-0 right-0 w-[38vw] min-w-[340px] max-w-[520px] bg-zinc-900 border-l border-zinc-700 shadow-[0_0_48px_-12px_rgba(15,35,64,0.3)] flex flex-col"
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'tween', duration: 0.2 }}
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-label="Quotation activity"
+            >
+              <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-zinc-700">
+                <div>
+                  <h3 className="text-[13px] font-bold uppercase tracking-wide text-zinc-100">
+                    Activity
+                  </h3>
+                  <p className="text-[11px] text-zinc-500 italic">
+                    {displayQuotationNumber} — every recorded change, and who made it
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="p-1.5 text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800 transition-colors"
+                  onClick={() => setIsActivityOpen(false)}
+                  aria-label="Close activity"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="flex-1 min-h-0 overflow-y-auto p-4">
+                <HistoryTimeline entityType="Quotation" entityId={savedQuotationId} />
+              </div>
+            </motion.aside>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {specModalRowIndex !== null && (
@@ -2024,11 +2350,13 @@ export default function QuotationFormModal({
       </AnimatePresence>
 
       <AnimatePresence>
-        {sendDialogCandidates && createdQuotation && (
+        {/* Gated on the saved id, not on createdQuotation: the header's Email
+            button opens this for any saved quotation, not only a brand-new one. */}
+        {sendDialogCandidates && pdfQuotationId && (
           <SendQuotationPdfDialog
-            quotationNumber={createdQuotation.quotationNumber}
+            quotationNumber={displayQuotationNumber}
             candidates={sendDialogCandidates}
-            onConfirm={handleSendCreatedPdfConfirm}
+            onConfirm={handleSendPdfConfirm}
             onCancel={() => setSendDialogCandidates(null)}
           />
         )}

@@ -1,4 +1,4 @@
-using converge_server.Models.DTOs.Client;
+﻿using converge_server.Models.DTOs.Client;
 using converge_server.Models.Entities;
 using converge_server.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -69,8 +69,40 @@ namespace converge_server.Controllers
                 return BadRequest(new { error = "OrderedClientIds must not be empty." });
             }
 
-            var (success, wonSheetSaved) = await _clientService.ReorderClientsAsync(parsedStage, dto.OrderedClientIds, User.Identity?.Name ?? "system", dto.WonNotifyEmails);
-            return success ? Ok(new { wonSheetSaved }) : NotFound();
+            var (success, wonSheetSaved, decidedQuotationNumber, decidedAmount) =
+                await _clientService.ReorderClientsAsync(parsedStage, dto.OrderedClientIds, User.Identity?.Name ?? "system", dto.WonNotifyEmails, dto.LossReason);
+
+            // The decided quotation is reported under the name of what actually
+            // happened to it, so the board can say what was recorded rather than
+            // leaving the user to wonder why the sales figure moved (or didn't).
+            // A drag settles at most one quotation, so only one pair is ever set.
+            var won = parsedStage == ClientStage.Won;
+            var lost = parsedStage == ClientStage.Lost;
+            return success
+                ? Ok(new
+                {
+                    wonSheetSaved,
+                    approvedQuotationNumber = won ? decidedQuotationNumber : null,
+                    approvedAmount = won ? decidedAmount : null,
+                    rejectedQuotationNumber = lost ? decidedQuotationNumber : null,
+                    rejectedAmount = lost ? decidedAmount : null
+                })
+                : NotFound();
+        }
+
+        // Kanban card colour. Its own endpoint rather than part of the full
+        // update: picking a colour on the board shouldn't require sending (and
+        // risk overwriting) the client's name, address and notes.
+        [HttpPatch("{clientId:int}/accent")]
+        public async Task<IActionResult> UpdateAccent(int clientId, [FromBody] UpdateClientAccentDto dto)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var client = await _clientService.UpdateClientAccentAsync(clientId, dto.AccentColor);
+            return client == null ? NotFound() : Ok(client);
         }
 
         [HttpPatch("{clientId:int}/stage")]

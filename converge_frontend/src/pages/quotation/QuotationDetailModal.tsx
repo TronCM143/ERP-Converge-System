@@ -151,7 +151,7 @@ export default function QuotationDetailModal({ quotationId, onClose }: Quotation
             </div>
           </>
         ) : (
-          <div className="py-8 text-center text-red-400">Failed to load quotation</div>
+          <div className="py-8 text-center text-red-600">Failed to load quotation</div>
         )}
       </DialogContent>
     </Dialog>

@@ -1,18 +1,18 @@
 .kanban-column {
   flex: 0 0 340px;
-  background: #18181b;
+  background: #f0f4fa;
   border-radius: 0;
   display: flex;
   flex-direction: column;
   max-height: calc(100vh - 240px);
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 2px 8px rgba(27, 47, 76, 0.027);
   transition: all 0.3s ease;
   border: 2px solid transparent;
 }
 
 .kanban-column:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 12px rgba(27, 47, 76, 0.036);
 }
 
 .kanban-column__header {
@@ -20,7 +20,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 18px;
-  background: linear-gradient(135deg, #fafafa 0%, #f4f4f5 100%);
+  background: linear-gradient(135deg, #f5f8fc 0%, #f0f4fa 100%);
   border-bottom: 2px solid var(--border);
   border-radius: 0;
   flex-shrink: 0;
@@ -51,12 +51,12 @@
   justify-content: center;
   min-width: 28px;
   height: 28px;
-  background: linear-gradient(135deg, var(--column-color, #71717a) 0%, var(--column-color, #71717a) 100%);
+  background: linear-gradient(135deg, var(--column-color, #9aabc4) 0%, var(--column-color, #9aabc4) 100%);
   color: white;
   border-radius: 0;
   font-size: 12px;
   font-weight: 700;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 4px rgba(27, 47, 76, 0.045);
 }
 
 .kanban-column__add-btn {
@@ -65,7 +65,7 @@
   padding: 0;
   border: 2px solid var(--border);
   border-radius: 0;
-  background: #27272a;
+  background: #ffffff;
   color: var(--primary);
   font-weight: 700;
   font-size: 18px;
@@ -81,7 +81,7 @@
   border-color: var(--primary);
   background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
   color: white;
-  box-shadow: 0 4px 8px rgba(82, 82, 91, 0.15);
+  box-shadow: 0 4px 8px rgba(27, 47, 76, 0.068);
   transform: translateY(-2px);
 }
 
@@ -103,10 +103,10 @@
 }
 
 .kanban-column__body::-webkit-scrollbar-thumb {
-  background: #3f3f46;
+  background: #e4eaf3;
   border-radius: 0;
 }
 
 .kanban-column__body::-webkit-scrollbar-thumb:hover {
-  background: #a1a1aa;
+  background: #ccd6e6;
 }

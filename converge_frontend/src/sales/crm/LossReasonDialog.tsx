@@ -24,7 +24,7 @@ export default function LossReasonDialog({ clientName, onConfirm, onCancel }: Pr
 
   return (
     <motion.div
-      className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-zinc-50/40 flex items-center justify-center z-50 p-4"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -70,7 +70,7 @@ export default function LossReasonDialog({ clientName, onConfirm, onCancel }: Pr
                   onClick={() => setReason(preset)}
                   className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
                     isActive
-                      ? 'bg-rose-500/15 border-rose-500/50 text-rose-200'
+                      ? 'bg-rose-500/15 border-rose-500/50 text-rose-700'
                       : 'bg-zinc-900/40 border-zinc-700 text-zinc-300 hover:border-zinc-600'
                   }`}
                 >

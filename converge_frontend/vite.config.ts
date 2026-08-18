@@ -11,6 +11,21 @@ export default defineConfig({
     host: true,
     port: 5173,
     strictPort: true,
+    /* Hostnames the dev server will answer to.
+
+       Vite 5.4.12+ rejects requests whose Host header it doesn't recognise
+       (a DNS-rebinding protection), so reaching this server through a tunnel
+       fails with "Blocked request. This host is not allowed." — the app never
+       loads at all.
+
+       A LEADING DOT means "this domain and any subdomain", which is what an
+       ngrok URL needs since the hostname changes on every restart of a free
+       tunnel (e.g. https://a1b2-136-158-x-x.ngrok-free.app).
+
+       Note this is the DEV SERVER's host allow-list, not CORS. The backend has
+       no CORS policy and needs none: the proxy below forwards /api, /images and
+       /hubs server-side, so the browser only ever talks to one origin. */
+    allowedHosts: ['.ngrok-free.app', '.ngrok.io', '.ngrok.app'],
     proxy: {
       '/api': {
         target: 'http://localhost:5090',

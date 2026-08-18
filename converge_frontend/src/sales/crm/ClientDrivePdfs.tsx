@@ -86,7 +86,7 @@ export default function ClientDrivePdfs({ clientId }: { clientId: number }) {
         </Button>
       </CardHeader>
       <CardContent>
-        {error && <p className="text-xs text-red-400 mb-2">{error}</p>}
+        {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
         {isLoading ? (
           <p className="text-sm text-zinc-500 italic">Loading…</p>
         ) : files.length === 0 ? (

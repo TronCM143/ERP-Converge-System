@@ -54,18 +54,27 @@ namespace converge_server.Services.Notifications
                     ApplicationName = "Converge"
                 });
 
-                var today = DateTime.UtcNow.ToString("yyyy-MM-dd");
                 var accomplished = wonDate.ToString("yyyy-MM-dd");
 
+                /* Columns: project code | client | date accomplished | total sales.
+
+                   The leading "date logged" column (DateTime.UtcNow at the
+                   moment of writing) was removed on request. It was near-
+                   duplicate information — the row is appended when the deal is
+                   won, so it almost always equalled the accomplished date
+                   beside it — and the accomplished date is the one that
+                   actually means something.
+
+                   The range narrows from A:E to A:D to match. */
                 var valueRange = new ValueRange
                 {
                     Values = new List<IList<object>>
                     {
-                        new List<object> { today, projectCode, clientName, accomplished, totalSales }
+                        new List<object> { projectCode, clientName, accomplished, totalSales }
                     }
                 };
 
-                var appendRequest = sheetsService.Spreadsheets.Values.Append(valueRange, _spreadsheetId, $"{_sheetName}!A:E");
+                var appendRequest = sheetsService.Spreadsheets.Values.Append(valueRange, _spreadsheetId, $"{_sheetName}!A:D");
                 appendRequest.ValueInputOption = SpreadsheetsResource.ValuesResource.AppendRequest.ValueInputOptionEnum.USERENTERED;
                 appendRequest.InsertDataOption = SpreadsheetsResource.ValuesResource.AppendRequest.InsertDataOptionEnum.INSERTROWS;
 

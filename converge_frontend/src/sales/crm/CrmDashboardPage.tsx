@@ -14,11 +14,11 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { Button } from '../../components/ui/button';
-import { Input } from '../../components/ui/input';
 import { Card } from '../../components/ui/card';
 import ActivityFeed from '../../shared/ActivityFeed';
-import CrmMonitors, { CrmSummary } from './CrmMonitors';
-import { opportunityValue } from './crmFormat';
+import SalesTrendChart from './SalesTrendChart';
+import SalesOverview from './SalesOverview';
+import { CrmSummary, opportunityValue, peso } from './crmFormat';
 import { apiFetch } from '../../shared/api';
 import { queryCache, CACHE_KEYS } from '../../shared/queryCache';
 import ClientFormModal, { ClientSummary } from './ClientFormModal';
@@ -27,7 +27,17 @@ import KanbanCardOverlay from './KanbanCardOverlay';
 import KanbanColumn from './KanbanColumn';
 import WonEmailDialog, { WonEmailCandidate } from './WonEmailDialog';
 import LossReasonDialog from './LossReasonDialog';
-import { AlertTriangle, CheckCircle2, FileText, Package, Plus, Users } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowUpDown,
+  CheckCircle2,
+  PanelRightClose,
+  PanelRightOpen,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  Users
+} from 'lucide-react';
 
 interface NotificationRecipientPreference {
   type: number;
@@ -45,9 +55,23 @@ interface NotificationRecipient {
 // Matches the backend's NotificationType enum ordinal.
 const WON_APPROVAL_TYPE = 1;
 
-const STAGES = ['Leads', 'Quote', 'Proposal', 'Won', 'Lost'] as const;
+/* Board order, left to right. 'Pending' sits between Proposal and Won — a deal
+   that has been proposed and is waiting on the client's decision. The server
+   enum appends it as 4 (see ClientStage) because that value is stored; only
+   this list decides where the column appears.
 
-type SortKey = 'updated' | 'value' | 'oldest' | 'followUp' | 'name';
+   Note 'Lost' has no server-side member at all — the 2026-07-13 migration
+   folded it back into Quote — so a drop into that column is rejected with
+   "Unknown stage 'Lost'" and the card snaps back. Pre-existing, left alone. */
+const STAGES = ['Leads', 'Quote', 'Proposal', 'Pending', 'Won', 'Lost'] as const;
+
+/* 'manual' is the board's own order — the one you get by dragging cards around,
+   persisted server-side as Client.SortOrder and returned in that order by
+   /api/clients. It has to be the default: every other key re-sorts the column
+   on each render, which silently threw away a within-column drag the moment it
+   happened (the card snapped straight back). Dragging while a different sort is
+   active now switches back to 'manual' so the drop actually sticks. */
+type SortKey = 'manual' | 'updated' | 'value' | 'lowestValue' | 'oldest' | 'newest' | 'name';
 
 // closestCorners compares whole-rect geometry, which misfires here: empty
 // columns stretch to match the tallest column (CSS grid row-stretch), so
@@ -91,21 +115,61 @@ export default function CrmDashboardPage() {
   // Set once a real drag starts, so the click that fires after dropping
   // a card doesn't also navigate to the client profile.
   const suppressClickRef = useRef(false);
-  const [sortBy, setSortBy] = useState<SortKey>('updated');
+  const [sortBy, setSortBy] = useState<SortKey>('manual');
   const [summary, setSummary] = useState<CrmSummary | null>(null);
+
+  // Toolbar filters. Only these two are offered because they are the only
+  // opportunity attributes the API actually returns — see the Filter popover.
+  // Collapsed state persists across visits — someone who works with the log
+  // shut shouldn't have to close it again every time they open the board.
+  const [isActivityRailOpen, setIsActivityRailOpen] = useState(
+    () => localStorage.getItem('converge_crm_activity_rail') !== 'closed'
+  );
+  useEffect(() => {
+    localStorage.setItem('converge_crm_activity_rail', isActivityRailOpen ? 'open' : 'closed');
+  }, [isActivityRailOpen]);
+
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [minAmount, setMinAmount] = useState('');
+  const [onlyWithQuotation, setOnlyWithQuotation] = useState(false);
+  const filterRef = useRef<HTMLDivElement>(null);
+
+  const activeFilterCount = (minAmount.trim() !== '' ? 1 : 0) + (onlyWithQuotation ? 1 : 0);
+  const isFilterActive = activeFilterCount > 0;
+
+  // Click-away closes the filter popover.
+  useEffect(() => {
+    if (!isFilterOpen) return;
+    const close = (e: PointerEvent) => {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
+        setIsFilterOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [isFilterOpen]);
 
   /* The trend/forecast/revenue charts that used to load here are gone — the
      dashboard is a workspace now, and that reporting lives on /sales/history.
      One crm-summary call replaces four analytics requests. */
+  /* Extracted from the mount effect so a Won drop can re-run it. "Sales this
+     month" is computed server-side from approved quotations, so once a drop
+     approves one the tile is stale until this is called again. */
+  /* Bumped whenever a drag settles a quotation; handed to SalesTrendChart,
+     which refetches on every change. */
+  const [chartVersion, setChartVersion] = useState(0);
+
+  const refreshSummary = async () => {
+    try {
+      const res = await apiFetch('/api/analytics/crm-summary');
+      if (res.ok) setSummary(await res.json());
+    } catch (err) {
+      console.error('Failed to load CRM summary:', err);
+    }
+  };
+
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await apiFetch('/api/analytics/crm-summary');
-        if (res.ok) setSummary(await res.json());
-      } catch (err) {
-        console.error('Failed to load CRM summary:', err);
-      }
-    })();
+    void refreshSummary();
   }, []);
 
   useEffect(() => {
@@ -214,6 +278,11 @@ export default function CrmDashboardPage() {
       return;
     }
 
+    // A drag expresses an explicit order, so it has to win over whatever sort
+    // key is active — otherwise the re-sort discards the drop and the card
+    // snaps back. Switching to 'manual' makes the drop visible immediately.
+    if (sortBy !== 'manual') setSortBy('manual');
+
     // Reorder the flat list so per-column order (a filter over it) reflects
     // exactly where the card was dropped — top, middle, or bottom.
     let next: ClientSummary[];
@@ -290,10 +359,54 @@ export default function CrmDashboardPage() {
       });
       if (!res.ok) throw new Error(`Reorder failed with ${res.status}`);
 
-      // Card just landed in Won: the backend logs it to the spreadsheet and
-      // reports back whether that write succeeded.
+      /* Card just landed in Won. The backend now also approves the client's
+         latest SENT quotation, which is what actually books the revenue — every
+         money figure in the app (Sales this month, Total Sales, the analytics
+         page) is derived from approved quotations, so without that a card in
+         Won contributed nothing anywhere.
+
+         The booking outcome is reported first because it's the consequential
+         one; the spreadsheet/email confirmations are secondary. */
+      /* Won approves the client's sent quotation and Lost now rejects it, so
+         either one moves the figures the header chart is drawn from. Both are
+         server-computed, so the chart has to be told to refetch — this bump is
+         what was missing when a card dropped into Won left the bars unchanged. */
+      if (stage === 'Won' || stage === 'Lost') {
+        setChartVersion((v) => v + 1);
+      }
+
+      if (stage === 'Lost') {
+        const data = await res.json().catch(() => null);
+        if (data?.rejectedQuotationNumber) {
+          setToastMessage(
+            `${data.rejectedQuotationNumber} rejected — ${peso(data.rejectedAmount ?? 0)} recorded as lost`
+          );
+        } else {
+          // Same courtesy as the Won path: say why nothing moved rather than
+          // leaving the chart looking stuck.
+          setErrorToastMessage('Moved to Lost, but there was no sent quotation to reject');
+        }
+        void refreshSummary();
+      }
+
       if (stage === 'Won') {
         const data = await res.json().catch(() => null);
+
+        if (data?.approvedQuotationNumber) {
+          setToastMessage(
+            `${data.approvedQuotationNumber} approved — ${peso(data.approvedAmount ?? 0)} booked`
+          );
+          // The monthly figure is server-computed, so it has to be refetched.
+          void refreshSummary();
+        } else {
+          // Nothing was approvable: the client has no quotation sitting at
+          // "Sent". Saying so beats leaving the sales figure unchanged with no
+          // explanation.
+          setErrorToastMessage(
+            'Moved to Won, but no sent quotation to approve — sales figures unchanged'
+          );
+        }
+
         if (data?.wonSheetSaved) {
           setToastMessage('Deal logged to spreadsheet');
         }
@@ -351,26 +464,38 @@ export default function CrmDashboardPage() {
   // Search across client name and contact person, then sort. Stage isn't
   // filtered here — the board's columns already do that.
   const query = searchQuery.trim().toLowerCase();
+  const minAmountValue = minAmount.trim() === '' ? null : Number(minAmount);
+
   const filteredClients = clients
-    .filter(
-      (c) =>
-        !query ||
-        c.name.toLowerCase().includes(query) ||
-        (c.contactPerson ?? '').toLowerCase().includes(query)
-    )
+    .filter((c) => {
+      if (
+        query &&
+        !c.name.toLowerCase().includes(query) &&
+        !(c.contactPerson ?? '').toLowerCase().includes(query)
+      ) {
+        return false;
+      }
+      if (minAmountValue != null && !Number.isNaN(minAmountValue)) {
+        if (opportunityValue(c) < minAmountValue) return false;
+      }
+      if (onlyWithQuotation && c.quotationCount === 0) return false;
+      return true;
+    })
     .sort((a, b) => {
       switch (sortBy) {
+        // Array.prototype.sort is stable, so returning 0 preserves the order
+        // `clients` already has — which is the server's SortOrder, i.e. the
+        // manual board order.
+        case 'manual':
+          return 0;
         case 'value':
           return opportunityValue(b) - opportunityValue(a);
+        case 'lowestValue':
+          return opportunityValue(a) - opportunityValue(b);
         case 'oldest':
           return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-        case 'followUp': {
-          // Undated clients sink: a card with no follow-up is the least useful
-          // one to look at when you're sorting by what's due.
-          const av = a.followUpDate ? new Date(a.followUpDate).getTime() : Number.POSITIVE_INFINITY;
-          const bv = b.followUpDate ? new Date(b.followUpDate).getTime() : Number.POSITIVE_INFINITY;
-          return av - bv;
-        }
+        case 'newest':
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
         case 'name':
           return a.name.localeCompare(b.name);
         default:
@@ -378,35 +503,84 @@ export default function CrmDashboardPage() {
       }
     });
 
+  // Header summary. Counts only clients with a deal attached — "7 opportunities"
+  // should mean seven live deals, not seven rows including bare leads.
+  const opportunityCount = filteredClients.filter((c) => opportunityValue(c) > 0).length;
+  const pipelineValue = filteredClients.reduce((sum, c) => sum + opportunityValue(c), 0);
+
   return (
-    <div className="h-[calc(100vh-36px)] app-surface flex items-stretch overflow-hidden">
+    <div className="h-[calc(100vh-36px)] app-wallpaper flex items-stretch overflow-hidden">
       {/* Left column is its own scroll container (fixed height, overflow-y-auto)
           so the sticky search+columns bar below actually pins — the app's
           <main> grows to fit content and never scrolls internally, which would
           otherwise leave position:sticky with nothing to stick to. */}
       <div className="flex-1 min-w-0 overflow-y-auto">
-        {/* Title + analytics: these scroll away normally (not pinned). */}
-        <div>
-          <div className="px-6 pt-5">
-            {/* One row: CRM and its module nav together on the left, the sales
-                monitor alone on the far right. */}
-            <div className="flex flex-wrap items-center gap-3 mb-4">
-              <h1 className="text-2xl font-bold text-zinc-100 tracking-[0.06em]">CRM</h1>
+        {/* Module tabs + page heading. Scrolls away normally (not pinned).
+            pt-7 rather than pt-4: the app header is only 36px tall, so at pt-4
+            the tab row sat ~8px off it and read as part of the header rather
+            than as the page's own navigation. */}
+        <div className="px-6 pt-7">
+          {/* Rectangular tabs, not pills. The active section is marked by a
+              2px orange underline rather than a filled block, so it reads as
+              "you are here" without competing with the New Lead button — the
+              only other orange element on screen. */}
+          <nav className="mb-4 flex items-end gap-6 border-b border-zinc-700" aria-label="Sales sections">
+            {[
+              { label: 'CRM', to: '/sales/crm', active: true },
+              { label: 'Projects', to: '/sales/quotations', active: false },
+              { label: 'Products', to: '/inventory', active: false }
+            ].map((tab) => (
+              <button
+                key={tab.label}
+                type="button"
+                onClick={() => !tab.active && navigate(tab.to)}
+                aria-current={tab.active ? 'page' : undefined}
+                className={`-mb-px border-b-2 px-0.5 pb-2 text-[12px] font-bold uppercase tracking-[0.1em] transition-colors duration-150 ${
+                  tab.active
+                    ? 'border-orange-500 text-zinc-50'
+                    : 'border-transparent text-zinc-400 hover:text-zinc-50'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
 
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" onClick={() => navigate('/sales/quotations')} className="gap-2 text-sm">
-                  Projects
-                </Button>
-                <Button variant="outline" onClick={() => navigate('/inventory')} className="gap-2 text-sm">
-                  Products
-                </Button>
-              </div>
+          {/* Heading + one-line summary on the left, KPI on the right. Compact
+              on purpose: this strip is orientation, not content. */}
+          {/* Heading on the left, the year's won/lost chart filling everything
+              to its right up to the activity rail.
 
-              <div className="ml-auto text-right -translate-y-[25px]">
-                <CrmMonitors
-                  summary={summary}
-                  onOpenHistory={() => navigate('/sales/history')}
-                />
+              The chart is pulled UP with a negative top margin so it rises past
+              the tab row to the top edge of this strip — it is the tallest thing
+              in the header and would otherwise sit in a shallow band under the
+              tabs. -mt-9 is the knob: less to drop it back under the tabs, more
+              to overlap them further. It only applies from lg up, where the tabs
+              (which stop well left of the chart) can't collide with it. */}
+          <div className="mb-3 flex flex-wrap items-start gap-4">
+            <div className="min-w-0 shrink-0">
+              <h1 className="text-[20px] font-bold leading-tight text-zinc-50">Pipeline</h1>
+              <p className="mt-0.5 text-[12px] text-zinc-400 tabular-nums">
+                {opportunityCount} {opportunityCount === 1 ? 'opportunity' : 'opportunities'}
+                <span aria-hidden="true" className="mx-1.5 text-zinc-600">·</span>
+                {peso(pipelineValue)} pipeline value
+              </p>
+            </div>
+
+            {/* The chart keeps its right edge against the activity rail and
+                gives up 40% of its width on the LEFT, so it reads as a compact
+                panel with air beside the heading rather than a band spanning the
+                whole strip. justify-end is what makes the shrink come off the
+                left; below lg it takes the full width, where there is none to
+                spare. */}
+            <div className="flex w-full min-w-0 flex-1 justify-end">
+              {/* 172px = the original 132 plus 30%, and the whole 40px of that
+                  growth is taken off the TOP: the negative margin goes from
+                  -36px to -76px so the bottom edge stays where it was and the
+                  panel rises further over the tab row instead of pushing the
+                  board down. Change the two together or it grows downward. */}
+              <div className="h-[172px] w-full min-w-[320px] lg:-mt-[76px] lg:w-[60%]">
+                <SalesTrendChart refreshToken={chartVersion} />
               </div>
             </div>
           </div>
@@ -416,41 +590,106 @@ export default function CrmDashboardPage() {
             above have scrolled past, so from then on only the card contents
             scroll underneath. Its height (py-3 + h-10 input = 64px) is what the
             column headers use as their sticky offset. */}
-        {/* No fill of its own - just a hairline marking where the analytics end
-            and the board begins. Note this bar is sticky, so with the background
-            gone the cards now scroll visibly beneath the search field. */}
-        {/* No fill — the solid black band added here was reading as a slab
-            across the page. Back to a hairline only, as it was. */}
-        <div className="sticky top-0 z-30 border-t border-zinc-800">
-          <div className="px-6 py-3 flex flex-wrap items-center gap-2">
-            {/* New Lead sits to the LEFT of the search field. */}
-            <Button onClick={() => setIsClientFormOpen(true)} className="gap-1.5 text-sm">
-              <Plus className="h-4 w-4" /> New Lead
+        {/* Pipeline toolbar. Sticky, so it needs an opaque fill — cards would
+            otherwise scroll visibly through the search field. `border-y` marks
+            it as a band between the heading strip and the board. */}
+        <div className="sticky top-0 z-30 border-y border-zinc-700 bg-zinc-950">
+          <div className="flex flex-wrap items-center gap-2 px-6 py-2.5">
+            {/* Primary action, and the only filled orange control on the page. */}
+            <Button onClick={() => setIsClientFormOpen(true)} size="sm" className="gap-1.5">
+              <Plus className="h-3.5 w-3.5" /> New Lead
             </Button>
 
-            <Input
-              type="text"
-              placeholder="Search clients..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="max-w-xs bg-zinc-900 border-zinc-700"
-            />
+            {/* Search: square input with a leading icon. */}
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
+              <input
+                type="text"
+                placeholder="Search clients..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-9 w-[240px] border border-zinc-700 bg-zinc-900 pl-8 pr-2 text-[13px] text-zinc-50 placeholder:not-italic placeholder:text-zinc-500 focus:border-blue-600 focus:outline-none"
+              />
+            </div>
 
-            {/* Sort only. The stage filter that sat here is gone — the board
-                already separates the stages into columns, so filtering to one
-                stage just emptied four of them. */}
-           <select
-  value={sortBy}
-  onChange={(e) => setSortBy(e.target.value as SortKey)}
-  className="appearance-none h-10 px-2 bg-zinc-900 border border-none rounded-md text-[13px] text-zinc-200 focus:outline-none focus:border-zinc-500"
-  title="Sort"
->
-              <option value="updated">Recently updated</option>
-              <option value="value">Highest value</option>
-              <option value="oldest">Oldest lead</option>
-              <option value="followUp">Follow-up date</option>
-              <option value="name">Client name</option>
-            </select>
+            {/* Filter. Only fields the API actually returns are offered —
+                salesperson, priority and follow-up date exist in the frontend
+                model but are not persisted server-side, so filtering on them
+                would silently match nothing. */}
+            <div className="relative" ref={filterRef}>
+              <button
+                type="button"
+                onClick={() => setIsFilterOpen((v) => !v)}
+                className={`inline-flex h-9 items-center gap-1.5 border px-3 text-[11px] font-bold uppercase tracking-[0.08em] transition-colors duration-150 ${
+                  isFilterActive
+                    ? 'border-orange-500 bg-orange-50 text-orange-700'
+                    : 'border-zinc-700 bg-zinc-900 text-zinc-50 hover:bg-zinc-950'
+                }`}
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                Filter
+                {isFilterActive && <span className="tabular-nums">({activeFilterCount})</span>}
+              </button>
+
+              {isFilterOpen && (
+                <div className="absolute left-0 top-full z-40 mt-1 w-[230px] border border-zinc-700 bg-zinc-900 p-3 shadow-[0_8px_24px_-10px_rgba(27,47,76,0.3)]">
+                  <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-400">
+                    Filter opportunities
+                  </p>
+
+                  <label className="mb-1 block text-[11px] text-zinc-400">Minimum amount</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={minAmount}
+                    onChange={(e) => setMinAmount(e.target.value)}
+                    placeholder="0"
+                    className="mb-3 h-8 w-full border border-zinc-700 bg-zinc-900 px-2 text-[12px] text-zinc-50 tabular-nums focus:border-blue-600 focus:outline-none"
+                  />
+
+                  <label className="mb-3 flex items-center gap-2 text-[12px] text-zinc-300">
+                    <input
+                      type="checkbox"
+                      checked={onlyWithQuotation}
+                      onChange={(e) => setOnlyWithQuotation(e.target.checked)}
+                      className="h-3.5 w-3.5 accent-orange-500"
+                    />
+                    Only with a quotation
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMinAmount('');
+                      setOnlyWithQuotation(false);
+                    }}
+                    className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-zinc-50 transition-colors hover:bg-zinc-800"
+                  >
+                    Clear filters
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Sort. Native select, styled square — a custom popover here would
+                add a second dropdown pattern for no gain. */}
+            <div className="relative">
+              <ArrowUpDown className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortKey)}
+                title="Sort"
+                className="h-9 appearance-none border border-zinc-700 bg-zinc-900 pl-8 pr-7 text-[12px] font-medium text-zinc-50 focus:border-blue-600 focus:outline-none"
+              >
+                <option value="manual">Board order</option>
+                <option value="updated">Recently updated</option>
+                <option value="value">Highest value</option>
+                <option value="lowestValue">Lowest value</option>
+                <option value="oldest">Oldest first</option>
+                <option value="newest">Newest first</option>
+                <option value="name">Client name</option>
+              </select>
+            </div>
           </div>
 
           {/* Stage names used to live here, in a strip detached from the cards
@@ -459,9 +698,8 @@ export default function CrmDashboardPage() {
               visually with its own cards. */}
         </div>
 
-        {/* Kanban board */}
-        <div className="px-6 pb-12 pt-3">
-          {!isLoading && filteredClients.length === 0 && searchQuery === '' ? (
+        <div className="px-6 pb-10 pt-4">
+          {!isLoading && filteredClients.length === 0 && searchQuery === '' && !isFilterActive ? (
             <Card className="p-12 text-center">
               <Users className="h-10 w-10 mx-auto mb-4 text-zinc-600" />
               <p className="text-zinc-400">
@@ -476,15 +714,36 @@ export default function CrmDashboardPage() {
               onDragEnd={handleDragEnd}
               onDragCancel={handleDragCancel}
             >
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
-                {STAGES.map((stage) => {
+              {/* No frame and no fill: the cards sit directly on the page, so
+                  the wave band shows through the whole card area. The only
+                  chrome left on the board is the stage header row, which keeps
+                  its own fill and dividers (see KanbanColumn). */}
+              {/* One row, always: every stage is a column at every width, and
+                  the columns share the space equally (minmax(0,1fr) — the 0
+                  minimum is what lets them go narrower than their contents and
+                  truncate instead of pushing the row wider). The old
+                  grid-cols-2 / md:grid-cols-3 responsive wrap is gone; it put
+                  half the stage headers on a second line, which stopped the
+                  board reading as a pipeline at all.
+
+                  Count comes from STAGES via a CSS variable — a Tailwind
+                  `grid-cols-N` class would have to be a literal, so it could not
+                  follow the stage list. See .crm-board in globals.css. */}
+              <div
+                className="crm-board grid"
+                style={{ ['--crm-columns' as string]: STAGES.length }}
+              >
+                {STAGES.map((stage, stageIndex) => {
                   const stageClients = filteredClients.filter((c) => c.stage === stage);
-                  // Lost gets no total — a money figure under "Lost" reads as
-                  // revenue rather than as what walked away.
-                  const stageValue =
-                    stage === 'Lost' ? undefined : stageClients.reduce((sum, c) => sum + opportunityValue(c), 0);
+                  const stageValue = stageClients.reduce((sum, c) => sum + opportunityValue(c), 0);
                   return (
-                    <KanbanColumn key={stage} stage={stage} count={stageClients.length} value={stageValue}>
+                    <KanbanColumn
+                      key={stage}
+                      stage={stage}
+                      count={stageClients.length}
+                      value={stageValue}
+                      isLast={stageIndex === STAGES.length - 1}
+                    >
                       <SortableContext
                         items={stageClients.map((c) => c.id.toString())}
                         strategy={verticalListSortingStrategy}
@@ -507,28 +766,57 @@ export default function CrmDashboardPage() {
               </DragOverlay>
             </DndContext>
           )}
+
+          {/* Fills what was empty space below the board. Both sections are
+              derived from data already on this page, so they cost no requests. */}
+          <SalesOverview clients={clients} summary={summary} />
         </div>
 
       </div>
 
-      {/* Right rail: full height of the row (items-stretch); the feed scrolls
-          inside it. Team-activity summary on top, personal activity feed below. */}
-      {/* Narrower (w-72, was w-80) and only from xl up: below that the pipeline
-          is the workspace and the log would squeeze five columns into an
-          unusable width. The team-activity panel that sat on top is gone — it
-          was reporting, and this rail should stay secondary to the board. */}
-      <aside className="hidden xl:flex flex-col w-72 shrink-0 border-l border-zinc-800 bg-zinc-950/70">
-        <div className="flex-1 min-h-0">
-          <ActivityFeed onlyMine />
-        </div>
-        <button
-          type="button"
-          className="shrink-0 border-t border-zinc-800 px-4 py-2 text-[11px] uppercase tracking-wide text-zinc-500 hover:text-zinc-200 transition-colors text-left"
-          onClick={() => navigate('/sales/history')}
-        >
-          View all activity
-        </button>
-      </aside>
+      {/* Right rail. Narrower than before (w-64) and collapsible to a 36px
+          spine: the pipeline is the workspace and the log is reference, so it
+          should be able to get out of the way. Only from xl up — below that it
+          would squeeze five columns into an unusable width. */}
+      {isActivityRailOpen ? (
+        <aside className="hidden xl:flex w-64 shrink-0 flex-col border-l border-zinc-700 bg-[#f2f6fb]">
+         
+          {/* The feed is the whole rail. A "View all activity" button used to sit
+              under it and jump to /sales/history, which is a sales REPORT, not
+              more activity — it answered a question nobody had asked here. */}
+          <div className="min-h-0 flex-1">
+            <ActivityFeed onlyMine scope="sales" />
+          </div>
+        </aside>
+      ) : (
+        <aside className="hidden xl:flex w-9 shrink-0 flex-col items-center border-l border-zinc-700 bg-[#f2f6fb] py-2">
+          <button
+            type="button"
+            onClick={() => setIsActivityRailOpen(true)}
+            title="Show activity log"
+            aria-label="Show activity log"
+            className="p-1 text-zinc-500 transition-colors hover:text-zinc-50"
+          >
+            <PanelRightOpen className="h-3.5 w-3.5" />
+          </button>
+           <button
+              type="button"
+              onClick={() => setIsActivityRailOpen(false)}
+              title="Collapse activity log"
+              aria-label="Collapse activity log"
+              className="p-1 text-zinc-500 transition-colors hover:text-zinc-50"
+            >
+              <PanelRightClose className="h-3.5 w-3.5" />
+            </button>
+          {/* Vertical label so the collapsed spine still says what it is. */}
+          <span
+            className="mt-3 text-[10px] font-bold uppercase tracking-[0.1em] text-blue-600"
+            style={{ writingMode: 'vertical-rl' }}
+          >
+            Activity Log
+          </span>
+        </aside>
+      )}
 
       <AnimatePresence>
         {isClientFormOpen && (

@@ -2,31 +2,63 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Force dark mode as default */
+/* Light mode. The zinc ramp in tailwind.config.js is inverted, so the utility
+   classes throughout the app (`bg-zinc-900` for panels, `text-zinc-50` for
+   primary text) already resolve to light-mode values — only the hand-written
+   CSS below needs real values. */
 html {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 @layer base {
   :root {
-    color-scheme: dark;
+    color-scheme: light;
   }
 
-  /* Wallpaper, heavily darkened. Two stacked backgrounds: a near-opaque zinc
-     wash over the photo, so it reads as texture rather than a picture. Drop the
-     0.94/0.90 alphas toward 0.8 to make it more visible, raise them to hide it. */
-  body {
+  /* Flat cool-grey canvas. The dark theme layered a heavily darkened
+     wallpaper photo here; under a light wash a photo only reads as haze, so
+     the background is a single flat color and /wallpaper.jpg is no longer
+     referenced. `text-zinc-50` resolves to the dark navy at the bottom of the
+     inverted ramp.
+
+     Base weight is 500 rather than the browser default 400: at this text
+     color, 400 reads thin and washed out on white. Explicit weight utilities
+     (`font-light`, `font-bold`, …) still override per element. */
+  /* The blue wave band sits on the BODY rather than in the app shell, which
+     is what keeps it off the login page for free: LoginPage's root is an
+     opaque `bg-white` covering the viewport, so the band is simply painted
+     over there. No route check needed.
+
+     `fixed` pins it to the bottom of the VIEWPORT rather than the bottom of
+     the document, so it stays visible on long scrolling pages instead of
+     sitting far below the fold. Width is stretched to 100% and the height
+     follows the image's own 2815x792 ratio. */
+body {
+  @apply text-zinc-50;
+  background-color: #f0f4fa;
+  font-weight: 500;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image: url('/bg2.png');
+  background-repeat: no-repeat;
+  background-position: center 240%;
+  background-size: 140% auto;
+  opacity: 0.6; /* ← change opacity here */
+  pointer-events: none;
+  z-index: -1;
+}
+
+  /* Headings carry the navy at full strength and a touch more weight, so the
+     hierarchy is set by weight + depth of color rather than by size alone. */
+  h1, h2, h3, h4 {
     @apply text-zinc-50;
-    background-color: #09090b;
-    background-image:
-      linear-gradient(rgba(9, 9, 11, 0.94), rgba(9, 9, 11, 0.9)),
-      url('/wallpaper.jpg');
-    background-size: cover;
-    background-position: center center;
-    /* Fixed so every surface using .app-surface lines up with the same image
-       instead of each one starting its own copy. */
-    background-attachment: fixed;
-    background-repeat: no-repeat;
+    font-weight: 700;
   }
 
   * {
@@ -42,22 +74,23 @@ html {
   }
 }
 
-/* Scrollbar: squared-off grey, no pill thumb */
+/* Scrollbar: squared-off grey, no pill thumb. The thumb sits two steps darker
+   than the track so it stays visible against light surfaces. */
 ::-webkit-scrollbar {
   @apply w-2 h-2;
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-zinc-900/50;
+  @apply bg-zinc-950;
 }
 
 ::-webkit-scrollbar-thumb {
   @apply bg-zinc-700 hover:bg-zinc-600;
 }
 
-/* Selection: inverted monochrome instead of a blue wash */
+/* Selection: brand blue wash with white text. */
 ::selection {
-  @apply bg-zinc-200 text-zinc-950;
+  @apply bg-blue-600 text-white;
 }
 
 /* Smooth scrolling */
@@ -65,19 +98,40 @@ html {
   scroll-behavior: smooth;
 }
 
-/* Page shells and the full-screen quotation panel. They used to paint an opaque
-   zinc gradient, which sat on top of the body and hid the wallpaper entirely.
-   Same treatment as body, and `background-attachment: fixed` keeps them all
-   aligned to one continuous image rather than tiling a copy per surface. */
+/* Page shells and the full-screen quotation panel. Matches the body canvas so
+   a page that opts into `.app-surface` is continuous with the shell around
+   it. */
+/* Transparent, NOT #f0f4fa.
+
+   These page shells used to repaint the body's own colour, which is visually
+   identical — but an opaque fill covers the whole viewport and would hide the
+   wave band on `body` completely. Letting the body show through is what makes
+   the band visible, and costs nothing since the colour was the same.
+
+   Anything that must NOT be see-through needs its own explicit fill. The
+   full-screen quotation editor is the one case — it's an overlay, so a
+   transparent shell would show the page behind it. */
 .app-surface {
-  background-color: #09090b;
-  background-image:
-    linear-gradient(rgba(9, 9, 11, 0.94), rgba(9, 9, 11, 0.9)),
-    url('/wallpaper.jpg');
-  background-size: cover;
-  background-position: center center;
-  background-attachment: fixed;
-  background-repeat: no-repeat;
+  background-color: transparent;
+}
+
+/* Workspace background — CRM and Purchasing.
+
+   Currently just the page canvas. Both the photo and the brand-blue bloom that
+   once lived here were removed: the bloom was anchored at the top-left, which
+   put a wash of colour directly behind the page heading. Structure on these
+   pages now comes from borders and white panels rather than from a background.
+
+   The class is kept as the single place to reintroduce a workspace background.
+   If you do, note `background-image` is a comma-separated layer list — a
+   trailing comma with no layer after it invalidates the WHOLE declaration and
+   the browser drops it silently:
+
+     background-image:
+       linear-gradient(rgba(241,245,249,0.92), rgba(236,241,247,0.94)),
+       url('/workspace-bg.jpg'); */
+.app-wallpaper {
+  background-color: transparent;
 }
 
 /* Pipeline trend chart: each series' hover target is a transparent circle on
@@ -100,3 +154,20 @@ html {
    introducing another color. Applied with Tailwind's `italic` utility (or
    `font-style: italic` in the legacy stylesheets), extending the italic that
    quotation/PR notes already used. */
+
+/* Kanban board: one column per pipeline stage, on one row at every width. The
+   count arrives as the --crm-columns custom property, set from STAGES.length in
+   CrmDashboardPage.tsx, so adding or removing a stage needs no change here — a
+   Tailwind `grid-cols-N` class cannot do this because the class name has to be
+   a literal the scanner can read.
+
+   No media query and no wrapping: six narrow columns still read as a pipeline,
+   where three-plus-three read as two unrelated boards. The cards and stage
+   headers are sized to survive the narrow width (truncation, smaller type)
+   rather than the grid reflowing.
+
+   This lives in globals.css, not CrmDashboardPage.css — that file is imported
+   by nothing and ships no rules. */
+.crm-board {
+  grid-template-columns: repeat(var(--crm-columns, 5), minmax(0, 1fr));
+}

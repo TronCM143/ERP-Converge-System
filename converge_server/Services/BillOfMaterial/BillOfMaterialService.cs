@@ -18,7 +18,7 @@ namespace converge_server.Services.BillOfMaterial
             _auditService = auditService;
         }
 
-        public async Task<BillOfMaterialItem> UpdateBillOfMaterialItemStatusAsync(Guid billOfMaterialItemId, UpdateBillOfMaterialItemStatusDto dto)
+        public async Task<BillOfMaterialItem> UpdateBillOfMaterialItemStatusAsync(Guid billOfMaterialItemId, UpdateBillOfMaterialItemStatusDto dto, string? contentRootPath = null)
         {
             var item = await _context.BillOfMaterialItems
                 .Include(i => i.BillOfMaterial)
@@ -49,6 +49,65 @@ namespace converge_server.Services.BillOfMaterial
             {
                 item.Supplier = string.IsNullOrWhiteSpace(dto.Supplier) ? null : dto.Supplier.Trim();
             }
+            if (dto.SupplierAddress != null)
+            {
+                item.SupplierAddress = string.IsNullOrWhiteSpace(dto.SupplierAddress) ? null : dto.SupplierAddress.Trim();
+            }
+
+            /* Pricing and quantity. Each is applied only when the caller sent
+               it — the table edits one cell at a time, so treating an absent
+               field as "set to zero" would wipe the rest of the line. */
+            if (dto.RequiredQuantity.HasValue && dto.RequiredQuantity.Value > 0)
+            {
+                item.RequiredQuantity = dto.RequiredQuantity.Value;
+            }
+            if (dto.DiscountAmount.HasValue)
+            {
+                item.DiscountAmount = Math.Max(0m, dto.DiscountAmount.Value);
+            }
+            if (dto.TaxPercent.HasValue)
+            {
+                item.TaxPercent = Math.Clamp(dto.TaxPercent.Value, 0m, 100m);
+            }
+            // ClearUnitPrice wins over UnitPrice: "reset this to the catalog
+            // price" and "override it with this figure" can't both be meant.
+            if (dto.ClearUnitPrice)
+            {
+                item.UnitPrice = null;
+            }
+            else if (dto.UnitPrice.HasValue)
+            {
+                item.UnitPrice = Math.Max(0m, dto.UnitPrice.Value);
+            }
+
+            /* Removing the proof-of-transaction attachment. The file is deleted
+               from disk as well as unlinked — the same cleanup the upload path
+               already does when replacing one — otherwise every removed
+               attachment stays in wwwroot forever with nothing pointing at it. */
+            if (dto.ClearEvidence && !string.IsNullOrEmpty(item.EvidenceImageUrl))
+            {
+                if (!string.IsNullOrEmpty(contentRootPath))
+                {
+                    try
+                    {
+                        var existing = Path.Combine(contentRootPath, "wwwroot",
+                            item.EvidenceImageUrl.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
+                        if (File.Exists(existing))
+                        {
+                            File.Delete(existing);
+                        }
+                    }
+                    catch
+                    {
+                        // Best-effort, exactly as on the replace path: a file that
+                        // can't be deleted must not block the unlink — the user
+                        // asked for the attachment to be gone from the item.
+                    }
+                }
+
+                item.EvidenceImageUrl = null;
+            }
+
             item.BillOfMaterial!.UpdatedAt = DateTime.UtcNow;
             _context.BillOfMaterialItems.Update(item);
             await _context.SaveChangesAsync();

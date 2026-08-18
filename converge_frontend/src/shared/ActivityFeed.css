@@ -1,21 +1,30 @@
+/* Recessed rail with a blue accent, echoing the login page's brand-blue
+   family. A faint blue wash sets the log back from the white board without
+   introducing a new hue, and the header carries a solid blue top rule so the
+   panel reads as a deliberate secondary surface rather than leftover page. */
 .activity-feed {
   display: flex;
   flex-direction: column;
-  background: transparent;
+  background: #f2f6fb;
+  /* Order matters: the shorthand `border` must come BEFORE `border-top`, or it
+     resets the accent rule set above it. */
   border: none;
+  border-top: 2px solid #3a598f;
   border-radius: 0;
   box-shadow: none;
   overflow: hidden;
   height: 100%;
 }
 
+/* Header sits one step darker again, so the title band separates from the
+   entries beneath it without needing a heavy rule. */
 .activity-feed__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 14px 16px 10px 16px;
-  border-bottom: 1px solid #27272a;
-  background: transparent;
+  border-bottom: 1px solid #ccd6e6;
+  background: #e3ebf5;
   backdrop-filter: none;
   flex-shrink: 0;
 }
@@ -27,7 +36,7 @@
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.03em;
-  color: #d4d4d8;
+  color: #3a598f;
   text-transform: uppercase;
 }
 
@@ -35,7 +44,7 @@
   position: relative;
   flex-shrink: 0;
   padding: 8px 16px;
-  border-bottom: 1px solid #27272a;
+  border-bottom: 1px solid #ccd6e6;
 }
 
 .activity-feed__search-icon {
@@ -43,27 +52,27 @@
   left: 26px;
   top: 50%;
   transform: translateY(-50%);
-  color: #71717a;
+  color: #5b7196;
   pointer-events: none;
 }
 
 .activity-feed__search-input {
   width: 100%;
   padding: 6px 10px 6px 28px;
-  background: #18181b;
-  border: 1px solid #3f3f46;
+  background: #ffffff;
+  border: 1px solid #ccd6e6;
   border-radius: 0;
-  color: #e4e4e7;
+  color: #1b2f4c;
   font-size: 12px;
 }
 
 .activity-feed__search-input:focus {
   outline: none;
-  border-color: #a1a1aa;
+  border-color: #3a598f;
 }
 
 .activity-feed__search-input::placeholder {
-  color: #71717a;
+  color: #5b7196;
 }
 
 .activity-feed__refresh {
@@ -72,15 +81,15 @@
   cursor: pointer;
   padding: 4px 8px;
   border-radius: 0;
-  color: #71717a;
+  color: #5b7196;
   font-size: 16px;
   line-height: 1;
   transition: background 0.15s ease, color 0.15s ease;
 }
 
 .activity-feed__refresh:hover {
-  background: #27272a;
-  color: #d4d4d8;
+  background: #ffffff;
+  color: #2b446b;
 }
 
 .activity-feed__refresh-icon {
@@ -115,25 +124,67 @@
 }
 
 .activity-feed__list::-webkit-scrollbar-thumb {
-  background: #52525b;
+  background: #ccd6e6;
   border-radius: 0;
 }
 
 .activity-feed__placeholder {
   padding: 16px;
   text-align: center;
-  color: #71717a;
+  color: #5b7196;
   font-size: 12px;
   font-style: italic;
 }
 
+/* ── Entries ──────────────────────────────────────────────────────────────
+   One event per block, ruled off from the next: event name and timestamp on the
+   first line, then the change, then the record it happened to. Everything is on
+   screen at once — the rows no longer expand, and clicking one opens the record
+   instead.
+
+   The day dividers that used to bucket these ("Today" / "Yesterday") are gone
+   with them: every row now carries its own time, relative while recent and an
+   explicit clock-and-date once older, so the grouping had nothing left to add. */
 .activity-feed__entry {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 6px 8px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  border-bottom: 1px solid #dde5f0;
   border-radius: 0;
   transition: background 0.12s ease;
+}
+
+.activity-feed__entry:last-child {
+  border-bottom: none;
+}
+
+/* Event name left, timestamp right. baseline rather than center so the 12px
+   title and the 10px time sit on the same line of text. */
+.activity-feed__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.activity-feed__event {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #1b2f4c;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* "View details" — the affordance that used to be an expand arrow. */
+.activity-feed__cta {
+  font-weight: 700;
+  color: #3a598f;
+}
+
+.activity-feed__entry--clickable:hover .activity-feed__cta {
+  text-decoration: underline;
 }
 
 .activity-feed__entry--clickable {
@@ -141,7 +192,7 @@
 }
 
 .activity-feed__entry--clickable:hover {
-  background: #27272a;
+  background: #ffffff;
 }
 
 .activity-feed__icon {
@@ -153,25 +204,25 @@
   align-items: center;
   justify-content: center;
   font-size: 12px;
-  background: #27272a;
+  background: #ffffff;
 }
 
 /* Entity type is decorative coding, not state - so it's carried by four
    distinct grey steps instead of four hues. */
 .activity-feed__icon--client {
-  background: #3f3f46;
+  background: #e4eaf3;
 }
 
 .activity-feed__icon--quotation {
-  background: #52525b;
+  background: #ccd6e6;
 }
 
 .activity-feed__icon--purchaserequest {
-  background: #71717a;
+  background: #9aabc4;
 }
 
 .activity-feed__icon--product {
-  background: #a1a1aa;
+  background: #ccd6e6;
 }
 
 .activity-feed__body {
@@ -182,7 +233,7 @@
 .activity-feed__line {
   font-size: 11px;
   line-height: 1.4;
-  color: #d4d4d8;
+  color: #2b446b;
   display: flex;
   align-items: baseline;
   gap: 6px;
@@ -199,42 +250,33 @@
 }
 
 .activity-feed__actor--sales {
-  color: #e4e4e7;
-  background: #52525b;
+  color: #1b2f4c;
+  background: #ccd6e6;
 }
 
 .activity-feed__actor--purchasing {
-  color: #e4e4e7;
-  background: #71717a;
+  color: #1b2f4c;
+  background: #9aabc4;
 }
 
 .activity-feed__actor--admin {
-  color: #d4d4d8;
-  background: #27272a;
+  color: #2b446b;
+  background: #ffffff;
 }
 
 .activity-feed__actor--system {
-  color: #d4d4d8;
-  background: #3f3f46;
+  color: #2b446b;
+  background: #e4eaf3;
 }
 
 .activity-feed__summary {
-  color: #d4d4d8;
-}
-
-/* Only rendered while an entry is open, so it wraps to full text rather than
-   truncating the way the old always-on line had to. */
-.activity-feed__detail-panel {
-  margin-top: 4px;
-  padding: 6px 8px;
-  border-left: 2px solid #3f3f46;
-  background: #1f1f22;
+  color: #2b446b;
 }
 
 .activity-feed__details {
   font-size: 10px;
   line-height: 1.5;
-  color: #a1a1aa;
+  color: #5b7196;
   white-space: normal;
   overflow-wrap: anywhere;
 }
@@ -243,25 +285,10 @@
   margin-top: 2px;
 }
 
-.activity-feed__open {
-  margin-top: 6px;
-  padding: 0;
-  background: none;
-  border: 0;
-  font-size: 10px;
-  color: #d4d4d8;
-  cursor: pointer;
-}
-
-.activity-feed__open:hover {
-  color: #fafafa;
-  text-decoration: underline;
-}
-
 .activity-feed__time {
   flex-shrink: 0;
   font-size: 10px;
-  color: #52525b;
+  color: #5b7196;
   white-space: nowrap;
-  padding-top: 1px;
+  font-variant-numeric: tabular-nums;
 }

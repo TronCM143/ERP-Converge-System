@@ -387,9 +387,11 @@ export default function ProductsPage() {
   return (
     <div className="h-[calc(100vh-65px)] app-surface overflow-hidden">
       <div className="h-full grid" style={{ gridTemplateColumns: '3fr 6fr 3fr' }}>
-        {/* Left: product list (3) */}
-        <aside className="border-r border-zinc-800 flex flex-col min-h-0">
-          <div className="px-4 pt-4 pb-3 border-b border-zinc-800 space-y-2.5">
+        {/* Left: product list (3). Blue accent — a brand-blue top rule and a
+            pale blue wash — so the two rails frame the white catalogue in the
+            middle. */}
+        <aside className="border-r border-zinc-700 bg-[#f2f6fb] flex flex-col min-h-0">
+          <div className="px-4 pt-4 pb-3 border-b border-zinc-700 bg-[#e3ebf5] space-y-2.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 min-w-0">
                 <button
@@ -511,7 +513,7 @@ export default function ProductsPage() {
         e.stopPropagation(); // Prevent opening zoom
         handleRefreshImage();
       }}
-      className="absolute bottom-2 right-2 p-2 rounded-full  hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors"
+      className="absolute bottom-2 right-2 p-2 rounded-full  hover:bg-zinc-800 text-zinc-400 hover:text-blue-600 transition-colors"
       title="Search for a different image"
     >
       <RefreshCw className="h-4 w-4" />
@@ -566,7 +568,7 @@ export default function ProductsPage() {
                   />
                   <button
                     type="button"
-                    className="px-2 py-1 bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-medium rounded transition-colors"
+                    className="px-2 py-1 bg-zinc-100 hover:bg-zinc-200 text-zinc-950 text-xs font-medium rounded transition-colors"
                     onClick={handleSetRemoteImageUrl}
                   >
                     Set
@@ -574,7 +576,7 @@ export default function ProductsPage() {
                 </div>
               )}
 
-              {imageActionError && <p className="mt-2 text-xs text-red-400 text-center">{imageActionError}</p>}
+              {imageActionError && <p className="mt-2 text-xs text-red-600 text-center">{imageActionError}</p>}
 
                {selectedProduct && (
   <div className="mt-6 w-full flex flex-col items-center gap-2 p-6">
@@ -590,7 +592,7 @@ export default function ProductsPage() {
         height={80}
         displayValue
         background="transparent"
-        lineColor="#d4d4d8"
+        lineColor="#3a598f"
         fontOptions=""
         textMargin={6}
       />
@@ -635,7 +637,7 @@ export default function ProductsPage() {
                             type="button"
                             title="Delete product"
                             disabled={isDeleting}
-                            className="p-1.5 text-zinc-400 hover:text-red-400 hover:bg-red-950/30 border border-zinc-700 hover:border-red-900 rounded-lg transition-colors disabled:opacity-50"
+                            className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 border border-zinc-700 hover:border-red-900 rounded-lg transition-colors disabled:opacity-50"
                             onClick={handleDeleteProduct}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -671,7 +673,7 @@ export default function ProductsPage() {
                       </div>
                       <div>
                         <dt className="text-[11px] text-zinc-500 uppercase tracking-wide">Stock on Hand</dt>
-                        <dd className={`text-sm font-semibold mt-0.5 ${selectedProduct.stockQuantity > 0 ? 'text-zinc-200' : 'text-red-400'}`}>
+                        <dd className={`text-sm font-semibold mt-0.5 ${selectedProduct.stockQuantity > 0 ? 'text-zinc-200' : 'text-red-600'}`}>
                           {selectedProduct.stockQuantity}
                         </dd>
                       </div>
@@ -706,13 +708,14 @@ export default function ProductsPage() {
           )}
         </main>
 
-        {/* Right: analytics (3) */}
-        <aside className="border-l border-zinc-800 flex flex-col min-h-0">
-          <div className="px-4 pt-4 pb-3 border-b border-zinc-800">
-            <h2 className="text-sm font-bold text-zinc-200 uppercase tracking-wide">Analytics</h2>
-          </div>
+        {/* Right: analytics (3). A much fainter blue than the left rail on
+            purpose — the line chart and the stock ledger sit on it, and a
+            stronger tint would flatten the chart's own blue line against its
+            background. */}
+        <aside className="border-l border-zinc-700 bg-[#f8fbff] flex flex-col min-h-0">
+
           <div className="p-4">
-            <p className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wide mb-1">
+            <p className="text-[11px] font-semibold text-blue-600 uppercase tracking-wide mb-1">
               Products Bought / Week
             </p>
             <MiniLineChart data={weeklyPurchases} height={140} />
@@ -735,7 +738,7 @@ export default function ProductsPage() {
                   <div key={tx.id} className="flex items-start gap-2 text-xs">
                     <span
                       className={`shrink-0 mt-0.5 px-1.5 py-0.5 rounded font-bold ${
-                        tx.direction === 'In' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-400'
+                        tx.direction === 'In' ? 'bg-emerald-500/15 text-emerald-600' : 'bg-amber-500/15 text-amber-600'
                       }`}
                     >
                       {tx.direction === 'In' ? 'IN' : 'OUT'}

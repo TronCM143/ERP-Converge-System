@@ -121,6 +121,9 @@ namespace converge_server.Migrations
                     b.Property<DateTime?>("DeliveryDate")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<decimal>("DiscountAmount")
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<string>("EvidenceImageUrl")
                         .HasColumnType("text");
 
@@ -156,10 +159,20 @@ namespace converge_server.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<string>("SupplierAddress")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<decimal>("TaxPercent")
+                        .HasColumnType("decimal(5,2)");
+
                     b.Property<string>("Unit")
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
+
+                    b.Property<decimal?>("UnitPrice")
+                        .HasColumnType("decimal(14,2)");
 
                     b.HasKey("Id");
 
@@ -177,6 +190,10 @@ namespace converge_server.Migrations
                         .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AccentColor")
+                        .HasMaxLength(9)
+                        .HasColumnType("character varying(9)");
 
                     b.Property<string>("Address")
                         .IsRequired()
@@ -742,6 +759,9 @@ namespace converge_server.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<decimal>("DiscountAmount")
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<string>("ItemName")
                         .IsRequired()
                         .HasMaxLength(300)
@@ -847,6 +867,10 @@ namespace converge_server.Migrations
 
                     b.Property<bool>("IsRead")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("LinkUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<string>("TargetRole")
                         .IsRequired()

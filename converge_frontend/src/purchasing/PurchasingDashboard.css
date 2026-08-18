@@ -35,14 +35,14 @@
 }
 
 .stat-card {
-  background: #18181b;
+  background: #f0f4fa;
   border: 1px solid var(--border);
   border-radius: 0;
   padding: 18px;
   display: flex;
   align-items: center;
   gap: 16px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  box-shadow: 0 1px 3px rgba(27, 47, 76, 0.023);
   transition: all 0.25s ease;
 }
 
@@ -62,9 +62,9 @@
   font-size: 20px;
 }
 
-.stat-card__icon--pr { background: #27272a; color: #d4d4d8; }
-.stat-card__icon--bom { background: #27272a; color: #d4d4d8; }
-.stat-card__icon--po { background: #ecfdf5; color: #10b981; }
+.stat-card__icon--pr { background: #ffffff; color: #2b446b; }
+.stat-card__icon--bom { background: #ffffff; color: #2b446b; }
+.stat-card__icon--po { background: #ecfdf5; color: #059669; }
 
 .stat-card__content {
   display: flex;
@@ -143,7 +143,7 @@
   border-radius: 0;
   padding: 24px;
   text-align: center;
-  background: #18181b;
+  background: #f0f4fa;
   cursor: pointer;
   position: relative;
   overflow: hidden;
@@ -153,7 +153,7 @@
 
 .ocr-uploader:hover {
   border-color: var(--secondary);
-  background: #27272a;
+  background: #ffffff;
 }
 
 .ocr-uploader__icon {
@@ -176,7 +176,7 @@
 .scanning-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(9, 9, 11, 0.9);
+  background: rgba(27, 47, 76, 0.405);
   color: white;
   display: flex;
   flex-direction: column;
@@ -192,7 +192,7 @@
   left: 0;
   width: 100%;
   height: 4px;
-  background: linear-gradient(to bottom, var(--accent), rgba(161, 161, 170, 0));
+  background: linear-gradient(to bottom, var(--accent), rgba(27, 47, 76, 0));
   box-shadow: 0 0 12px var(--accent);
   animation: scanEffect 2s infinite ease-in-out;
 }
@@ -219,7 +219,7 @@
 .progress-bar-container {
   width: 80%;
   height: 6px;
-  background: rgba(255,255,255,0.2);
+  background: rgba(27, 47, 76, 0.07);
   border-radius: 0;
   overflow: hidden;
 }
@@ -255,19 +255,19 @@
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 0;
-  background: #27272a;
+  background: #ffffff;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .bom-list-item:hover {
   border-color: var(--secondary);
-  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+  box-shadow: 0 2px 4px rgba(27, 47, 76, 0.009);
 }
 
 .bom-list-item--active {
   border-color: var(--primary);
-  background: #27272a;
+  background: #ffffff;
 }
 
 .bom-list-item__title {

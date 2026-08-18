@@ -15,5 +15,11 @@ namespace converge_server.Models.DTOs.Client
         // skip the email) from the pre-move dialog. Null means this call didn't
         // go through that dialog, so the default admin-configured recipients apply.
         public List<string>? WonNotifyEmails { get; set; }
+
+        // Set only when the drag lands the card in Lost: the reason picked in
+        // the loss dialog. The board has always sent this; there was nothing on
+        // the server reading it, so the answer was discarded. Client has no
+        // column for it, so it is recorded on the audit entries for the move.
+        public string? LossReason { get; set; }
     }
 }

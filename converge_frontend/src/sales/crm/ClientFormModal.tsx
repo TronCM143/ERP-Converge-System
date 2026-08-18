@@ -14,6 +14,10 @@ export interface ClientSummary {
   notes?: string;
   stage: string;
   lossReason?: string | null;
+  // Chosen kanban card colour as a CSS hex string, set on the client profile.
+  // Null/undefined means the board falls back to a colour derived from the
+  // client's name. See clientAccent().
+  accentColor?: string | null;
   quotationCount: number;
   /* Two distinct money figures — see ClientResponseDto on the server.
      totalSales         = everything this client has already bought (approved).

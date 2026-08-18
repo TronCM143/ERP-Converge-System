@@ -9,12 +9,16 @@ interface GlassMorphCardProps extends React.HTMLAttributes<HTMLDivElement> {
   children: React.ReactNode
   intensity?: number
   disabled?: boolean
-  // "light" (default) is the bright bg-white/10 surface used on the login
-  // card. "dark" is a near-black, more transparent surface so whatever's
-  // behind the card (page gradient) reads through more strongly instead of
-  // being washed out white. "silver" is a metallic gray-toned glass surface
-  // (login card). "raised" is an opaque grey a step LIGHTER than the panel it
-  // sits on, for cards that need to stand off their container (kanban board).
+  // "light" (default) is a translucent white pane. "dark" is a more heavily
+  // tinted translucent surface so whatever's behind the card reads through
+  // more strongly. "silver" is a soft gradient glass surface (login card).
+  // "raised" is an opaque WHITE surface against the grey panel it sits on,
+  // for cards that need to stand off their container (kanban board).
+  //
+  // All four were authored for the dark theme, where "raised" meant a step
+  // lighter and highlights were white. Under the light theme the direction
+  // flips: raised means white-on-grey, and depth comes from a soft dark
+  // shadow rather than a white edge highlight.
   tone?: "light" | "dark" | "silver" | "raised"
   // Kept for API compatibility only - the monochrome theme is squared off, so
   // both values render with no corner radius.
@@ -76,14 +80,14 @@ const GlassMorphCard = React.forwardRef<HTMLDivElement, GlassMorphCardProps>(
             "relative border",
             radiusClass,
             "backdrop-blur-xl",
-            "shadow-[0_8px_32px_rgba(0,0,0,0.37)]",
+            "shadow-[0_2px_8px_rgba(24,24,27,0.06)]",
             "overflow-hidden transition-transform duration-200 ease-out",
-            tone === "dark" && "bg-zinc-950/40 border-white/10",
-            tone === "silver" && "bg-gradient-to-br from-zinc-100/40 via-zinc-300/25 to-zinc-400/40 border-zinc-200/40",
-            tone === "light" && "bg-white/10 border-white/20",
-            // Opaque so it reads as a solid object lifted off its panel rather
-            // than a translucent pane the panel shows through.
-            tone === "raised" && "bg-zinc-800 border-zinc-700 hover:bg-zinc-700 hover:border-zinc-600",
+            tone === "dark" && "bg-zinc-950/70 border-zinc-700",
+            tone === "silver" && "bg-gradient-to-br from-zinc-900/80 via-zinc-950/70 to-zinc-800/80 border-zinc-700",
+            tone === "light" && "bg-zinc-900/70 border-zinc-700",
+            // Opaque white so it reads as a solid object lifted off its grey
+            // panel rather than a translucent pane the panel shows through.
+            tone === "raised" && "bg-zinc-900 border-zinc-700 hover:bg-zinc-950 hover:border-zinc-600",
             !disabled && "cursor-pointer",
           )}
           style={{
@@ -91,20 +95,22 @@ const GlassMorphCard = React.forwardRef<HTMLDivElement, GlassMorphCardProps>(
             transformStyle: "preserve-3d",
           }}
         >
-          {/* Glass highlight */}
+          {/* Glass sheen. On a light surface a white gradient is invisible, so
+              this runs the other way: a faint dark wash at the bottom edge. */}
           <div
             className={cn(
-              "absolute inset-0 bg-gradient-to-b to-transparent pointer-events-none",
+              "absolute inset-0 bg-gradient-to-t to-transparent pointer-events-none",
               radiusClass,
-              tone === "dark" || tone === "raised" ? "from-white/5" : "from-white/20",
+              tone === "dark" || tone === "raised" ? "from-zinc-50/[0.02]" : "from-zinc-50/[0.04]",
             )}
           />
 
-          {/* Edge highlight */}
+          {/* Edge highlight — likewise a soft dark inset rather than the white
+              inset the dark theme used. */}
           <div
             className={cn("absolute inset-0 pointer-events-none", radiusClass)}
             style={{
-              boxShadow: `inset 1px 1px 2px rgba(255,255,255,${tone === "dark" || tone === "raised" ? 0.05 : 0.1})`,
+              boxShadow: `inset 0 -1px 2px rgba(24,24,27,${tone === "dark" || tone === "raised" ? 0.03 : 0.05})`,
             }}
           />
 

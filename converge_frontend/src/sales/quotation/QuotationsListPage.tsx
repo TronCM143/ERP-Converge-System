@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, FileText } from 'lucide-react';
 import QuotationFormModal, { EditableQuotation } from './QuotationFormModal';
@@ -42,6 +42,7 @@ interface Quotation extends EditableQuotation {
 
 export default function QuotationsListPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   // Seed from the session cache so returning to this page renders instantly;
   // the fetch below still revalidates in the background.
   const [quotations, setQuotations] = useState<Quotation[]>(
@@ -72,6 +73,23 @@ export default function QuotationsListPage() {
   useEffect(() => {
     fetchQuotations();
   }, []);
+
+  /* "?quotation=34" opens that quotation in the generator as soon as the list it
+     belongs to has loaded. This is where the activity log sends a quotation row:
+     the audit entry knows the quotation id but not its client, and this page has
+     every quotation, so it is the one place that can resolve an id on its own.
+     Guarded so it fires once — the id stays in the URL after the modal closes. */
+  const deepLinkOpened = useRef(false);
+  useEffect(() => {
+    const raw = searchParams.get('quotation');
+    if (!raw || deepLinkOpened.current) return;
+    const id = parseInt(raw, 10);
+    if (Number.isNaN(id)) return;
+    const target = quotations.find((q) => q.id === id);
+    if (!target) return;
+    deepLinkOpened.current = true;
+    setEditingQuotation(target);
+  }, [searchParams, quotations]);
 
   const filteredQuotations = quotations.filter(
     (q) =>
@@ -117,7 +135,7 @@ export default function QuotationsListPage() {
             type="button"
             whileTap={{ scale: 0.97 }}
             onClick={() => setIsCreateOpen(true)}
-            className="px-4 py-2 bg-zinc-100 text-zinc-950 text-sm font-semibold rounded-lg hover:shadow-[0_0_20px_rgba(255,255,255,0.15)] transition-all"
+            className="px-4 py-2 bg-zinc-100 text-zinc-950 text-sm font-semibold rounded-lg hover:shadow-[0_4px_14px_rgba(15,35,64,0.18)] transition-all"
           >
             Create
           </motion.button>

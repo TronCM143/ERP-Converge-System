@@ -215,7 +215,7 @@ export default function PurchaseRequestsPage() {
     'sticky top-0 z-10 bg-zinc-900 px-3 py-2 border-b border-zinc-700 text-left text-[11px] text-zinc-300 uppercase tracking-wide';
 
   return (
-    <div className="h-[calc(100vh-36px)] overflow-hidden app-surface flex flex-col">
+    <div className="h-[calc(100vh-36px)] overflow-hidden app-wallpaper flex flex-col">
       {/* Toasts */}
       <div className="toast-container" aria-live="polite" aria-atomic="true">
         {errorMessage && (
@@ -365,7 +365,7 @@ export default function PurchaseRequestsPage() {
                       <span
                         className={
                           pr.status === 'Ordered'
-                            ? 'text-[12px] font-semibold text-emerald-400'
+                            ? 'text-[12px] font-semibold text-emerald-600'
                             : 'text-[12px] text-zinc-400'
                         }
                       >
@@ -384,7 +384,7 @@ export default function PurchaseRequestsPage() {
       <AnimatePresence>
         {isCalendarOpen && (
           <motion.div
-            className="fixed inset-0 z-[60] bg-black/50"
+            className="fixed inset-0 z-[60] bg-zinc-50/30"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -408,7 +408,7 @@ export default function PurchaseRequestsPage() {
 
       {/* Create Manual PR Modal */}
       {isManualModalOpen && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-6">
+        <div className="fixed inset-0 bg-zinc-50/40 z-50 flex items-center justify-center p-6">
           <div className="bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto p-6">
             <div className="panel-header">
               <h2>Create Product Request</h2>
@@ -444,7 +444,7 @@ export default function PurchaseRequestsPage() {
                   placeholder="e.g. Koronadal City"
                 />
               </div>
-              <h4 style={{ fontSize: '13px', fontWeight: 600, margin: '14px 0 8px 0', color: '#a1a1aa' }}>Requested Items</h4>
+              <h4 style={{ fontSize: '13px', fontWeight: 600, margin: '14px 0 8px 0', color: '#5b7196' }}>Requested Items</h4>
 
               <datalist id="product-catalog-list">
                 {products.map((p) => (
@@ -477,7 +477,7 @@ export default function PurchaseRequestsPage() {
                             alignItems: 'center',
                             gap: '4px',
                             fontSize: '14px',
-                            color: '#10b981',
+                            color: '#059669',
                             fontWeight: 600,
                             pointerEvents: 'none'
                           }}

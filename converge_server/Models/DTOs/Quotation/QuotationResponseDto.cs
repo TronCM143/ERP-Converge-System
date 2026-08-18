@@ -1,4 +1,4 @@
-namespace converge_server.Models.DTOs.Quotation
+﻿namespace converge_server.Models.DTOs.Quotation
 {
     public class QuotationMaterialItemResponseDto
     {
@@ -11,6 +11,7 @@ namespace converge_server.Models.DTOs.Quotation
         public string Unit { get; set; } = string.Empty;
         public decimal UnitPrice { get; set; }
         public decimal TaxPercent { get; set; }
+        public decimal DiscountAmount { get; set; }
         public decimal LineTotal { get; set; }
     }
 
