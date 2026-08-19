@@ -9,6 +9,7 @@ import ClientProfilePage from '../sales/crm/ClientProfilePage';
 import SalesHistoryPage from '../sales/SalesHistoryPage';
 import AdminHomePage from '../admin/AdminHomePage';
 import QuotationsListPage from '../sales/quotation/QuotationsListPage';
+import ApprovalDashboardPage from '../engineer/ApprovalDashboardPage';
 import ProductsPage from '../inventory/ProductsPage';
 import AdminSettingsPage from '../admin/AdminSettingsPage';
 import RequireRole from './RequireRole';
@@ -66,6 +67,18 @@ export default function App() {
           element={
             <RequireRole role={['quotation', 'admin']}>
               <ClientProfilePage />
+            </RequireRole>
+          }
+        />
+
+        {/* Engineer: the quotation approval dashboard. Admin can reach it too as
+            an escalation path when no engineer is available — the API allows the
+            same pair, so the guard and the endpoint agree. */}
+        <Route
+          path="/engineer/approvals"
+          element={
+            <RequireRole role={['engineer', 'admin']}>
+              <ApprovalDashboardPage />
             </RequireRole>
           }
         />

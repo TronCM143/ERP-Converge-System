@@ -11,6 +11,21 @@ namespace converge_server.Models.Entities
         Rejected = 3
     }
 
+    /* Where a quotation stands with engineer sign-off. Separate from
+       QuotationStatus, which means won/lost — see QuoteApproval for why.
+
+       Denormalised from the newest QuoteApproval row on purpose: the CRM board
+       renders every client's card and needs the state per quotation without a
+       per-card query, and the stage gate reads it on every drag. Written in the
+       same transaction as the approval row it mirrors. */
+    public enum QuotationApprovalState
+    {
+        NotRequired = 0,
+        Pending = 1,
+        Approved = 2,
+        Rejected = 3
+    }
+
     public class Quotation
     {
         [Key]
@@ -56,6 +71,12 @@ namespace converge_server.Models.Entities
 
         [ForeignKey(nameof(PurchaseRequestId))]
         public PurchaseRequest? PurchaseRequest { get; set; }
+
+        [Required]
+        public QuotationApprovalState ApprovalState { get; set; } = QuotationApprovalState.NotRequired;
+
+        // Every submission cycle, newest last. Doubles as the approval history.
+        public ICollection<QuoteApproval> Approvals { get; set; } = new List<QuoteApproval>();
 
         public ICollection<QuotationMaterialItem> MaterialItems { get; set; } = new List<QuotationMaterialItem>();
         public ICollection<QuotationLaborItem> LaborItems { get; set; } = new List<QuotationLaborItem>();

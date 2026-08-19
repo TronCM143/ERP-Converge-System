@@ -169,6 +169,7 @@ builder.Services.AddScoped<IAuthService, converge_server.Services.Auth.AuthServi
 builder.Services.AddScoped<IQuotationService, converge_server.Services.Quotations.QuotationService>();
 builder.Services.AddSingleton<converge_server.Services.Interfaces.IQuotationPdfService, converge_server.Services.Quotations.QuotationPdfService>();
 builder.Services.AddScoped<converge_server.Services.Interfaces.IQuotationGenerationService, converge_server.Services.Ai.GroqQuotationGenerationService>();
+builder.Services.AddScoped<converge_server.Services.Interfaces.IQuoteApprovalService, converge_server.Services.Quotations.QuoteApprovalService>();
 builder.Services.AddScoped<converge_server.Services.Interfaces.IClientService, converge_server.Services.Clients.ClientService>();
 builder.Services.AddScoped<converge_server.Services.Interfaces.IAuditService, converge_server.Services.Audit.AuditService>();
 builder.Services.AddScoped<converge_server.Services.Interfaces.INotificationRecipientService, converge_server.Services.Notifications.NotificationRecipientService>();
@@ -300,6 +301,22 @@ using (var scope = app.Services.CreateScope())
                 Username = "purchasing",
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(purchasingPassword),
                 Role = "purchasing",
+                CreatedAt = DateTime.UtcNow
+            });
+            context.SaveChanges();
+        }
+
+        // The approver. A role of its own rather than a second admin: approval
+        // authority is not the same as system administration, and the approval
+        // notifications target this role by name.
+        if (!context.Users.Any(u => u.Username == "admin02"))
+        {
+            var engineerPassword = builder.Configuration["SeedUsers:EngineerPassword"]!;
+            context.Users.Add(new User
+            {
+                Username = "admin02",
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(engineerPassword),
+                Role = "engineer",
                 CreatedAt = DateTime.UtcNow
             });
             context.SaveChanges();

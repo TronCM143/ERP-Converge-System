@@ -181,6 +181,7 @@ namespace converge_server.Services.Quotations
         {
             var quotation = await _context.Quotations
                 .Include(q => q.MaterialItems)
+                .Include(q => q.Approvals)
                 .Include(q => q.LaborItems)
                 .FirstOrDefaultAsync(q => q.Id == quotationId);
 
@@ -264,6 +265,12 @@ namespace converge_server.Services.Quotations
                 });
             }
 
+            /* Closing the obvious bypass: get a cheap quotation approved, then
+               edit it upward. Any edit that RAISES an approved total drops it
+               back to needing approval; lowering it or editing wording does not,
+               since neither increases what the engineer signed off on. */
+            var totalBeforeEdit = quotation.GrandTotal;
+
             quotation.QuotationName = dto.QuotationName;
             quotation.OriginalPrompt = dto.OriginalPrompt;
             quotation.Notes = string.IsNullOrWhiteSpace(dto.Notes) ? null : dto.Notes.Trim();
@@ -271,6 +278,14 @@ namespace converge_server.Services.Quotations
             quotation.LaborTotal = laborTotal;
             quotation.GrandTotal = materialsTotal + taxTotal + laborTotal;
             quotation.UpdatedAt = DateTime.UtcNow;
+
+            if (quotation.ApprovalState == QuotationApprovalState.Approved && quotation.GrandTotal > totalBeforeEdit)
+            {
+                quotation.ApprovalState = QuotationApprovalState.NotRequired;
+                await _auditService.LogAsync("Quotation", quotation.Id.ToString(), "ApprovalInvalidated",
+                    actorUsername, QuotationApprovalState.Approved.ToString(), QuotationApprovalState.NotRequired.ToString(),
+                    $"Total raised from {totalBeforeEdit:N2} to {quotation.GrandTotal:N2} after approval - needs resubmitting");
+            }
 
             await _context.SaveChangesAsync();
             // LastUpdated on the client list is derived from quotation timestamps.
@@ -286,6 +301,7 @@ namespace converge_server.Services.Quotations
             var query = _context.Quotations
                 .Include(q => q.Client)
                 .Include(q => q.MaterialItems)
+                .Include(q => q.Approvals)
                 .Include(q => q.LaborItems)
                 .AsQueryable();
 
@@ -302,6 +318,7 @@ namespace converge_server.Services.Quotations
             return _context.Quotations
                 .Include(q => q.Client)
                 .Include(q => q.MaterialItems)
+                .Include(q => q.Approvals)
                 .Include(q => q.LaborItems)
                 .AsNoTracking()
                 .FirstOrDefaultAsync(q => q.Id == quotationId);
@@ -312,6 +329,7 @@ namespace converge_server.Services.Quotations
             var quotation = await _context.Quotations
                 .Include(q => q.Client)
                 .Include(q => q.MaterialItems)
+                .Include(q => q.Approvals)
                 .FirstOrDefaultAsync(q => q.Id == quotationId);
 
             if (quotation == null)
@@ -408,6 +426,7 @@ namespace converge_server.Services.Quotations
             var quotation = await _context.Quotations
                 .Include(q => q.Client)
                 .Include(q => q.MaterialItems)
+                .Include(q => q.Approvals)
                 .Include(q => q.LaborItems)
                 .FirstOrDefaultAsync(q => q.Id == quotationId);
 
@@ -497,6 +516,7 @@ namespace converge_server.Services.Quotations
             var quotation = await _context.Quotations
                 .Include(q => q.Client)
                 .Include(q => q.MaterialItems)
+                .Include(q => q.Approvals)
                 .Include(q => q.LaborItems)
                 .AsNoTracking()
                 .FirstOrDefaultAsync(q => q.Id == quotationId);

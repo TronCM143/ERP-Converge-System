@@ -35,6 +35,15 @@
         public int ClientId { get; set; }
         public string ClientName { get; set; } = string.Empty;
         public string Status { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Engineer sign-off state: NotRequired / Pending / Approved / Rejected.
+        /// Separate from Status, which means won/lost.
+        /// </summary>
+        public string ApprovalState { get; set; } = string.Empty;
+
+        /// <summary>Reason from the most recent rejection, so sales can act on it.</summary>
+        public string? RejectionReason { get; set; }
         public decimal MaterialsTotal { get; set; }
         public decimal LaborTotal { get; set; }
         public decimal GrandTotal { get; set; }

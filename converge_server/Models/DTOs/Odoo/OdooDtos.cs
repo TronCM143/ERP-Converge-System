@@ -12,6 +12,13 @@ namespace converge_server.Models.DTOs.Odoo
         public string State { get; set; } = string.Empty;
         public decimal AmountTotal { get; set; }
         public int LineCount { get; set; }
+        /// <summary>
+        /// What the order was FOR — the first few line descriptions, joined.
+        /// Odoo's sale.order has no title field of its own (Name is the
+        /// reference), so this stands in for one: the panel needs to say what
+        /// the past work was, which is the only reason to reuse it.
+        /// </summary>
+        public string ItemSummary { get; set; } = string.Empty;
         /// <summary>Which fields the query hit — shown as the "why" hint.</summary>
         public List<string> MatchedOn { get; set; } = new();
     }

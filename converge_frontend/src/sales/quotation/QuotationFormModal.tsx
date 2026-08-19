@@ -68,6 +68,8 @@ interface OdooQuoteSuggestion {
   id: number;
   name: string;
   customerName: string;
+  /** What the order was for — its first few line descriptions, joined. */
+  itemSummary: string;
   orderDate: string;
   state: string;
   amountTotal: number;
@@ -1651,9 +1653,17 @@ export default function QuotationFormModal({
                       onClick={() => handleUseOdooQuote(o)}
                       className="w-full text-left px-2.5 py-1.5 bg-zinc-900/50 border border-zinc-700 rounded hover:border-zinc-400 hover:bg-zinc-900 transition-colors disabled:opacity-50"
                     >
+                      {/* What the order was FOR, not who it was for. The
+                          customer name was the headline here and told you
+                          nothing about whether the order is worth reusing —
+                          this panel exists to find past WORK. Odoo has no title
+                          field on an order, so the line descriptions stand in
+                          for one, with the reference falling back when the
+                          lines can't be read. Same shape as the local list
+                          below: what it was on top, its reference underneath. */}
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-xs font-medium text-zinc-200 truncate">
-                          {o.customerName || o.name}
+                          {o.itemSummary || o.name}
                         </span>
                         <span className="text-[11px] text-zinc-500 shrink-0">{peso(o.amountTotal)}</span>
                       </div>

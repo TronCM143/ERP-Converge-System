@@ -112,6 +112,11 @@ namespace converge_server.Services.Odoo
             if (records == null) return new List<OdooQuoteSuggestionDto>();
 
             var results = new List<OdooQuoteSuggestionDto>();
+            // Line ids per order, collected on the way through so the
+            // descriptions can be fetched in ONE follow-up read below rather
+            // than one call per order.
+            var lineIdsByOrder = new Dictionary<long, List<long>>();
+
             foreach (var record in records.Value.EnumerateArray())
             {
                 var name = GetString(record, "name");
@@ -139,9 +144,69 @@ namespace converge_server.Services.Odoo
                         : 0,
                     MatchedOn = matchedOn
                 });
+
+                if (record.TryGetProperty("order_line", out var lineIds) && lineIds.ValueKind == JsonValueKind.Array)
+                {
+                    // Only the first few — the summary shows at most three, and
+                    // reading every line of every hit would be a large payload
+                    // for text that is then thrown away.
+                    lineIdsByOrder[GetLong(record, "id")] = lineIds
+                        .EnumerateArray()
+                        .Where(x => x.ValueKind == JsonValueKind.Number)
+                        .Take(3)
+                        .Select(x => x.GetInt64())
+                        .ToList();
+                }
             }
 
+            await AttachItemSummariesAsync(results, lineIdsByOrder);
             return results;
+        }
+
+        /* Fills in each suggestion's ItemSummary — what the order was actually
+           for. Odoo's search_read returns order_line as bare ids, so the
+           descriptions need a second read; it is batched across every hit and
+           best-effort, because a summary is a nicety and a failed read must not
+           cost the user the search results themselves. */
+        private async Task AttachItemSummariesAsync(
+            List<OdooQuoteSuggestionDto> results,
+            Dictionary<long, List<long>> lineIdsByOrder)
+        {
+            var allLineIds = lineIdsByOrder.Values.SelectMany(x => x).Distinct().ToList();
+            if (allLineIds.Count == 0) return;
+
+            JsonElement? lineRecords;
+            try
+            {
+                lineRecords = await ExecuteKwAsync("sale.order.line", "read", new object[] { allLineIds },
+                    new Dictionary<string, object> { ["fields"] = new[] { "name" } });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not read Odoo order lines for the suggestion summaries.");
+                return;
+            }
+
+            if (lineRecords == null) return;
+
+            var nameByLineId = new Dictionary<long, string>();
+            foreach (var line in lineRecords.Value.EnumerateArray())
+            {
+                // A line description can run to several lines of text; only the
+                // first is a label, the rest is spec detail.
+                var text = GetString(line, "name").Split('\n', '\r').FirstOrDefault()?.Trim() ?? string.Empty;
+                if (text.Length > 0) nameByLineId[GetLong(line, "id")] = text;
+            }
+
+            foreach (var result in results)
+            {
+                if (!lineIdsByOrder.TryGetValue(result.Id, out var ids)) continue;
+                var parts = ids
+                    .Select(id => nameByLineId.TryGetValue(id, out var t) ? t : null)
+                    .Where(t => !string.IsNullOrWhiteSpace(t))
+                    .ToList();
+                if (parts.Count > 0) result.ItemSummary = string.Join(", ", parts);
+            }
         }
 
         public async Task<OdooOrderDraftDto?> GetOrderDraftAsync(long orderId)

@@ -1,12 +1,79 @@
+/* Settings is a form, not a dashboard.
+
+   Everything below is a density override scoped to this page: the shared .card
+   and .panel-header are sized for content pages with one panel on screen, and
+   four of them stacked turned a short list of settings into a page you scroll.
+   Nothing here changes those shared rules for anyone else.
+
+   The rule throughout: hairlines instead of boxes, one small uppercase heading
+   per group, and no decoration that isn't telling you something. */
+
 .admin-settings {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 0;
   min-height: 100vh;
-  padding: 24px;
-  background: linear-gradient(135deg, #f0f4fa 0%, #f0f4fa 60%, #f0f4fa 100%);
+  padding: 16px 20px 32px;
+  background: #f0f4fa;
 }
 
+/* Page title: a line of text, not a banner. */
+.admin-settings .page-header {
+  margin-bottom: 4px;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.admin-settings .page-header__title {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #2b446b;
+}
+
+/* Groups are separated by a rule, not by a card each. The white fill, border,
+   shadow and hover lift all go — they were four raised panels on a grey page
+   for what is really one settings list. */
+.admin-settings .card {
+  background: transparent;
+  border: none;
+  border-top: 1px solid #ccd6e6;
+  box-shadow: none;
+  padding: 14px 0 16px;
+  transition: none;
+}
+
+.admin-settings .card:hover {
+  box-shadow: none;
+}
+
+.admin-settings .panel-header {
+  margin-bottom: 10px;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+/* Section heading: small, uppercase, muted — a label for the group rather than
+   a title competing with the page's own. The gradient text-fill is dropped. */
+.admin-settings .panel-header h2 {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #5b7196;
+  background: none;
+  -webkit-text-fill-color: currentColor;
+}
+
+/* One short line under a heading where the setting needs explaining. */
+.admin-settings__hint {
+  margin: -4px 0 10px;
+  font-size: 11px;
+  color: #5b7196;
+}
+
+/* Tables: half the padding, smaller type, header row without a fill. */
 .admin-settings__recipients-table {
   overflow-x: auto;
 }
@@ -18,20 +85,25 @@
 
 .admin-settings__recipients-table th,
 .admin-settings__recipients-table td {
-  padding: 12px;
+  padding: 5px 8px;
   text-align: left;
-  border-bottom: 1px solid #ccd6e6;
-  font-size: 13px;
+  border-bottom: 1px solid #e4eaf3;
+  font-size: 12px;
   color: #2b446b;
 }
 
 .admin-settings__recipients-table th {
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
   color: #5b7196;
-  background: #ffffff;
-  font-size: 12px;
+  background: transparent;
+  font-size: 10px;
+  padding-top: 0;
+}
+
+.admin-settings__recipients-table tbody tr:last-child td {
+  border-bottom: none;
 }
 
 .admin-settings__recipients-table tbody tr:hover {
@@ -39,62 +111,32 @@
 }
 
 .admin-settings__name {
-  font-weight: 500;
+  font-weight: 600;
   color: #2b446b;
 }
 
 .admin-settings__email,
 .admin-settings__phone {
   color: #5b7196;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-  font-size: 12px;
-}
-
-.admin-settings__prefs {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.admin-settings__pref-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-}
-
-.admin-settings__pref-type {
-  background: #f0f4fa;
-  padding: 2px 8px;
-  border-radius: 0;
   font-size: 11px;
-  font-weight: 500;
-  color: #1b2f4c;
-  white-space: nowrap;
 }
 
-.admin-settings__pref-badges {
-  display: flex;
-  gap: 4px;
-}
-
-.admin-settings__pref-badges .badge {
-  padding: 2px 6px;
-  font-size: 11px;
-  background: #e4eaf3;
-  border-radius: 0;
-  border: none;
-  box-shadow: none;
-}
-
-.btn--small {
-  padding: 4px 12px;
+/* Controls inside this page are one step smaller than the app default, so a row
+   of them is the height of a table row rather than of a form. */
+.admin-settings .form-control {
+  padding: 4px 7px;
   font-size: 12px;
   height: auto;
 }
 
-.admin-settings__test-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
+.admin-settings .btn {
+  padding: 5px 11px;
+  font-size: 11px;
+  height: auto;
+}
+
+.btn--small {
+  padding: 4px 10px;
+  font-size: 11px;
+  height: auto;
 }

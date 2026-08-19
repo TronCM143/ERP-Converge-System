@@ -6,6 +6,9 @@ export function roleHome(role: Role): string {
       return '/sales/crm';
     case 'purchasing':
       return '/purchasing/purchase-requests';
+    case 'engineer':
+      // The approval dashboard is the whole of this role's app.
+      return '/engineer/approvals';
     case 'admin':
       /* The module picker, not a module. Admin can reach Sales, Inventory and
          Purchasing, so landing straight in the CRM (as this used to) presented

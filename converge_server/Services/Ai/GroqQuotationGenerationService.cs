@@ -291,7 +291,12 @@ namespace converge_server.Services.Ai
             var client = _httpClientFactory.CreateClient("Groq");
             var requestBody = new GroqChatRequest
             {
-                Model = _configuration["Groq:Model"] ?? "llama-3.3-70b-versatile",
+                // Groq retires models; llama-3.3-70b-versatile was withdrawn and every
+                // generate call started coming back 404 model_not_found, surfaced to
+                // the user as "The AI service could not process that prompt." Both
+                // this fallback and appsettings' Groq:Model have to be a model the
+                // account can actually see — check /v1/models when it breaks again.
+                Model = _configuration["Groq:Model"] ?? "openai/gpt-oss-120b",
                 Temperature = 0.1,
                 ResponseFormat = new GroqResponseFormat { Type = "json_object" },
                 Messages = new List<GroqMessage>

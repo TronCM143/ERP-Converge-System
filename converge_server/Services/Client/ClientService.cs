@@ -12,6 +12,7 @@ namespace converge_server.Services.Clients
     {
         private readonly AppDbContext _context;
         private readonly IAuditService _auditService;
+        private readonly IQuoteApprovalService _approvalService;
         private readonly INotificationDispatchService _dispatchService;
         private readonly ICacheService _cache;
         private readonly IWonDealSheetService _wonDealSheetService;
@@ -21,13 +22,15 @@ namespace converge_server.Services.Clients
             IAuditService auditService,
             INotificationDispatchService dispatchService,
             ICacheService cache,
-            IWonDealSheetService wonDealSheetService)
+            IWonDealSheetService wonDealSheetService,
+            IQuoteApprovalService approvalService)
         {
             _context = context;
             _auditService = auditService;
             _dispatchService = dispatchService;
             _cache = cache;
             _wonDealSheetService = wonDealSheetService;
+            _approvalService = approvalService;
         }
 
         public async Task<List<ClientResponseDto>> GetClientsAsync()
@@ -61,6 +64,12 @@ namespace converge_server.Services.Clients
                         .OrderByDescending(q => q.CreatedAt)
                         .Select(q => (decimal?)q.GrandTotal)
                         .FirstOrDefault(),
+                    // Same "newest quotation" the gate judges, so the badge on the
+                    // card and the server's answer to a drag can never disagree.
+                    ApprovalState = c.Quotations
+                        .OrderByDescending(q => q.CreatedAt)
+                        .Select(q => q.ApprovalState.ToString())
+                        .FirstOrDefault() ?? "NotRequired",
                     CurrentService = c.Quotations
                         .OrderByDescending(q => q.CreatedAt)
                         .Select(q => q.QuotationName)
@@ -98,6 +107,12 @@ namespace converge_server.Services.Clients
                         .OrderByDescending(q => q.CreatedAt)
                         .Select(q => (decimal?)q.GrandTotal)
                         .FirstOrDefault(),
+                    // Same "newest quotation" the gate judges, so the badge on the
+                    // card and the server's answer to a drag can never disagree.
+                    ApprovalState = c.Quotations
+                        .OrderByDescending(q => q.CreatedAt)
+                        .Select(q => q.ApprovalState.ToString())
+                        .FirstOrDefault() ?? "NotRequired",
                     CurrentService = c.Quotations
                         .OrderByDescending(q => q.CreatedAt)
                         .Select(q => q.QuotationName)
@@ -326,6 +341,20 @@ namespace converge_server.Services.Clients
             if (trackedClient.Stage == newStage)
             {
                 return null;
+            }
+
+            /* The approval gate, enforced here rather than in the controller so
+               EVERY route into Proposal passes it - the board's reorder, the
+               PATCH stage endpoint, and anything added later. The spec requires
+               that an API call cannot bypass approval, and a check in one
+               controller action would not deliver that. */
+            if (newStage == ClientStage.Proposal && trackedClient.Stage != ClientStage.Proposal)
+            {
+                var gate = await _approvalService.EvaluateClientAsync(trackedClient.Id);
+                if (!gate.Allowed)
+                {
+                    throw new ApprovalRequiredException(gate);
+                }
             }
 
             var oldStage = trackedClient.Stage;

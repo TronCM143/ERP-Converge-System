@@ -25,12 +25,21 @@ export const emptyClientFormValues = (): ClientFormValues => ({
   followUpDate: ''
 });
 
+/* Shared by the New Client dialog and the edit form on a client's profile.
+
+   showFollowUp is false for creation: a follow-up date is something you set once
+   you are working the deal, not a question to answer before the client exists.
+   It stays on the profile form, which is the only place it can now be set — the
+   value itself is untouched either way, so hiding the input never clears a date
+   already on the record (same treatment contactPerson gets above). */
 export default function ClientFormFields({
   values,
-  onChange
+  onChange,
+  showFollowUp = true
 }: {
   values: ClientFormValues;
   onChange: (values: ClientFormValues) => void;
+  showFollowUp?: boolean;
 }) {
   const set = (key: keyof ClientFormValues) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     onChange({ ...values, [key]: e.target.value });
@@ -53,15 +62,17 @@ export default function ClientFormFields({
         <input type="text" value={values.email} onChange={set('email')} placeholder="Email address" className={fieldClass} />
         {/* Labelled, unlike the rest: an empty date input shows only "mm/dd/yyyy"
             chrome, so a placeholder-style hint has nowhere to live. */}
-        <label className="flex items-center gap-3 px-3 py-2">
-          <span className="text-[13px] text-zinc-500 shrink-0">Follow-up</span>
-          <input
-            type="date"
-            value={values.followUpDate}
-            onChange={set('followUpDate')}
-            className="flex-1 bg-transparent text-zinc-50 text-[14px] focus:outline-none"
-          />
-        </label>
+        {showFollowUp && (
+          <label className="flex items-center gap-3 px-3 py-2">
+            <span className="text-[13px] text-zinc-500 shrink-0">Follow-up</span>
+            <input
+              type="date"
+              value={values.followUpDate}
+              onChange={set('followUpDate')}
+              className="flex-1 bg-transparent text-zinc-50 text-[14px] focus:outline-none"
+            />
+          </label>
+        )}
       </div>
 
       <textarea

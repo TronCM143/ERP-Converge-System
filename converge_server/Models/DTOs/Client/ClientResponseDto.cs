@@ -20,6 +20,13 @@ namespace converge_server.Models.DTOs.Client
         // until a quotation is actually approved.
         public decimal? CurrentOpportunity { get; set; }
         public string? CurrentService { get; set; }
+
+        /// <summary>
+        /// Engineer sign-off state of the client's newest quotation:
+        /// NotRequired / Pending / Approved / Rejected. The board shows it on the
+        /// card so a salesperson sees a quote is stuck before dragging it.
+        /// </summary>
+        public string ApprovalState { get; set; } = "NotRequired";
         public DateTime LastUpdated { get; set; }
         public DateTime CreatedAt { get; set; }
     }

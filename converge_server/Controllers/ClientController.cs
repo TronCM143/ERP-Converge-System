@@ -69,8 +69,30 @@ namespace converge_server.Controllers
                 return BadRequest(new { error = "OrderedClientIds must not be empty." });
             }
 
-            var (success, wonSheetSaved, decidedQuotationNumber, decidedAmount) =
-                await _clientService.ReorderClientsAsync(parsedStage, dto.OrderedClientIds, User.Identity?.Name ?? "system", dto.WonNotifyEmails, dto.LossReason);
+            bool success;
+            bool wonSheetSaved;
+            string? decidedQuotationNumber;
+            decimal? decidedAmount;
+            try
+            {
+                (success, wonSheetSaved, decidedQuotationNumber, decidedAmount) =
+                    await _clientService.ReorderClientsAsync(parsedStage, dto.OrderedClientIds, User.Identity?.Name ?? "system", dto.WonNotifyEmails, dto.LossReason);
+            }
+            catch (Services.Clients.ApprovalRequiredException ex)
+            {
+                /* 409 rather than 400: the request is well-formed, it conflicts
+                   with the quotation's current approval state. The gate detail
+                   rides along so the board can name the quotation and offer to
+                   send it for approval instead of just refusing. */
+                return Conflict(new
+                {
+                    error = ex.Message,
+                    reason = ex.Gate.Reason,
+                    quotationId = ex.Gate.QuotationId,
+                    quotationNumber = ex.Gate.QuotationNumber,
+                    amount = ex.Gate.Amount
+                });
+            }
 
             // The decided quotation is reported under the name of what actually
             // happened to it, so the board can say what was recorded rather than

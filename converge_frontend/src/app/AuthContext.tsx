@@ -7,7 +7,11 @@ import {
   UNAUTHORIZED_EVENT
 } from '../shared/api';
 
-export type Role = 'quotation' | 'purchasing' | 'admin';
+/* 'engineer' is the approver: it reaches the quotation approval dashboard and
+   nothing else. Kept distinct from 'admin' so approval authority and system
+   administration are separate, and so approval notifications can target a role
+   by name (UserNotification.TargetRole). */
+export type Role = 'quotation' | 'purchasing' | 'admin' | 'engineer';
 
 interface AuthState {
   token: string | null;

@@ -159,6 +159,18 @@ export default function CrmDashboardPage() {
      which refetches on every change. */
   const [chartVersion, setChartVersion] = useState(0);
 
+  /* A move into Proposal the server refused because the quotation still needs
+     engineer sign-off. Holds everything the dialog needs to explain itself and
+     to submit, so the board never has to re-derive the rule the API applied. */
+  const [approvalGate, setApprovalGate] = useState<{
+    reason: string;
+    message: string;
+    quotationId: number | null;
+    quotationNumber: string | null;
+    amount: number;
+  } | null>(null);
+  const [isSubmittingApproval, setIsSubmittingApproval] = useState(false);
+
   const refreshSummary = async () => {
     try {
       const res = await apiFetch('/api/analytics/crm-summary');
@@ -357,6 +369,25 @@ export default function CrmDashboardPage() {
         method: 'PUT',
         body: JSON.stringify({ stage, orderedClientIds, wonNotifyEmails, lossReason })
       });
+
+      /* 409 is the approval gate, not a failure: the server refused a move into
+         Proposal because the quotation needs sign-off. The card is put back and
+         the dialog offers the one action that helps — sending it for approval.
+         The rule itself is never evaluated here; the board only reacts to what
+         the API decided, so the two can't drift apart. */
+      if (res.status === 409) {
+        const gate = await res.json().catch(() => ({}));
+        await fetchClients();
+        setApprovalGate({
+          reason: gate.reason ?? 'approval-required',
+          message: gate.error ?? 'This quotation requires approval before it can be transferred to Proposal.',
+          quotationId: gate.quotationId ?? null,
+          quotationNumber: gate.quotationNumber ?? null,
+          amount: gate.amount ?? 0
+        });
+        return;
+      }
+
       if (!res.ok) throw new Error(`Reorder failed with ${res.status}`);
 
       /* Card just landed in Won. The backend now also approves the client's
@@ -417,6 +448,27 @@ export default function CrmDashboardPage() {
     } catch (err) {
       console.error('Failed to save card position:', err);
       await fetchClients();
+    }
+  };
+
+  const handleSendForApproval = async () => {
+    if (!approvalGate?.quotationId) return;
+    setIsSubmittingApproval(true);
+    try {
+      const res = await apiFetch(`/api/approvals/submit/${approvalGate.quotationId}`, { method: 'POST' });
+      if (res.ok) {
+        setToastMessage(`${approvalGate.quotationNumber} sent for approval.`);
+        setApprovalGate(null);
+        await fetchClients();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setErrorToastMessage(err.error || 'Could not send that quotation for approval.');
+      }
+    } catch (err) {
+      console.error('Failed to submit for approval:', err);
+      setErrorToastMessage('Server connection error.');
+    } finally {
+      setIsSubmittingApproval(false);
     }
   };
 
@@ -558,14 +610,20 @@ export default function CrmDashboardPage() {
               to overlap them further. It only applies from lg up, where the tabs
               (which stop well left of the chart) can't collide with it. */}
           <div className="mb-3 flex flex-wrap items-start gap-4">
-            <div className="min-w-0 shrink-0">
-              <h1 className="text-[20px] font-bold leading-tight text-zinc-50">Pipeline</h1>
-              <p className="mt-0.5 text-[12px] text-zinc-400 tabular-nums">
-                {opportunityCount} {opportunityCount === 1 ? 'opportunity' : 'opportunities'}
-                <span aria-hidden="true" className="mx-1.5 text-zinc-600">·</span>
-                {peso(pipelineValue)} pipeline value
-              </p>
-            </div>
+       <div className="min-w-0 shrink-0">
+  <div className="flex items-center gap-2">
+    <h1 className="text-[20px] font-semibold tracking-tight text-zinc-50">
+      Sales
+    </h1>
+    <span className="rounded-md border border-zinc-700 bg-zinc-800/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-zinc-400">
+      CRM
+    </span>
+  </div>
+
+  <p className="mt-0.5 text-[12px] font-medium text-zinc-400">
+    Pipeline Management
+  </p>
+</div>
 
             {/* The chart keeps its right edge against the activity rail and
                 gives up 40% of its width on the LEFT, so it reads as a compact
@@ -817,6 +875,66 @@ export default function CrmDashboardPage() {
           </span>
         </aside>
       )}
+
+        {/* Approval gate. Shown only after the API has refused the move, so the
+            wording matches what actually happened: "requires approval" the first
+            time, and the awaiting/rejected variants when there is already a
+            request in flight or a decision to act on. */}
+        {approvalGate && (
+          <motion.div
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-zinc-50/40 p-6"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setApprovalGate(null)}
+          >
+            <motion.div
+              className="w-full max-w-md border border-zinc-700 bg-zinc-900 p-6 shadow-[0_16px_48px_-12px_rgba(15,35,64,0.22)]"
+              initial={{ opacity: 0, y: 12, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2 className="text-[15px] font-bold text-zinc-50">
+                {approvalGate.reason === 'awaiting-approval'
+                  ? 'Awaiting approval'
+                  : approvalGate.reason === 'rejected'
+                    ? 'Approval was rejected'
+                    : 'Approval required'}
+              </h2>
+              <p className="mt-2 text-[13px] text-zinc-400">{approvalGate.message}</p>
+              {approvalGate.quotationNumber && (
+                <p className="mt-2 text-[12px] text-zinc-500">
+                  <span className="font-semibold text-zinc-300">{approvalGate.quotationNumber}</span>
+                  {' · '}
+                  {peso(approvalGate.amount)}
+                </p>
+              )}
+
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="border border-zinc-700 bg-zinc-900 px-4 py-2 text-[13px] text-zinc-200 transition-colors hover:bg-zinc-800"
+                  onClick={() => setApprovalGate(null)}
+                >
+                  Cancel
+                </button>
+                {/* Only offered when sending is the action that helps. A request
+                    already pending needs patience, not a second submission. */}
+                {approvalGate.reason !== 'awaiting-approval' && approvalGate.quotationId && (
+                  <button
+                    type="button"
+                    disabled={isSubmittingApproval}
+                    className="border border-orange-500 bg-orange-500 px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-orange-600 disabled:opacity-50"
+                    onClick={() => void handleSendForApproval()}
+                  >
+                    {isSubmittingApproval ? 'Sending…' : 'Send for Approval'}
+                  </button>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
 
       <AnimatePresence>
         {isClientFormOpen && (

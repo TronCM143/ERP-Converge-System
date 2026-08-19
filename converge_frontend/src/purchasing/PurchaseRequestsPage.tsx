@@ -230,10 +230,14 @@ export default function PurchaseRequestsPage() {
         )}
       </div>
 
-      {/* Toolbar: create on the left, search + filters on the right.
+      {/* Toolbar: title, then the things you look WITH — the search box and the
+          Purchase Request / Purchase Order filters — packed to the left, where
+          they are read first and sit directly above the columns they filter. The
+          title's `mr-auto` used to push all of them to the right edge; the
+          spacer is now after the filters, so only sort and New sit over there.
           Fixed height — only the table below it scrolls. */}
       <div className="shrink-0 px-4 py-3 border-b border-zinc-800 flex flex-wrap items-center gap-3">
-        <h1 className="text-[15px] font-bold text-zinc-200 uppercase tracking-wide mr-auto translate-y-[10px]">Bill of Materials</h1>
+        <h1 className="text-[15px] font-bold text-zinc-200 uppercase tracking-wide translate-y-[10px]">Bill of Materials</h1>
 
         <div className="relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500" />
@@ -241,7 +245,7 @@ export default function PurchaseRequestsPage() {
             type="text"
             value={listSearch}
             onChange={(e) => setListSearch(e.target.value)}
-            placeholder="Search client or PR#…"
+            placeholder="Search company or PR#…"
             className="w-64 pl-7 pr-2 py-1.5 bg-zinc-900/60 border border-zinc-700 rounded text-zinc-50 text-[13px] placeholder-zinc-500 focus:border-zinc-300 focus:outline-none"
           />
         </div>
@@ -263,7 +267,7 @@ export default function PurchaseRequestsPage() {
           ))}
         </div>
 
-        <div className="flex items-center gap-0.5 shrink-0">
+        <div className="ml-auto flex items-center gap-0.5 shrink-0">
           <button
             type="button"
             title="Oldest first"

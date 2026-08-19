@@ -26,6 +26,9 @@ export interface ClientSummary {
   currentOpportunity?: number | null;
   // Latest quotation's name, e.g. "CCTV + Solar Installation".
   currentService?: string | null;
+  /* Sign-off state of the newest quotation: NotRequired / Pending / Approved /
+     Rejected. Drives the badge on the kanban card. */
+  approvalState?: string | null;
   followUpDate?: string | null;
   lastUpdated: string;
   createdAt: string;
@@ -104,7 +107,9 @@ export default function ClientFormModal({
         </div>
 
         <form onSubmit={handleSubmit}>
-          <ClientFormFields values={values} onChange={setValues} />
+          {/* No follow-up on creation — it is set later from the client's
+              profile, once there is something to follow up on. */}
+          <ClientFormFields values={values} onChange={setValues} showFollowUp={false} />
 
           {errorMessage && (
             <div className="toast toast--error" style={{ position: 'static', marginBottom: '12px' }}>

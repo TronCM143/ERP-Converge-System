@@ -19,6 +19,10 @@ export default function ERPLayout() {
   const isPurchasing = role === 'purchasing';
   const isQuotation = role === 'quotation';
   const isAdmin = role === 'admin';
+  /* The approver. Its app is one page, so the header carries no module tabs —
+     but it does need the notification bell: an approval request arriving is the
+     only thing that starts this role's work. */
+  const isEngineer = role === 'engineer';
   /* The admin module picker. It's a landing page, so the header drops the
      module tabs and the per-module tools (inventory, activity log) — the page
      itself is the navigation. Settings and Log out stay: without them there
@@ -31,7 +35,7 @@ export default function ERPLayout() {
     unreadCount,
     markAllRead,
     markOneRead
-  } = useNotificationHub(isPurchasing || isQuotation);
+  } = useNotificationHub(isPurchasing || isQuotation || isEngineer);
   const [isNotificationsPanelOpen, setIsNotificationsPanelOpen] = useState(false);
   const [isClientPickerOpen, setIsClientPickerOpen] = useState(false);
   const [isActivityLogOpen, setIsActivityLogOpen] = useState(false);
@@ -570,7 +574,11 @@ export default function ERPLayout() {
             >
               <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 shrink-0">
                 <h3 className="text-[16px] font-bold text-zinc-200">
-                  {isPurchasing ? 'Purchasing Activity' : isQuotation ? 'Sales Activity' : 'Activity Log'}
+                  {isPurchasing
+                    ? 'Purchasing Activity'
+                    : isQuotation || isEngineer
+                      ? 'Sales Activity'
+                      : 'Activity Log'}
                 </h3>
                 <button
                   type="button"
@@ -584,7 +592,9 @@ export default function ERPLayout() {
                   sourcing and stock; sales sees clients and quotations. Admin
                   keeps the unfiltered view, which is the oversight role's job. */}
               <div className="flex-1 min-h-0">
-                <ActivityFeed scope={isPurchasing ? 'purchasing' : isQuotation ? 'sales' : 'all'} />
+                <ActivityFeed
+                  scope={isPurchasing ? 'purchasing' : isQuotation || isEngineer ? 'sales' : 'all'}
+                />
               </div>
             </motion.div>
           </motion.div>

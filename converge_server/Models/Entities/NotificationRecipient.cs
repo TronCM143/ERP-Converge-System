@@ -7,7 +7,9 @@ namespace converge_server.Models.Entities
     {
         StageChanged = 0,
         WonApproval = 1,
-        PurchaseRequestCompleted = 2
+        PurchaseRequestCompleted = 2,
+        // A quotation is waiting on engineer sign-off.
+        QuotationApproval = 3
     }
 
     public class NotificationRecipient

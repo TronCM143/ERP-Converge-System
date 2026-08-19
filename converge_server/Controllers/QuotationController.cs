@@ -222,6 +222,12 @@ namespace converge_server.Controllers
                 ClientId = quotation.ClientId,
                 ClientName = quotation.Client?.Name ?? string.Empty,
                 Status = quotation.Status.ToString(),
+                ApprovalState = quotation.ApprovalState.ToString(),
+                // The newest cycle's reason — only a rejection carries one.
+                RejectionReason = quotation.Approvals
+                    .OrderByDescending(a => a.SubmittedAt)
+                    .Select(a => a.RejectionReason)
+                    .FirstOrDefault(),
                 MaterialsTotal = quotation.MaterialsTotal,
                 LaborTotal = quotation.LaborTotal,
                 GrandTotal = quotation.GrandTotal,

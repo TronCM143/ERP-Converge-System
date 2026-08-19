@@ -86,6 +86,21 @@ export default function KanbanCard({ client, onClick }: KanbanCardProps) {
           {amount != null ? peso(amount) : <span className="text-[11px] font-normal italic text-zinc-500">No quotation</span>}
         </p>
 
+        {/* Approval state, shown only when it is something the salesperson has to
+            act on or wait for. An approved or not-required quote says nothing
+            here — a badge on every card would stop being a signal. */}
+        {(client.approvalState === 'Pending' || client.approvalState === 'Rejected') && (
+          <p
+            className={`mt-1 inline-block rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
+              client.approvalState === 'Pending'
+                ? 'bg-amber-500/15 text-amber-700'
+                : 'bg-rose-500/15 text-rose-600'
+            }`}
+          >
+            {client.approvalState === 'Pending' ? 'Awaiting approval' : 'Approval rejected'}
+          </p>
+        )}
+
         <p className="mt-0.5 truncate text-[10px] leading-tight text-zinc-500">
           {shortDate(client.lastUpdated)}
           <span aria-hidden="true"> · </span>
