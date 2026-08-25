@@ -75,6 +75,7 @@ namespace converge_server.Controllers
                         bomItem.DeliveryDate,
                         bomItem.ReceivedAt,
                         bomItem.Remarks,
+                        bomItem.SupplierId,
                         bomItem.Supplier,
                         bomItem.SupplierAddress,
                         bomItem.EvidenceImageUrl,

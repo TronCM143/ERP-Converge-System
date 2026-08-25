@@ -123,6 +123,15 @@ namespace converge_server.Services.Quotations
                     ItemName = product.ProductName,
                     Specification = itemDto.Note ?? string.Empty,
                     Model = product.Model,
+                    /* Snapshot, not a live lookup. A quotation renders what the
+                       catalog said when it was generated: editing a product next
+                       month must not rewrite a quote already sent, and
+                       deactivating one must not blank an old PDF. */
+                    Sku = product.Sku,
+                    Brand = product.Brand,
+                    ImageUrl = product.ImageUrl,
+                    DatasheetUrl = product.DatasheetUrl,
+                    Manufacturer = product.Manufacturer,
                     Quantity = itemDto.Quantity,
                     Unit = string.IsNullOrWhiteSpace(itemDto.Unit) ? "pcs" : itemDto.Unit,
                     UnitPrice = unitPrice,
@@ -156,15 +165,24 @@ namespace converge_server.Services.Quotations
             quotation.LaborTotal = laborTotal;
             quotation.GrandTotal = materialsTotal + taxTotal + laborTotal;
 
-            // CRM stage automation: a client's first-ever quotation promotes them from
-            // Leads to Quote. "First" is checked here, before the insert below.
-            if (client.Stage == ClientStage.Leads)
+            /* CRM stage automation: creating a quotation returns the client to
+               Quote, wherever their card was. A new quotation is new business at
+               the quoting step, so that is where the board should show it.
+
+               Applies from ANY stage, Won included: a follow-up quotation for an
+               existing customer starts a new conversation. The previous deal's
+               booked revenue is untouched by this — that lives on the earlier
+               quotation's own status, not on the client's stage.
+
+               Deliberately only on CREATE. Editing an existing quotation leaves
+               the card alone: approval now moves a card to Proposal
+               automatically, and a later edit that yanked it back to Quote would
+               force the whole approval round again for no reason. */
+            var previousStage = client.Stage;
+            var stageChanged = client.Stage != ClientStage.Quote;
+            if (stageChanged)
             {
-                var hasExistingQuotations = await _context.Quotations.AnyAsync(q => q.ClientId == client.Id);
-                if (!hasExistingQuotations)
-                {
-                    client.Stage = ClientStage.Quote;
-                }
+                client.Stage = ClientStage.Quote;
             }
 
             _context.Quotations.Add(quotation);
@@ -173,6 +191,17 @@ namespace converge_server.Services.Quotations
             await _cache.RemoveAsync(CacheKeys.Clients);
 
             await _auditService.LogAsync("Quotation", quotation.Id.ToString(), "Created", "system", null, quotation.QuotationNumber);
+
+            /* Audited like any other stage change, so the activity log explains
+               why a card moved rather than leaving it looking like someone
+               dragged it. Not dispatched as a notification: creating quotations
+               is routine, and an email for each one would be noise. */
+            if (stageChanged)
+            {
+                await _auditService.LogAsync("Client", client.Id.ToString(), "StageChanged", "system",
+                    previousStage.ToString(), ClientStage.Quote.ToString(),
+                    $"Moved to Quote automatically - new quotation {quotation.QuotationNumber}");
+            }
 
             return quotation;
         }
@@ -236,6 +265,15 @@ namespace converge_server.Services.Quotations
                     ItemName = product.ProductName,
                     Specification = itemDto.Note ?? string.Empty,
                     Model = product.Model,
+                    /* Snapshot, not a live lookup. A quotation renders what the
+                       catalog said when it was generated: editing a product next
+                       month must not rewrite a quote already sent, and
+                       deactivating one must not blank an old PDF. */
+                    Sku = product.Sku,
+                    Brand = product.Brand,
+                    ImageUrl = product.ImageUrl,
+                    DatasheetUrl = product.DatasheetUrl,
+                    Manufacturer = product.Manufacturer,
                     Quantity = itemDto.Quantity,
                     Unit = string.IsNullOrWhiteSpace(itemDto.Unit) ? "pcs" : itemDto.Unit,
                     UnitPrice = unitPrice,

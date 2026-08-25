@@ -2,18 +2,21 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using converge_server.Data;
 
 #nullable disable
 
-namespace converge_server.Migrations
+namespace converge_server.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260819132831_AddProductReferenceDataAndLineSnapshot")]
+    partial class AddProductReferenceDataAndLineSnapshot
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -182,9 +185,6 @@ namespace converge_server.Migrations
                         .HasMaxLength(300)
                         .HasColumnType("character varying(300)");
 
-                    b.Property<int?>("SupplierId")
-                        .HasColumnType("integer");
-
                     b.Property<decimal>("TaxPercent")
                         .HasColumnType("decimal(5,2)");
 
@@ -201,8 +201,6 @@ namespace converge_server.Migrations
                     b.HasIndex("BillOfMaterialId");
 
                     b.HasIndex("PurchaseRequestItemId");
-
-                    b.HasIndex("SupplierId");
 
                     b.ToTable("BillOfMaterialItems");
                 });
@@ -948,53 +946,6 @@ namespace converge_server.Migrations
                     b.ToTable("QuoteApprovals");
                 });
 
-            modelBuilder.Entity("converge_server.Models.Entities.Supplier", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Address")
-                        .HasMaxLength(300)
-                        .HasColumnType("character varying(300)");
-
-                    b.Property<string>("ContactNumber")
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)");
-
-                    b.Property<string>("ContactPerson")
-                        .HasMaxLength(150)
-                        .HasColumnType("character varying(150)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Email")
-                        .HasMaxLength(150)
-                        .HasColumnType("character varying(150)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Suppliers");
-                });
-
             modelBuilder.Entity("converge_server.Models.Entities.User", b =>
                 {
                     b.Property<int>("Id")
@@ -1012,17 +963,9 @@ namespace converge_server.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("Email")
-                        .HasMaxLength(150)
-                        .HasColumnType("character varying(150)");
-
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasColumnType("text");
-
-                    b.Property<string>("Phone")
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)");
 
                     b.Property<string>("Role")
                         .IsRequired()
@@ -1109,15 +1052,9 @@ namespace converge_server.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("converge_server.Models.Entities.Supplier", "SupplierRecord")
-                        .WithMany("Items")
-                        .HasForeignKey("SupplierId");
-
                     b.Navigation("BillOfMaterial");
 
                     b.Navigation("PurchaseRequestItem");
-
-                    b.Navigation("SupplierRecord");
                 });
 
             modelBuilder.Entity("converge_server.Models.Entities.InventoryTransaction", b =>
@@ -1295,11 +1232,6 @@ namespace converge_server.Migrations
                     b.Navigation("LaborItems");
 
                     b.Navigation("MaterialItems");
-                });
-
-            modelBuilder.Entity("converge_server.Models.Entities.Supplier", b =>
-                {
-                    b.Navigation("Items");
                 });
 #pragma warning restore 612, 618
         }

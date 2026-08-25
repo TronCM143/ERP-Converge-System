@@ -27,7 +27,7 @@ namespace converge_server.Services.Quotations
         private readonly string _logoPath;
 
         private const string CompanyAddress = "Judge Alba St., Zone III City of Koronadal, South Cotabato";
-        private const string CompanyPhone = "+63 (83) 887-4886";
+        private const string CompanyPhone = "(83)887-4886";
         private const string CompanyEmail = "sales@converge.ph";
         private const string CompanyWebsite = "www.converge.ph";
         private const string TermsUrl = "https://convergeit-solutions-inc3.odoo.com/terms";
@@ -117,13 +117,37 @@ namespace converge_server.Services.Quotations
         private static string Peso(decimal amount) =>
             "₱ " + amount.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("en-PH"));
 
+        // A rate of zero prints as a dash rather than "0%" - on a document where
+        // most lines carry neither, a column of zeroes is noise. The totals block
+        // always states the discount and VAT amounts outright either way.
+        private static string Percent(decimal rate) =>
+            rate == 0m ? "—" : rate.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "%";
+
+        // Same dash-for-nothing rule, for the flat discount column. No currency
+        // symbol: the column is already money and the row is tight.
+        private static string Money(decimal amount) =>
+            amount == 0m ? "—" : amount.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("en-PH"));
+
         private static string Esc(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
 
         private static string BuildHtml(Models.Entities.Quotation quotation, string logoDataUri)
         {
             var client = quotation.Client;
-            var untaxed = quotation.MaterialsTotal + quotation.LaborTotal;
+
+            // Mirrors QuotationService's stored math exactly, so the document can
+            // never disagree with the record: discount and tax are both charged
+            // against the GROSS line subtotal (tax is not recomputed on the
+            // discounted figure), and MaterialsTotal is already net of discount.
+            //   Subtotal - Discount = Untaxed Amount;  Untaxed + VAT = Total.
+            var materialsGross = quotation.MaterialItems.Sum(i => i.Quantity * i.UnitPrice);
+            // Discounts are stored as flat peso amounts (already clamped to their
+            // line's subtotal on save), so this is a plain sum.
+            var discountTotal = quotation.MaterialItems.Sum(i => i.DiscountAmount);
             var vat = quotation.MaterialItems.Sum(i => i.Quantity * i.UnitPrice * i.TaxPercent / 100m);
+            // Labor carries neither a discount nor tax in this data model, so it
+            // rides through both the subtotal and the untaxed amount unchanged.
+            var subtotal = materialsGross + quotation.LaborTotal;
+            var untaxed = quotation.MaterialsTotal + quotation.LaborTotal;
             var total = quotation.GrandTotal;
 
             var itemsHtml = new StringBuilder();
@@ -132,7 +156,12 @@ namespace converge_server.Services.Quotations
             foreach (var item in quotation.MaterialItems.OrderBy(i => i.SortOrder))
             {
                 var rowBg = rowIndex % 2 == 0 ? "#f7f8fa" : "#fff";
-                var amount = item.Quantity * item.UnitPrice;
+                var gross = item.Quantity * item.UnitPrice;
+                // Amount is net of the line's discount but BEFORE tax, so the
+                // column sums to the Untaxed Amount in the totals block. Tax is
+                // shown per line as a rate and totalled once as VAT - charging it
+                // per row as well would read as double-counting.
+                var amount = gross - item.DiscountAmount;
                 itemsHtml.Append($@"
                 <tr style=""background:{rowBg}"">
                   <td style=""padding:12px 8px 12px 0;vertical-align:top"">
@@ -141,6 +170,8 @@ namespace converge_server.Services.Quotations
                   </td>
                   <td style=""padding:12px 0;text-align:right;vertical-align:top;white-space:nowrap"">{item.Quantity:0.00} {Esc(item.Unit)}</td>
                   <td style=""padding:12px 0;text-align:right;vertical-align:top"">{item.UnitPrice.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("en-PH"))}</td>
+                  <td style=""padding:12px 0;text-align:right;vertical-align:top;white-space:nowrap"">{Money(item.DiscountAmount)}</td>
+                  <td style=""padding:12px 0;text-align:right;vertical-align:top;white-space:nowrap"">{Percent(item.TaxPercent)}</td>
                   <td style=""padding:12px 0 12px 8px;text-align:right;vertical-align:top"">{amount.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("en-PH"))} ₱</td>
                 </tr>");
                 rowIndex++;
@@ -158,6 +189,8 @@ namespace converge_server.Services.Quotations
                   </td>
                   <td style=""padding:12px 0;text-align:right;vertical-align:top;white-space:nowrap"">1.00 lot</td>
                   <td style=""padding:12px 0;text-align:right;vertical-align:top"">{labor.LineTotal.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("en-PH"))}</td>
+                  <td style=""padding:12px 0;text-align:right;vertical-align:top;color:#999"">—</td>
+                  <td style=""padding:12px 0;text-align:right;vertical-align:top;color:#999"">—</td>
                   <td style=""padding:12px 0 12px 8px;text-align:right;vertical-align:top"">{labor.LineTotal.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("en-PH"))} ₱</td>
                 </tr>");
                 rowIndex++;
@@ -213,9 +246,11 @@ namespace converge_server.Services.Quotations
       <table style=""width:100%;border-collapse:collapse;font-size:13px;"">
         <thead>
           <tr style=""text-align:left;color:#333;"">
-            <th style=""padding:8px 0;font-weight:700;width:50%;"">Description</th>
+            <th style=""padding:8px 0;font-weight:700;width:40%;"">Description</th>
             <th style=""padding:8px 0;font-weight:700;text-align:right;"">Qty</th>
             <th style=""padding:8px 0;font-weight:700;text-align:right;"">Unit Price</th>
+            <th style=""padding:8px 0;font-weight:700;text-align:right;"">Discount</th>
+            <th style=""padding:8px 0;font-weight:700;text-align:right;"">Tax %</th>
             <th style=""padding:8px 0;font-weight:700;text-align:right;"">Amount</th>
           </tr>
         </thead>
@@ -227,6 +262,12 @@ namespace converge_server.Services.Quotations
       <div style=""display:flex;justify-content:flex-end;margin-top:12px;"">
         <div style=""width:280px;"">
           <div style=""display:flex;justify-content:space-between;background:#f4f6f8;padding:10px 16px;font-size:13px;"">
+            <span style=""color:#666"">Subtotal</span><span>{Peso(subtotal)}</span>
+          </div>
+          <div style=""display:flex;justify-content:space-between;background:#f4f6f8;padding:10px 16px;font-size:13px;margin-top:2px;"">
+            <span style=""color:#666"">Discount</span><span>{(discountTotal > 0 ? "−" : "")}{Peso(discountTotal)}</span>
+          </div>
+          <div style=""display:flex;justify-content:space-between;background:#f4f6f8;padding:10px 16px;font-size:13px;margin-top:2px;"">
             <span style=""color:#666"">Untaxed Amount</span><span>{Peso(untaxed)}</span>
           </div>
           <div style=""display:flex;justify-content:space-between;background:#f4f6f8;padding:10px 16px;font-size:13px;margin-top:2px;"">

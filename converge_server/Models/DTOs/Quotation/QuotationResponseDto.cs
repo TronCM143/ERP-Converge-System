@@ -7,6 +7,12 @@
         public string ItemName { get; set; } = string.Empty;
         public string Note { get; set; } = string.Empty;
         public string Model { get; set; } = string.Empty;
+        // Product reference data as it stood when the line was created.
+        public string? Sku { get; set; }
+        public string? Brand { get; set; }
+        public string? ImageUrl { get; set; }
+        public string? DatasheetUrl { get; set; }
+        public string? Manufacturer { get; set; }
         public int Quantity { get; set; }
         public string Unit { get; set; } = string.Empty;
         public decimal UnitPrice { get; set; }

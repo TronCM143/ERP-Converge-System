@@ -50,6 +50,21 @@ export default function PurchaseOrderDetailPage() {
      of a transaction deletes the file from the server as well as unlinking it —
      there is no undo — so it asks first. */
   const [confirmRemoveEvidence, setConfirmRemoveEvidence] = useState<BOMItem | null>(null);
+
+  /* The supplier master, for the per-line picker. Loaded once: it is a short
+     list that changes rarely, and a request per line would be absurd. */
+  const [suppliers, setSuppliers] = useState<{ id: number; name: string; address: string | null }[]>([]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await apiFetch('/api/suppliers');
+        if (res.ok) setSuppliers(await res.json());
+      } catch (err) {
+        console.error('Failed to load suppliers:', err);
+      }
+    })();
+  }, []);
   /* Open Actions menu: which row, and where its button is on screen.
      The coordinates are needed because the menu renders `fixed`, not `absolute`:
      the table sits in an overflow-x-auto wrapper, and setting overflow on one
@@ -132,6 +147,7 @@ export default function PurchaseOrderDetailPage() {
         | 'deliveryDate'
         | 'supplier'
         | 'supplierAddress'
+        | 'supplierId'
         | 'discountAmount'
         | 'taxPercent'
         | 'requiredQuantity'
@@ -162,6 +178,9 @@ export default function PurchaseOrderDetailPage() {
           supplier: patch.supplier !== undefined ? patch.supplier : item.supplier ?? null,
           supplierAddress:
             patch.supplierAddress !== undefined ? patch.supplierAddress : item.supplierAddress ?? null,
+          // Only sent when the picker was used; the server copies the chosen
+          // supplier's name and address onto the line.
+          supplierId: patch.supplierId,
           discountAmount: patch.discountAmount,
           taxPercent: patch.taxPercent,
           requiredQuantity: patch.requiredQuantity,
@@ -629,6 +648,12 @@ export default function PurchaseOrderDetailPage() {
                 while rows scroll under them. Sticky sits on the th cells, not
                 the tr - a table row can't be a positioning context. Bordered to
                 match the two panels above it. */}
+            <datalist id="bom-supplier-list">
+              {suppliers.map((sup) => (
+                <option key={sup.id} value={sup.name} />
+              ))}
+            </datalist>
+
             <div className="overflow-x-auto rounded-lg border border-zinc-800">
               <table className="w-full text-[16px]">
                 <thead>
@@ -684,17 +709,35 @@ export default function PurchaseOrderDetailPage() {
                                   as prompts rather than as data. */}
                               {noteOpen && (
                                 <div className="mt-1 space-y-1 border-t border-zinc-700/60 pt-1">
+                                  {/* Picks from the supplier master, or takes a
+                                      name that is not on it yet. The datalist
+                                      keeps both possible: choosing a known
+                                      supplier links the line (and fills the
+                                      address from the record), typing anything
+                                      else leaves it as free text, which is what
+                                      a one-off purchase actually is. */}
                                   <input
                                     type="text"
+                                    list="bom-supplier-list"
                                     className="w-full bg-transparent text-xs italic text-zinc-400 placeholder-zinc-500 focus:outline-none"
                                     placeholder="Supplier Name:"
                                     defaultValue={item.supplier ?? ''}
                                     onBlur={(e) => {
                                       const next = e.target.value.trim();
-                                      // The API reads null as "leave unchanged", so an
-                                      // emptied box sends "" to actually clear it.
-                                      if ((item.supplier ?? '') !== next) {
-                                        persistBomItem(item, { supplier: next });
+                                      if ((item.supplier ?? '') === next) return;
+
+                                      const matched = suppliers.find(
+                                        (sup) => sup.name.toLowerCase() === next.toLowerCase()
+                                      );
+
+                                      if (matched) {
+                                        // Server copies name and address from the record.
+                                        persistBomItem(item, { supplierId: matched.id });
+                                      } else {
+                                        // Unlink and keep the typed name: the API
+                                        // reads null as "leave unchanged", so an
+                                        // emptied box sends "" to actually clear it.
+                                        persistBomItem(item, { supplier: next, supplierId: 0 });
                                       }
                                     }}
                                   />

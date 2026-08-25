@@ -54,6 +54,31 @@ namespace converge_server.Services.BillOfMaterial
                 item.SupplierAddress = string.IsNullOrWhiteSpace(dto.SupplierAddress) ? null : dto.SupplierAddress.Trim();
             }
 
+            /* Choosing from the supplier master. The name and address are copied
+               onto the line as well as linked: the link is what reporting groups
+               by, the copy is what the line says it agreed to. Sending 0 unlinks
+               without wiping the text, which is how a line reverts to ad-hoc. */
+            if (dto.SupplierId.HasValue)
+            {
+                if (dto.SupplierId.Value <= 0)
+                {
+                    item.SupplierId = null;
+                }
+                else
+                {
+                    var supplier = await _context.Suppliers
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(s => s.Id == dto.SupplierId.Value);
+
+                    if (supplier != null)
+                    {
+                        item.SupplierId = supplier.Id;
+                        item.Supplier = supplier.Name;
+                        item.SupplierAddress = supplier.Address;
+                    }
+                }
+            }
+
             /* Pricing and quantity. Each is applied only when the caller sent
                it — the table edits one cell at a time, so treating an absent
                field as "set to zero" would wipe the rest of the line. */

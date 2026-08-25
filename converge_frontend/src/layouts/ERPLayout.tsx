@@ -440,7 +440,7 @@ export default function ERPLayout() {
 
             {/* Settings covers notification-email management, which is why
                 sales has it too — purchasing has no settings page to reach. */}
-            {(isAdmin || isQuotation) && (
+            {isAdmin && (
               <button
                 type="button"
                 title="Settings"

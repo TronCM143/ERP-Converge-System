@@ -21,6 +21,12 @@ namespace converge_server.Models.DTOs.BillOfMaterial
         // Same convention as Supplier.
         public string? SupplierAddress { get; set; }
 
+        /* Picking a supplier from the master list. When set, the server copies
+           that supplier's name and address onto the line, so the snapshot and
+           the link agree. 0 clears the link and leaves the line on whatever text
+           it already had. */
+        public int? SupplierId { get; set; }
+
         /* Everything below was already being sent by the purchasing table and
            had nowhere to land: model binding dropped each one silently, so the
            request succeeded and the edit vanished. That is why the attachment's

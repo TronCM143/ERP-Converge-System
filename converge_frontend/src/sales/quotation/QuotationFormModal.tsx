@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { CheckCircle2, CloudUpload, Database, Download, GripVertical, History, Info, Mail, Pencil, Plus, Sparkles, SquarePen, Upload, X } from 'lucide-react';
+import { CheckCircle2, CloudUpload, Database, Download, Eye, GripVertical, History, Info, Mail, Pencil, Plus, Sparkles, SquarePen, Upload, X } from 'lucide-react';
 import { DndContext, DragEndEvent, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -11,6 +11,7 @@ import { ClientSummary } from '../crm/ClientFormModal';
 import ProductFormModal from '../../inventory/ProductFormModal';
 import { Product as InventoryProduct } from '../../inventory/ProductsPage';
 import SendQuotationPdfDialog from './SendQuotationPdfDialog';
+import QuotationPreviewModal from './QuotationPreviewModal';
 import ProductSearchField from './ProductSearchField';
 import { EmailCandidate } from '../../shared/EmailRecipientPickerDialog';
 import HistoryTimeline from '../../shared/HistoryTimeline';
@@ -350,6 +351,9 @@ export default function QuotationFormModal({
      clears itself. */
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [isSavingToDrive, setIsSavingToDrive] = useState(false);
+  // Preview of the real PDF, opened before committing to a download or a send.
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isSubmittingApproval, setIsSubmittingApproval] = useState(false);
   /* Whether a Drive folder is actually wired up for this client. Same probe the
      quotations list uses, for the same reason: without it the Drive button is
      offered on installations that have no Drive connected and just fails. */
@@ -1249,6 +1253,30 @@ export default function QuotationFormModal({
     })();
   };
 
+  /* Submitting from the preview, so the last thing seen before a quotation goes
+     for sign-off is the quotation itself. Same endpoint the board's dialog
+     calls; the server decides whether it is allowed. */
+  const handleSubmitForApproval = async () => {
+    if (!pdfQuotationId) return;
+    setIsSubmittingApproval(true);
+    setErrorMessage(null);
+    try {
+      const res = await apiFetch(`/api/approvals/submit/${pdfQuotationId}`, { method: 'POST' });
+      if (res.ok) {
+        setActionMessage('Sent for approval.');
+        setIsPreviewOpen(false);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setErrorMessage(err.error || 'Could not send this quotation for approval.');
+      }
+    } catch (err) {
+      console.error('Failed to submit for approval:', err);
+      setErrorMessage('Server connection error.');
+    } finally {
+      setIsSubmittingApproval(false);
+    }
+  };
+
   const handleSaveToDrive = async () => {
     if (!pdfQuotationId) return;
     setIsSavingToDrive(true);
@@ -1347,6 +1375,18 @@ export default function QuotationFormModal({
                 record, so all three are disabled until the draft has an id; they
                 are equally available on a finished quotation, which is the whole
                 point of this screen also being the viewer. */}
+            {/* Sits before Download and Email deliberately: the point of a
+                preview is to be the step BEFORE the irreversible one. */}
+            <button
+              type="button"
+              onClick={() => setIsPreviewOpen(true)}
+              disabled={!pdfQuotationId}
+              className="inline-flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-50 disabled:opacity-40 disabled:hover:bg-transparent"
+              title={pdfQuotationId ? 'Preview the quotation' : 'Save the draft first to preview it'}
+            >
+              <Eye className="h-4 w-4" /> Preview
+            </button>
+
             <button
               type="button"
               onClick={handleDownloadPdf}
@@ -2360,6 +2400,18 @@ export default function QuotationFormModal({
       </AnimatePresence>
 
       <AnimatePresence>
+        {isPreviewOpen && pdfQuotationId && (
+          <QuotationPreviewModal
+            quotationId={pdfQuotationId}
+            quotationNumber={displayQuotationNumber}
+            onClose={() => setIsPreviewOpen(false)}
+            onSubmitForApproval={() => void handleSubmitForApproval()}
+            // Only sales submits; a locked (finished) quotation has nothing to send.
+            canSubmitForApproval={!isLocked}
+            isSubmitting={isSubmittingApproval}
+          />
+        )}
+
         {/* Gated on the saved id, not on createdQuotation: the header's Email
             button opens this for any saved quotation, not only a brand-new one. */}
         {sendDialogCandidates && pdfQuotationId && (

@@ -76,7 +76,7 @@ namespace converge_server.Controllers
             try
             {
                 (success, wonSheetSaved, decidedQuotationNumber, decidedAmount) =
-                    await _clientService.ReorderClientsAsync(parsedStage, dto.OrderedClientIds, User.Identity?.Name ?? "system", dto.WonNotifyEmails, dto.LossReason);
+                    await _clientService.ReorderClientsAsync(parsedStage, dto.OrderedClientIds, User.Identity?.Name ?? "system", dto.WonNotifyEmails, dto.LossReason, dto.SkipApproval);
             }
             catch (Services.Clients.ApprovalRequiredException ex)
             {

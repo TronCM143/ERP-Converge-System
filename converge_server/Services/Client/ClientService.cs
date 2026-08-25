@@ -237,7 +237,7 @@ namespace converge_server.Services.Clients
             return (await GetClientAsync(clientId), wonSheetSaved);
         }
 
-        public async Task<(bool Success, bool WonSheetSaved, string? DecidedQuotationNumber, decimal? DecidedAmount)> ReorderClientsAsync(ClientStage stage, List<int> orderedClientIds, string actorUsername, List<string>? wonNotifyEmails = null, string? lossReason = null)
+        public async Task<(bool Success, bool WonSheetSaved, string? DecidedQuotationNumber, decimal? DecidedAmount)> ReorderClientsAsync(ClientStage stage, List<int> orderedClientIds, string actorUsername, List<string>? wonNotifyEmails = null, string? lossReason = null, bool skipApproval = false)
         {
             var clientsToUpdate = await _context.Clients
                 .Where(c => orderedClientIds.Contains(c.Id))
@@ -257,7 +257,7 @@ namespace converge_server.Services.Clients
                 if (client.Stage != stage)
                 {
                     movedClient = client;
-                    stageChange = await PrepareStageChangeAsync(client, stage, actorUsername);
+                    stageChange = await PrepareStageChangeAsync(client, stage, actorUsername, skipApproval);
                 }
                 client.SortOrder = orderedClientIds.IndexOf(client.Id);
             }
@@ -336,7 +336,7 @@ namespace converge_server.Services.Clients
                 wonDate: DateTime.UtcNow);
         }
 
-        public async Task<StageChangeResult?> PrepareStageChangeAsync(Client trackedClient, ClientStage newStage, string actorUsername)
+        public async Task<StageChangeResult?> PrepareStageChangeAsync(Client trackedClient, ClientStage newStage, string actorUsername, bool skipApproval = false)
         {
             if (trackedClient.Stage == newStage)
             {
@@ -353,7 +353,20 @@ namespace converge_server.Services.Clients
                 var gate = await _approvalService.EvaluateClientAsync(trackedClient.Id);
                 if (!gate.Allowed)
                 {
-                    throw new ApprovalRequiredException(gate);
+                    if (!skipApproval)
+                    {
+                        throw new ApprovalRequiredException(gate);
+                    }
+
+                    /* Skipped. Recorded against the QUOTATION, not just the
+                       client, so the trail sits with the money: who moved a
+                       quotation past sign-off, for how much, and when. Without
+                       this the option would be indistinguishable from a
+                       quotation that never needed approval at all. */
+                    await _auditService.LogAsync(
+                        "Quotation", gate.QuotationId?.ToString() ?? "0", "ApprovalSkipped", actorUsername,
+                        gate.Reason, "Proposal",
+                        $"Moved to Proposal without approval by {actorUsername} - {gate.QuotationNumber} ({gate.Amount:N2})");
                 }
             }
 

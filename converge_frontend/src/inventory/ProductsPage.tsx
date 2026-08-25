@@ -29,6 +29,12 @@ export interface Product {
   imageUrl?: string | null;
   imageSearchAttempted: boolean;
   stockQuantity: number;
+  /* Reference material held on the product and copied onto every quotation
+     line that uses it, so nobody retypes a datasheet link per quote. */
+  description?: string | null;
+  manufacturer?: string | null;
+  datasheetUrl?: string | null;
+  productUrl?: string | null;
 }
 
 export interface InventoryTransaction {

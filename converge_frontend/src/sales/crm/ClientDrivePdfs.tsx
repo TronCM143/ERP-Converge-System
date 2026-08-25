@@ -80,32 +80,32 @@ export default function ClientDrivePdfs({ clientId }: { clientId: number }) {
   return (
     <Card className="border-0 mt-4">
       <CardHeader className="flex flex-row items-center justify-between space-y-0">
-        <CardTitle className="text-lg font-semibold text-zinc-100">Files in drive</CardTitle>
+        <CardTitle className="text-lg font-semibold text-slate-100">Files in drive</CardTitle>
         <Button variant="ghost" size="sm" onClick={fetchFiles} disabled={isLoading} title="Refresh">
           <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
         </Button>
       </CardHeader>
       <CardContent>
-        {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
+        {error && <p className="text-xs text-red-400 mb-2">{error}</p>}
         {isLoading ? (
-          <p className="text-sm text-zinc-500 italic">Loading…</p>
+          <p className="text-sm text-slate-500">Loading…</p>
         ) : files.length === 0 ? (
-          <p className="text-sm text-zinc-500 italic">No PDFs in this client's Drive folder yet.</p>
+          <p className="text-sm text-slate-500">No PDFs in this client's Drive folder yet.</p>
         ) : (
           <ul className="space-y-1.5">
             {files.map((f) => (
               <li
                 key={f.id}
-                className="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900/40 px-3 py-2"
+                className="flex items-center gap-2 rounded-md border border-slate-800 bg-slate-900/40 px-3 py-2"
               >
-                <FileText className="h-4 w-4 text-zinc-400 shrink-0" />
+                <FileText className="h-4 w-4 text-slate-400 shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm text-zinc-200">{f.name}</p>
-                  <p className="text-[11px] text-zinc-500">
+                  <p className="truncate text-sm text-slate-200">{f.name}</p>
+                  <p className="text-[11px] text-slate-500">
                     {f.modifiedTime
                       ? new Date(f.modifiedTime).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' })
                       : ''}
-                    {f.size ? ` · ${formatSize(f.size)}` : ''}
+                    {f.size ? ` · ${formatSize(f.size)}` : ''}1
                   </p>
                 </div>
                 <Button

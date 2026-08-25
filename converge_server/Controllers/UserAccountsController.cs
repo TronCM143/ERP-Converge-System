@@ -41,6 +41,112 @@ namespace converge_server.Controllers
 
             [MinLength(8)]
             public string? Password { get; set; }
+
+            /* Contact details. Empty string clears; null (omitted) leaves alone -
+               so a password reset does not wipe an address the caller did not
+               send. Having an address is the opt-in for that channel. */
+            [MaxLength(150)]
+            [EmailAddress]
+            public string? Email { get; set; }
+
+            [MaxLength(40)]
+            public string? Phone { get; set; }
+        }
+
+        public class CreateUserDto
+        {
+            [Required]
+            [MinLength(3)]
+            [MaxLength(50)]
+            public string Username { get; set; } = string.Empty;
+
+            [Required]
+            [MinLength(8)]
+            public string Password { get; set; } = string.Empty;
+
+            [Required]
+            public string Role { get; set; } = string.Empty;
+
+            [MaxLength(150)]
+            [EmailAddress]
+            public string? Email { get; set; }
+
+            [MaxLength(40)]
+            public string? Phone { get; set; }
+        }
+
+        // The roles the app actually understands. A typo here would create an
+        // account that can sign in and reach nothing, so it is a whitelist.
+        private static readonly string[] AllowedRoles = { "quotation", "purchasing", "admin", "engineer" };
+
+        [HttpPost]
+        public async Task<IActionResult> CreateUser([FromBody] CreateUserDto dto)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var username = dto.Username.Trim();
+            var role = dto.Role.Trim().ToLowerInvariant();
+
+            if (!AllowedRoles.Contains(role))
+            {
+                return BadRequest(new { error = $"Unknown role '{dto.Role}'." });
+            }
+
+            if (await _context.Users.AnyAsync(u => u.Username.ToLower() == username.ToLower()))
+            {
+                return Conflict(new { error = $"The username '{username}' is already taken." });
+            }
+
+            var user = new Models.Entities.User
+            {
+                Username = username,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
+                Role = role,
+                Email = string.IsNullOrWhiteSpace(dto.Email) ? null : dto.Email.Trim(),
+                Phone = string.IsNullOrWhiteSpace(dto.Phone) ? null : dto.Phone.Trim(),
+                CreatedAt = DateTime.UtcNow
+            };
+            _context.Users.Add(user);
+            await _context.SaveChangesAsync();
+
+            await _auditService.LogAsync("User", user.Id.ToString(), "Created",
+                User.Identity?.Name ?? "admin", null, user.Username, $"role {user.Role}");
+
+            return Ok(new { user.Id, user.Username, user.Role, user.Email, user.Phone });
+        }
+
+        [HttpDelete("{userId:int}")]
+        public async Task<IActionResult> DeleteUser(int userId)
+        {
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
+            if (user == null)
+            {
+                return NotFound(new { error = "Account not found." });
+            }
+
+            /* Two guards, both about not locking everyone out: you cannot delete
+               the account you are signed in as, and you cannot remove the last
+               admin. Either would leave the system with no way back in. */
+            if (string.Equals(user.Username, User.Identity?.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest(new { error = "You cannot delete the account you are signed in with." });
+            }
+
+            if (user.Role == "admin" && await _context.Users.CountAsync(u => u.Role == "admin") <= 1)
+            {
+                return BadRequest(new { error = "This is the only admin account — deleting it would lock everyone out." });
+            }
+
+            _context.Users.Remove(user);
+            await _context.SaveChangesAsync();
+
+            await _auditService.LogAsync("User", userId.ToString(), "Deleted",
+                User.Identity?.Name ?? "admin", user.Username, null, $"role {user.Role}");
+
+            return Ok(new { deleted = true });
         }
 
         [HttpGet]
@@ -55,6 +161,8 @@ namespace converge_server.Controllers
                     u.Id,
                     u.Username,
                     u.Role,
+                    u.Email,
+                    u.Phone,
                     u.CreatedAt,
                     // Whether someone currently holds this single-device session,
                     // so the page can warn that a change will sign them out.
@@ -78,7 +186,7 @@ namespace converge_server.Controllers
             var wantsUsername = !string.IsNullOrWhiteSpace(username);
             var wantsPassword = !string.IsNullOrWhiteSpace(password);
 
-            if (!wantsUsername && !wantsPassword)
+            if (!wantsUsername && !wantsPassword && dto.Email == null && dto.Phone == null)
             {
                 return BadRequest(new { error = "Nothing to update." });
             }
@@ -111,6 +219,37 @@ namespace converge_server.Controllers
             {
                 user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(password);
                 changes.Add("password reset");
+            }
+
+            /* Contact edits do NOT end the session: they change where this
+               account is notified, not how it authenticates. Only a credential
+               change needs to sign anyone out. */
+            var contactChanged = false;
+            if (dto.Email != null)
+            {
+                var email = string.IsNullOrWhiteSpace(dto.Email) ? null : dto.Email.Trim();
+                if (user.Email != email)
+                {
+                    user.Email = email;
+                    contactChanged = true;
+                }
+            }
+            if (dto.Phone != null)
+            {
+                var phone = string.IsNullOrWhiteSpace(dto.Phone) ? null : dto.Phone.Trim();
+                if (user.Phone != phone)
+                {
+                    user.Phone = phone;
+                    contactChanged = true;
+                }
+            }
+
+            if (contactChanged && changes.Count == 0)
+            {
+                await _context.SaveChangesAsync();
+                await _auditService.LogAsync("User", user.Id.ToString(), "Updated",
+                    User.Identity?.Name ?? "admin", null, user.Username, "contact details changed");
+                return Ok(new { user.Id, user.Username, user.Role, signedOut = false });
             }
 
             if (changes.Count == 0)

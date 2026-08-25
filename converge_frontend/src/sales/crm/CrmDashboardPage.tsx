@@ -168,8 +168,21 @@ export default function CrmDashboardPage() {
     quotationId: number | null;
     quotationNumber: string | null;
     amount: number;
+    // The refused move, kept so Skip can re-issue exactly the same request
+    // with the override rather than asking the user to drag the card again.
+    stage: string;
+    orderedClientIds: number[];
   } | null>(null);
   const [isSubmittingApproval, setIsSubmittingApproval] = useState(false);
+
+  /* Approvers offered in the dialog, and which are ticked. Loaded when the
+     dialog opens rather than with the board: the list changes in Settings and
+     this is the only place it is read, so a stale copy would be worse than a
+     one-off request. */
+  const [approvers, setApprovers] = useState<
+    { id: number; username: string; role: string; email: string | null; phone: string | null }[]
+  >([]);
+  const [notifyIds, setNotifyIds] = useState<number[]>([]);
 
   const refreshSummary = async () => {
     try {
@@ -220,6 +233,23 @@ export default function CrmDashboardPage() {
       setIsLoading(false);
     }
   };
+
+  /* An approval decided in another session changes this board, and nothing here
+     would hear about it. Refreshing when the tab is focused again covers the
+     actual workflow: submit, go and do something else, come back once the
+     engineer has decided. Cheaper and less surprising than polling. */
+  useEffect(() => {
+    const onFocus = () => {
+      if (document.visibilityState === 'visible') void fetchClients();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     fetchClients();
@@ -362,12 +392,13 @@ export default function CrmDashboardPage() {
     stage: string,
     orderedClientIds: number[],
     wonNotifyEmails?: string[],
-    lossReason?: string
+    lossReason?: string,
+    skipApproval?: boolean
   ) => {
     try {
       const res = await apiFetch('/api/clients/reorder', {
         method: 'PUT',
-        body: JSON.stringify({ stage, orderedClientIds, wonNotifyEmails, lossReason })
+        body: JSON.stringify({ stage, orderedClientIds, wonNotifyEmails, lossReason, skipApproval })
       });
 
       /* 409 is the approval gate, not a failure: the server refused a move into
@@ -378,12 +409,28 @@ export default function CrmDashboardPage() {
       if (res.status === 409) {
         const gate = await res.json().catch(() => ({}));
         await fetchClients();
+
+        // Everyone contactable is ticked by default: the common case is "tell
+        // the approvers", and un-ticking is a deliberate act.
+        try {
+          const who = await apiFetch('/api/approvals/approvers');
+          if (who.ok) {
+            const list = await who.json();
+            setApprovers(Array.isArray(list) ? list : []);
+            setNotifyIds(Array.isArray(list) ? list.map((a: { id: number }) => a.id) : []);
+          }
+        } catch (err) {
+          console.error('Failed to load approvers:', err);
+        }
+
         setApprovalGate({
           reason: gate.reason ?? 'approval-required',
           message: gate.error ?? 'This quotation requires approval before it can be transferred to Proposal.',
           quotationId: gate.quotationId ?? null,
           quotationNumber: gate.quotationNumber ?? null,
-          amount: gate.amount ?? 0
+          amount: gate.amount ?? 0,
+          stage,
+          orderedClientIds
         });
         return;
       }
@@ -445,6 +492,15 @@ export default function CrmDashboardPage() {
           setToastMessage(`Deal-won email sent to ${wonNotifyEmails.length} recipient(s)`);
         }
       }
+      /* Re-read the board from the server after every successful move.
+
+         The optimistic update only knows what THIS tab changed - it copies the
+         card and swaps its stage. Anything decided elsewhere is invisible to
+         it, and approval is decided elsewhere by definition: the engineer
+         approves in their own session, so the salesperson's copy still says
+         Pending and the card keeps an "Awaiting approval" badge long after it
+         has been approved. The server is the only thing that knows both. */
+      await fetchClients();
     } catch (err) {
       console.error('Failed to save card position:', err);
       await fetchClients();
@@ -455,7 +511,11 @@ export default function CrmDashboardPage() {
     if (!approvalGate?.quotationId) return;
     setIsSubmittingApproval(true);
     try {
-      const res = await apiFetch(`/api/approvals/submit/${approvalGate.quotationId}`, { method: 'POST' });
+      const res = await apiFetch(`/api/approvals/submit/${approvalGate.quotationId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notifyUserIds: notifyIds })
+      });
       if (res.ok) {
         setToastMessage(`${approvalGate.quotationNumber} sent for approval.`);
         setApprovalGate(null);
@@ -470,6 +530,16 @@ export default function CrmDashboardPage() {
     } finally {
       setIsSubmittingApproval(false);
     }
+  };
+
+  /* Move anyway, without sign-off. The server allows it only because the flag
+     is sent explicitly, and records who did it against the quotation. */
+  const handleSkipApproval = async () => {
+    if (!approvalGate) return;
+    const { stage, orderedClientIds, quotationNumber } = approvalGate;
+    setApprovalGate(null);
+    await performReorder(stage, orderedClientIds, undefined, undefined, true);
+    setToastMessage(`${quotationNumber ?? 'Quotation'} moved to Proposal without approval.`);
   };
 
   const handleWonEmailConfirm = (emails: string[]) => {
@@ -911,7 +981,60 @@ export default function CrmDashboardPage() {
                 </p>
               )}
 
-              <div className="mt-5 flex justify-end gap-2">
+              {/* Who to notify. Only accounts that can actually decide an
+                  approval AND are contactable appear here — an approver with no
+                  email and no phone cannot be reached, so offering the tick box
+                  would be a lie. Managed in Settings > Users. */}
+              {approvalGate.reason !== 'awaiting-approval' && approvers.length > 0 && (
+                <div className="mt-4 border-t border-zinc-700 pt-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                    Notify
+                  </p>
+                  <div className="mt-1.5 max-h-40 space-y-1 overflow-y-auto">
+                    {approvers.map((a) => {
+                      const checked = notifyIds.includes(a.id);
+                      return (
+                        <label
+                          key={a.id}
+                          className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-zinc-800"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() =>
+                              setNotifyIds((prev) =>
+                                checked ? prev.filter((id) => id !== a.id) : [...prev, a.id]
+                              )
+                            }
+                          />
+                          <span className="min-w-0 flex-1 truncate text-[12px] text-zinc-200">
+                            {a.username}
+                            <span className="ml-1.5 text-[11px] text-zinc-500">({a.role})</span>
+                          </span>
+                          {/* Says HOW each one will be reached, so an approver
+                              with no phone is visibly email-only rather than
+                              silently missing the SMS. */}
+                          <span className="shrink-0 text-[10px] text-zinc-500">
+                            {[a.phone ? 'SMS' : null, a.email ? 'email' : null].filter(Boolean).join(' · ')}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {notifyIds.length === 0 && (
+                    <p className="mt-1 text-[11px] italic text-zinc-500">
+                      Nobody selected — the request will still appear on the approval dashboard.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Three ways out, in increasing order of consequence: leave the
+                  card where it is, move it without sign-off, or ask for sign-off.
+                  Skip is styled as a plain control rather than a primary one —
+                  it is allowed, but it is not the recommended path, and the
+                  server records who used it. */}
+              <div className="mt-5 flex items-center justify-end gap-2">
                 <button
                   type="button"
                   className="border border-zinc-700 bg-zinc-900 px-4 py-2 text-[13px] text-zinc-200 transition-colors hover:bg-zinc-800"
@@ -919,6 +1042,16 @@ export default function CrmDashboardPage() {
                 >
                   Cancel
                 </button>
+
+                <button
+                  type="button"
+                  title="Move to Proposal without approval — this is recorded against the quotation"
+                  className="px-4 py-2 text-[13px] text-zinc-400 underline underline-offset-2 transition-colors hover:text-zinc-200"
+                  onClick={() => void handleSkipApproval()}
+                >
+                  Skip
+                </button>
+
                 {/* Only offered when sending is the action that helps. A request
                     already pending needs patience, not a second submission. */}
                 {approvalGate.reason !== 'awaiting-approval' && approvalGate.quotationId && (

@@ -17,7 +17,7 @@ namespace converge_server.Services.Interfaces
            APPROVED when the card entered Won, REJECTED when it entered Lost. One
            field pair rather than two, because a single drag can only ever be one
            of the two. */
-        Task<(bool Success, bool WonSheetSaved, string? DecidedQuotationNumber, decimal? DecidedAmount)> ReorderClientsAsync(ClientStage stage, List<int> orderedClientIds, string actorUsername, List<string>? wonNotifyEmails = null, string? lossReason = null);
-        Task<StageChangeResult?> PrepareStageChangeAsync(Client trackedClient, ClientStage newStage, string actorUsername);
+        Task<(bool Success, bool WonSheetSaved, string? DecidedQuotationNumber, decimal? DecidedAmount)> ReorderClientsAsync(ClientStage stage, List<int> orderedClientIds, string actorUsername, List<string>? wonNotifyEmails = null, string? lossReason = null, bool skipApproval = false);
+        Task<StageChangeResult?> PrepareStageChangeAsync(Client trackedClient, ClientStage newStage, string actorUsername, bool skipApproval = false);
     }
 }

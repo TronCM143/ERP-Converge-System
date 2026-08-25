@@ -19,5 +19,9 @@ namespace converge_server.Models.DTOs.Products
         public string? ImageUrl { get; set; }
         public bool ImageSearchAttempted { get; set; }
         public int StockQuantity { get; set; }
+        public string? Description { get; set; }
+        public string? Manufacturer { get; set; }
+        public string? DatasheetUrl { get; set; }
+        public string? ProductUrl { get; set; }
     }
 }

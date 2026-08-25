@@ -5,10 +5,16 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace converge_server.Controllers
 {
-    // Class level allows admin (read-only oversight); mutation endpoints re-restrict to quotation.
+    /* Class level is the WIDEST set any action allows; every action then names
+       its own roles. That inversion is required rather than stylistic: ASP.NET
+       combines the controller and action [Authorize] attributes with AND, so an
+       action can only ever narrow the class gate, never widen it. Leaving
+       "quotation,admin" here made the engineer's 403 on the PDF unfixable at the
+       action level - the class rejected the request before the action was
+       consulted. Mutations remain quotation-only below. */
     [ApiController]
     [Route("api/quotations")]
-    [Authorize(Roles = "quotation,admin")]
+    [Authorize(Roles = "quotation,admin,engineer")]
     public class QuotationController : ControllerBase
     {
         private readonly IQuotationService _quotationService;
@@ -23,6 +29,7 @@ namespace converge_server.Controllers
         }
 
         [HttpGet]
+        [Authorize(Roles = "quotation,admin")]
         public async Task<IActionResult> GetQuotations([FromQuery] int? clientId)
         {
             var list = await _quotationService.GetQuotationsAsync(clientId);
@@ -31,6 +38,7 @@ namespace converge_server.Controllers
         }
 
         [HttpGet("{quotationId:int}")]
+        [Authorize(Roles = "quotation,admin,engineer")]
         public async Task<IActionResult> GetQuotation(int quotationId)
         {
             var quotation = await _quotationService.GetQuotationAsync(quotationId);
@@ -175,7 +183,11 @@ namespace converge_server.Controllers
             }
         }
 
+        /* Engineer is added here and nowhere else on this controller: approving a
+           quotation without being able to read it is not a decision, it is a
+           rubber stamp. Read-only — every mutation stays sales-only. */
         [HttpGet("{quotationId:int}/pdf")]
+        [Authorize(Roles = "quotation,admin,engineer")]
         public async Task<IActionResult> GetQuotationPdf(int quotationId)
         {
             try
@@ -241,6 +253,11 @@ namespace converge_server.Controllers
                     ItemName = i.ItemName,
                     Note = i.Specification,
                     Model = i.Model,
+                    Sku = i.Sku,
+                    Brand = i.Brand,
+                    ImageUrl = i.ImageUrl,
+                    DatasheetUrl = i.DatasheetUrl,
+                    Manufacturer = i.Manufacturer,
                     Quantity = i.Quantity,
                     Unit = i.Unit,
                     UnitPrice = i.UnitPrice,

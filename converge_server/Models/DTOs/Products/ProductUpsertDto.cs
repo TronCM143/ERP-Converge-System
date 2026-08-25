@@ -23,5 +23,18 @@ namespace converge_server.Models.DTOs.Products
         public decimal Price { get; set; }
 
         public bool IsActive { get; set; } = true;
+
+        // All optional reference data - see Product for why it lives there.
+        [MaxLength(2000)]
+        public string? Description { get; set; }
+
+        [MaxLength(150)]
+        public string? Manufacturer { get; set; }
+
+        [MaxLength(500)]
+        public string? DatasheetUrl { get; set; }
+
+        [MaxLength(500)]
+        public string? ProductUrl { get; set; }
     }
 }

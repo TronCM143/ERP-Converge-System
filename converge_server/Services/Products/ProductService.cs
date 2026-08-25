@@ -21,6 +21,7 @@ namespace converge_server.Services.Products
         private readonly IAuditService _auditService;
         private readonly ICacheService _cache;
         private readonly IProductImageSearchService _imageSearchService;
+        private readonly IProductImageQueue _imageQueue;
         private readonly HttpClient _httpClient;
         private readonly ILogger<ProductService> _logger;
         private readonly string _imagesDirectory;
@@ -32,12 +33,14 @@ namespace converge_server.Services.Products
             IProductImageSearchService imageSearchService,
             HttpClient httpClient,
             ILogger<ProductService> logger,
-            IWebHostEnvironment env)
+            IWebHostEnvironment env,
+            IProductImageQueue imageQueue)
         {
             _context = context;
             _auditService = auditService;
             _cache = cache;
             _imageSearchService = imageSearchService;
+            _imageQueue = imageQueue;
             _httpClient = httpClient;
             _logger = logger;
             _imagesDirectory = Path.Combine(env.ContentRootPath, "wwwroot", "images", "products");
@@ -94,6 +97,10 @@ namespace converge_server.Services.Products
                 Model = dto.Model?.Trim() ?? string.Empty,
                 ProductName = dto.ProductName.Trim(),
                 Specs = dto.Specs?.Trim() ?? string.Empty,
+                Description = Clean(dto.Description),
+                Manufacturer = Clean(dto.Manufacturer),
+                DatasheetUrl = Clean(dto.DatasheetUrl),
+                ProductUrl = Clean(dto.ProductUrl),
                 Price = dto.Price,
                 IsActive = dto.IsActive,
                 CreatedAt = DateTime.UtcNow,
@@ -106,6 +113,14 @@ namespace converge_server.Services.Products
             // SKU is derived from the Id, which only exists after the first save.
             product.Sku = $"SKU-{product.Id:D6}";
             await _context.SaveChangesAsync();
+
+            /* Hand the image lookup to the background worker and return. The
+               spec is explicit that finding a picture must not block product
+               creation - the search is a third-party HTTP call that can take
+               seconds or hang, and the product is already saved and usable
+               without it. A full queue simply drops the request; the backfill
+               scan will pick this product up later. */
+            _imageQueue.TryEnqueue(product.Id);
 
             await _cache.RemoveAsync(CacheKeys.Products);
             await _auditService.LogAsync("Product", product.Id.ToString(), "Created", actorUsername, null, product.ProductName);
@@ -127,6 +142,10 @@ namespace converge_server.Services.Products
             product.Model = dto.Model?.Trim() ?? string.Empty;
             product.ProductName = dto.ProductName.Trim();
             product.Specs = dto.Specs?.Trim() ?? string.Empty;
+            product.Description = Clean(dto.Description);
+            product.Manufacturer = Clean(dto.Manufacturer);
+            product.DatasheetUrl = Clean(dto.DatasheetUrl);
+            product.ProductUrl = Clean(dto.ProductUrl);
             product.Price = dto.Price;
             product.IsActive = dto.IsActive;
             product.UpdatedAt = DateTime.UtcNow;
@@ -189,7 +208,14 @@ namespace converge_server.Services.Products
                 .Where(s => !string.IsNullOrWhiteSpace(s))
                 .Select(s => s.Replace('_', ' ')));
 
-            var sourceUrl = await _imageSearchService.FindImageUrlAsync(query);
+            // Brand and model are what identify the thing; the product name is
+            // often generic ("4-Channel NVR") and would match almost anything.
+            var mustMatch = new[] { product.Brand, product.Model }
+                .Where(v => !string.IsNullOrWhiteSpace(v))
+                .Select(v => v.Replace('_', ' ').Trim())
+                .ToList();
+
+            var sourceUrl = await _imageSearchService.FindImageUrlAsync(query, mustMatch);
             var localUrl = sourceUrl != null ? await DownloadAndCacheAsync(product, sourceUrl) : null;
 
             product.ImageUrl = localUrl;
@@ -197,6 +223,74 @@ namespace converge_server.Services.Products
             await _context.SaveChangesAsync();
 
             return new ProductImageResultDto { ImageUrl = localUrl, Found = localUrl != null };
+        }
+
+        /* Backfill for products that predate the automatic lookup.
+
+           "Needs an image" means: no ImageUrl at all, or one pointing at a file
+           that is no longer on disk - a URL in the column is not proof the image
+           survived. Broken local files are the placeholder case the spec
+           describes, and re-queuing them is the whole point of the scan.
+
+           Paged, and capped per run by batchSize, so a 3000-row catalog is not
+           turned into 3000 queued jobs in one go. ImageSearchAttempted is the
+           resumability marker: a product already tried is skipped unless the
+           caller forces it, so re-running after a restart continues rather than
+           starting over or duplicating work.
+
+           Note the queue is bounded - when it fills, TryEnqueue returns false
+           and the scan stops early and reports what it managed. That is not a
+           failure: the next run picks up the remainder. */
+        public async Task<(int Queued, int Scanned)> QueueMissingProductImagesAsync(int batchSize = 200, bool includeAlreadyAttempted = false)
+        {
+            batchSize = Math.Clamp(batchSize, 1, 1000);
+
+            var query = _context.Products
+                .AsNoTracking()
+                .Where(p => p.IsActive);
+
+            if (!includeAlreadyAttempted)
+            {
+                query = query.Where(p => !p.ImageSearchAttempted);
+            }
+
+            var candidates = await query
+                .OrderBy(p => p.Id)
+                .Select(p => new { p.Id, p.ImageUrl })
+                .Take(batchSize)
+                .ToListAsync();
+
+            var queued = 0;
+            foreach (var candidate in candidates)
+            {
+                if (!NeedsImage(candidate.ImageUrl))
+                {
+                    continue;
+                }
+
+                if (!_imageQueue.TryEnqueue(candidate.Id))
+                {
+                    _logger.LogInformation("Image queue is full; stopping the backfill scan after {Queued} products.", queued);
+                    break;
+                }
+
+                queued++;
+            }
+
+            _logger.LogInformation("Image backfill queued {Queued} of {Scanned} scanned products.", queued, candidates.Count);
+            return (queued, candidates.Count);
+        }
+
+        // A stored URL is only good if the file is still there. Remote URLs are
+        // taken on trust - we cannot cheaply prove those without fetching them,
+        // and this method runs over the whole catalog.
+        private bool NeedsImage(string? imageUrl)
+        {
+            if (string.IsNullOrWhiteSpace(imageUrl)) return true;
+            if (!imageUrl.StartsWith("/images/products/", StringComparison.Ordinal)) return false;
+
+            var fileName = Path.GetFileName(imageUrl);
+            return !File.Exists(Path.Combine(_imagesDirectory, fileName));
         }
 
         // Manual alternative to the auto-search: paste a URL, we fetch and
@@ -283,14 +377,36 @@ namespace converge_server.Services.Products
                     return null;
                 }
 
-                var bytes = await response.Content.ReadAsByteArrayAsync();
-                var extension = (response.Content.Headers.ContentType?.MediaType) switch
+                /* Validate before storing. A search result is a URL someone else
+                   controls: it can 200 with an HTML error page, a tracking pixel
+                   or a 40MB TIFF. Anything that is not a real, sanely-sized
+                   image is rejected outright rather than saved and rendered as a
+                   broken thumbnail - the spec asks for exactly this check. */
+                var mediaType = response.Content.Headers.ContentType?.MediaType;
+                var extension = mediaType switch
                 {
+                    "image/jpeg" => ".jpg",
                     "image/png" => ".png",
                     "image/webp" => ".webp",
                     "image/gif" => ".gif",
-                    _ => ".jpg"
+                    _ => null
                 };
+
+                if (extension == null)
+                {
+                    _logger.LogInformation("Rejected an image for {Sku}: content type was {MediaType}", product.Sku, mediaType ?? "unknown");
+                    return null;
+                }
+
+                var bytes = await response.Content.ReadAsByteArrayAsync();
+
+                // Under 1KB is a spacer or an error page; over 8MB is a print
+                // asset nobody wants loading on a product row.
+                if (bytes.Length < 1024 || bytes.Length > 8 * 1024 * 1024)
+                {
+                    _logger.LogInformation("Rejected an image for {Sku}: {Bytes} bytes", product.Sku, bytes.Length);
+                    return null;
+                }
 
                 Directory.CreateDirectory(_imagesDirectory);
                 var fileName = $"{product.Sku}{extension}";
@@ -389,8 +505,17 @@ namespace converge_server.Services.Products
             }).ToList();
         }
 
+        // Blank and whitespace both mean "not set" for the optional reference
+        // fields, so they normalise to null rather than to an empty string.
+        private static string? Clean(string? value) =>
+            string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
         private static ProductDetailDto ToDetail(Product p) => new()
         {
+            Description = p.Description,
+            Manufacturer = p.Manufacturer,
+            DatasheetUrl = p.DatasheetUrl,
+            ProductUrl = p.ProductUrl,
             Id = p.Id,
             Sku = p.Sku,
             ProductName = p.ProductName,

@@ -19,6 +19,11 @@ interface FormValues {
   model: string;
   productName: string;
   price: string;
+  // Optional reference data, sent as-is; the API normalises blanks to null.
+  description: string;
+  manufacturer: string;
+  datasheetUrl: string;
+  productUrl: string;
 }
 
 interface SpecRow {
@@ -58,7 +63,11 @@ export default function ProductFormModal({ onClose, onSaved, product, initialPro
     brand: product?.brand ?? '',
     model: product?.model ?? '',
     productName: product?.productName ?? initialProductName ?? '',
-    price: product?.price.toString() ?? ''
+    price: product?.price.toString() ?? '',
+    description: product?.description ?? '',
+    manufacturer: product?.manufacturer ?? '',
+    datasheetUrl: product?.datasheetUrl ?? '',
+    productUrl: product?.productUrl ?? ''
   });
   const [specRows, setSpecRows] = useState<SpecRow[]>(() => parseSpecsRaw(product?.specs ?? ''));
   const [isSaving, setIsSaving] = useState(false);
@@ -96,7 +105,11 @@ export default function ProductFormModal({ onClose, onSaved, product, initialPro
         productName: values.productName.trim(),
         specs: serializeSpecs(specRows),
         price: values.price ? parseFloat(values.price) : 0,
-        isActive: true
+        isActive: true,
+        description: values.description.trim() || null,
+        manufacturer: values.manufacturer.trim() || null,
+        datasheetUrl: values.datasheetUrl.trim() || null,
+        productUrl: values.productUrl.trim() || null
       };
 
       const method = isEditing ? 'PATCH' : 'POST';
@@ -181,6 +194,58 @@ export default function ProductFormModal({ onClose, onSaved, product, initialPro
           <div className="form-group">
             <label>Product Name *</label>
             <input type="text" className="form-control" name="productName" value={values.productName} onChange={handleChange} required />
+          </div>
+
+          {/* Reference data. Optional and grouped after the identifying fields:
+              a catalog row is useful long before anyone fills these in, and they
+              are what a quotation renders alongside the price. */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <div className="form-group">
+              <label>Manufacturer</label>
+              <input
+                type="text"
+                className="form-control"
+                name="manufacturer"
+                value={values.manufacturer}
+                onChange={handleChange}
+                placeholder="e.g. Dahua Technology"
+              />
+            </div>
+            <div className="form-group">
+              <label>Datasheet link</label>
+              <input
+                type="url"
+                className="form-control"
+                name="datasheetUrl"
+                value={values.datasheetUrl}
+                onChange={handleChange}
+                placeholder="https://…"
+              />
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label>Product page</label>
+            <input
+              type="url"
+              className="form-control"
+              name="productUrl"
+              value={values.productUrl}
+              onChange={handleChange}
+              placeholder="https://…"
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Description</label>
+            <textarea
+              className="form-control"
+              name="description"
+              rows={2}
+              value={values.description}
+              onChange={handleChange}
+              placeholder="What this product is, in a sentence or two."
+            />
           </div>
 
           <div className="form-group">

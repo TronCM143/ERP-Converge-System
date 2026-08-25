@@ -135,13 +135,39 @@ namespace converge_server.Controllers
             });
         }
 
+        /* Who can be sent an approval request. Accounts that can actually decide
+           one (engineer or admin) and are contactable - an approver with neither
+           an email nor a phone cannot be notified, so offering them as a tick box
+           would be a lie. Managed in Settings > Users. */
+        [HttpGet("approvers")]
+        [Authorize(Roles = "quotation,admin,engineer")]
+        public async Task<IActionResult> GetApprovers()
+        {
+            var approvers = await _context.Users
+                .AsNoTracking()
+                .Where(u => (u.Role == "engineer" || u.Role == "admin")
+                            && ((u.Email != null && u.Email != "") || (u.Phone != null && u.Phone != "")))
+                .OrderBy(u => u.Username)
+                .Select(u => new { u.Id, u.Username, u.Role, u.Email, u.Phone })
+                .ToListAsync();
+
+            return Ok(approvers);
+        }
+
+        public class SubmitDto
+        {
+            /// <summary>Approver user ids ticked in the dialog.</summary>
+            public List<int>? NotifyUserIds { get; set; }
+        }
+
         [HttpPost("submit/{quotationId:int}")]
         [Authorize(Roles = "quotation")]
-        public async Task<IActionResult> Submit(int quotationId)
+        public async Task<IActionResult> Submit(int quotationId, [FromBody] SubmitDto? dto = null)
         {
             try
             {
-                var approval = await _approvalService.SubmitAsync(quotationId, User.Identity?.Name ?? "sales");
+                var approval = await _approvalService.SubmitAsync(
+                    quotationId, User.Identity?.Name ?? "sales", dto?.NotifyUserIds);
                 return Ok(new { approval.Id, approval.QuotationId, Status = approval.Status.ToString(), approval.SubmittedAt });
             }
             catch (KeyNotFoundException ex)

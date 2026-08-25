@@ -51,6 +51,9 @@ export interface BOMItem {
   deliveryDate?: string | null;
   receivedAt?: string | null;
   remarks?: string | null;
+  /* Link to the supplier master. The two text fields below stay as the
+     snapshot of what this line agreed to — see BillOfMaterialItem. */
+  supplierId?: number | null;
   supplier?: string | null;
   // Where that supplier is — street address, store, branch. Edited beside the
   // supplier name in the per-item note panel.

@@ -206,6 +206,12 @@ builder.Services.AddScoped<converge_server.Services.Interfaces.IWonDealSheetServ
 // the product service itself (also needs its own HttpClient to download the
 // image bytes once a source URL is found).
 builder.Services.AddHttpClient<converge_server.Services.Interfaces.IProductImageSearchService, converge_server.Services.Products.GoogleProductImageSearchService>();
+
+// Product image lookups run off the request thread: creating a product returns
+// immediately and the picture arrives later. Queue is a singleton (it holds the
+// channel); the worker is the single consumer that honours the rate limit.
+builder.Services.AddSingleton<converge_server.Services.Interfaces.IProductImageQueue, converge_server.Services.Products.ProductImageQueue>();
+builder.Services.AddHostedService<converge_server.Services.Products.ProductImageWorker>();
 builder.Services.AddHttpClient<converge_server.Services.Interfaces.IProductSuggestionSearchService, converge_server.Services.Products.GoogleProductSuggestionSearchService>();
 builder.Services.AddHttpClient<converge_server.Services.Products.ProductService>();
 builder.Services.AddScoped<converge_server.Services.Interfaces.IProductService, converge_server.Services.Products.ProductService>();

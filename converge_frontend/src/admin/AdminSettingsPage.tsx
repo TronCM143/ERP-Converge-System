@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, Mail, Smartphone } from 'lucide-react';
+import { Check } from 'lucide-react';
 import PageHeader from '../shared/PageHeader';
 import { apiFetch } from '../shared/api';
-import NotificationRecipientFormModal from './NotificationRecipientFormModal';
 import './AdminSettingsPage.css';
 
 interface GoogleStatusDto {
@@ -11,31 +10,13 @@ interface GoogleStatusDto {
   email: string | null;
 }
 
-interface NotificationPreferenceDto {
-  type: string;
-  emailEnabled: boolean;
-  smsEnabled: boolean;
-}
-
-interface NotificationRecipientResponseDto {
-  id: number;
-  name: string;
-  email?: string;
-  phone?: string;
-  isActive: boolean;
-  createdAt: string;
-  preferences: NotificationPreferenceDto[];
-}
-
-interface DepartmentEmailDto {
-  department: string;
-  email: string;
-}
 
 interface UserAccountDto {
   id: number;
   username: string;
   role: string;
+  email: string | null;
+  phone: string | null;
   createdAt: string;
   isSignedIn: boolean;
 }
@@ -51,20 +32,8 @@ const ROLE_LABELS: Record<string, string> = {
   inventory: 'Inventory'
 };
 
-const DEPARTMENT_LABELS: Record<string, string> = {
-  sales: 'Sales',
-  purchasing: 'Purchasing',
-  inventory: 'Inventory'
-};
 
 export default function AdminSettingsPage() {
-  const [recipients, setRecipients] = useState<NotificationRecipientResponseDto[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [testResult, setTestResult] = useState<{ type: string; message: string } | null>(null);
-  const [departmentEmails, setDepartmentEmails] = useState<DepartmentEmailDto[]>([]);
-  const [savingDept, setSavingDept] = useState<string | null>(null);
-  const [deptSavedFlash, setDeptSavedFlash] = useState<string | null>(null);
   const [googleStatus, setGoogleStatus] = useState<GoogleStatusDto | null>(null);
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
   const [googleToast, setGoogleToast] = useState<string | null>(null);
@@ -75,6 +44,31 @@ export default function AdminSettingsPage() {
   // Peso figure at or above which a quotation needs engineer sign-off before
   // Sales can move it to Proposal. Enforced by the API; this only sets it.
   const [threshold, setThreshold] = useState('');
+  const [backfillBusy, setBackfillBusy] = useState(false);
+  const [backfillFlash, setBackfillFlash] = useState<string | null>(null);
+
+  /* Queues products missing an image. Returns as soon as they are queued - the
+     lookups run in the background at one every two seconds - so run it again to
+     work through a large catalog; it skips whatever it has already handled. */
+  const runImageBackfill = async () => {
+    setBackfillBusy(true);
+    setBackfillFlash(null);
+    try {
+      const res = await apiFetch('/api/products/images/backfill?batchSize=200', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        setBackfillFlash(data.message ?? `Queued ${data.queued} of ${data.scanned}.`);
+      } else {
+        setBackfillFlash('Could not start the backfill.');
+      }
+    } catch (err) {
+      console.error('Failed to start the image backfill:', err);
+      setBackfillFlash('Server connection error.');
+    } finally {
+      setBackfillBusy(false);
+      window.setTimeout(() => setBackfillFlash(null), 6000);
+    }
+  };
   const [savingThreshold, setSavingThreshold] = useState(false);
   const [thresholdFlash, setThresholdFlash] = useState<string | null>(null);
 
@@ -114,10 +108,69 @@ export default function AdminSettingsPage() {
     }
   };
   const [drafts, setDrafts] = useState<
-    Record<number, { username: string; password: string; confirm: string }>
+    Record<number, { username: string; password: string; confirm: string; email: string; phone: string }>
   >({});
   const [savingAccount, setSavingAccount] = useState<number | null>(null);
   const [accountFlash, setAccountFlash] = useState<{ id: number; message: string; error: boolean } | null>(null);
+
+  /* New-user row. Kept as its own bit of state rather than a modal: adding an
+     approver is a five-field job and a dialog for it would be more chrome than
+     the task deserves on a settings page this dense. */
+  const [newUser, setNewUser] = useState({ username: '', password: '', role: 'engineer', email: '', phone: '' });
+  const [addingUser, setAddingUser] = useState(false);
+  const [addFlash, setAddFlash] = useState<string | null>(null);
+
+  const addUser = async () => {
+    if (newUser.username.trim().length < 3 || newUser.password.length < 8) {
+      setAddFlash('Username needs 3+ characters and password 8+.');
+      return;
+    }
+    setAddingUser(true);
+    setAddFlash(null);
+    try {
+      const res = await apiFetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: newUser.username.trim(),
+          password: newUser.password,
+          role: newUser.role,
+          email: newUser.email.trim() || null,
+          phone: newUser.phone.trim() || null
+        })
+      });
+      if (res.ok) {
+        setNewUser({ username: '', password: '', role: 'engineer', email: '', phone: '' });
+        setAddFlash('Added.');
+        await fetchAccounts();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setAddFlash(err.error || 'Could not add that user.');
+      }
+    } catch (err) {
+      console.error('Failed to add user:', err);
+      setAddFlash('Server connection error.');
+    } finally {
+      setAddingUser(false);
+      window.setTimeout(() => setAddFlash(null), 4000);
+    }
+  };
+
+  const removeUser = async (account: UserAccountDto) => {
+    if (!window.confirm(`Remove ${account.username}? They will no longer be able to sign in or be notified.`)) return;
+    try {
+      const res = await apiFetch(`/api/admin/users/${account.id}`, { method: 'DELETE' });
+      if (res.ok) {
+        await fetchAccounts();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setAccountFlash({ id: account.id, message: err.error || 'Could not remove that user.', error: true });
+      }
+    } catch (err) {
+      console.error('Failed to remove user:', err);
+      setAccountFlash({ id: account.id, message: 'Server connection error.', error: true });
+    }
+  };
 
   const fetchAccounts = async () => {
     try {
@@ -132,7 +185,13 @@ export default function AdminSettingsPage() {
   };
 
   const draftFor = (a: UserAccountDto) =>
-    drafts[a.id] ?? { username: a.username, password: '', confirm: '' };
+    drafts[a.id] ?? {
+      username: a.username,
+      password: '',
+      confirm: '',
+      email: a.email ?? '',
+      phone: a.phone ?? ''
+    };
 
   const saveAccount = async (account: UserAccountDto) => {
     const draft = draftFor(account);
@@ -140,7 +199,11 @@ export default function AdminSettingsPage() {
     const password = draft.password;
 
     const renaming = username !== account.username;
-    if (!renaming && !password) {
+    const email = draft.email.trim();
+    const phone = draft.phone.trim();
+    const contactChanged = email !== (account.email ?? '') || phone !== (account.phone ?? '');
+
+    if (!renaming && !password && !contactChanged) {
       setAccountFlash({ id: account.id, message: 'Nothing changed.', error: true });
       return;
     }
@@ -170,13 +233,24 @@ export default function AdminSettingsPage() {
         // username, and a rename shouldn't send an empty password.
         body: JSON.stringify({
           username: renaming ? username : undefined,
-          password: password || undefined
+          password: password || undefined,
+          // Sent only when edited: null means "leave alone" server-side, so a
+          // password reset never wipes an address that was not touched.
+          email: contactChanged ? email : undefined,
+          phone: contactChanged ? phone : undefined
         })
       });
 
       if (res.ok) {
-        setDrafts((prev) => ({ ...prev, [account.id]: { username, password: '', confirm: '' } }));
-        setAccountFlash({ id: account.id, message: 'Saved — this account must sign in again.', error: false });
+        setDrafts((prev) => ({
+          ...prev,
+          [account.id]: { username, password: '', confirm: '', email, phone }
+        }));
+        setAccountFlash({
+          id: account.id,
+          message: renaming || password ? 'Saved — this account must sign in again.' : 'Saved.',
+          error: false
+        });
         await fetchAccounts();
       } else {
         const err = await res.json().catch(() => ({}));
@@ -190,54 +264,8 @@ export default function AdminSettingsPage() {
     }
   };
 
-  const fetchDepartmentEmails = async () => {
-    try {
-      const res = await apiFetch('/api/settings/department-emails');
-      if (res.ok) {
-        const data = await res.json();
-        setDepartmentEmails(Array.isArray(data) ? data : []);
-      }
-    } catch (err) {
-      console.error('Failed to load department emails:', err);
-    }
-  };
 
-  const saveDepartmentEmail = async (department: string, email: string) => {
-    try {
-      setSavingDept(department);
-      const res = await apiFetch('/api/settings/department-emails', {
-        method: 'PUT',
-        body: JSON.stringify({ department, email })
-      });
-      if (res.ok) {
-        setDeptSavedFlash(department);
-        setTimeout(() => setDeptSavedFlash(null), 2000);
-      } else {
-        const err = await res.json().catch(() => ({}));
-        window.alert(err.error || 'Failed to save department email.');
-      }
-    } catch (err) {
-      console.error('Failed to save department email:', err);
-    } finally {
-      setSavingDept(null);
-    }
-  };
 
-  const fetchRecipients = async () => {
-    try {
-      setIsLoading(true);
-      const res = await apiFetch('/api/admin/notification-recipients');
-      if (res.ok) {
-        const data = await res.json();
-        setRecipients(Array.isArray(data) ? data : []);
-      }
-    } catch (err) {
-      console.error('Failed to load recipients:', err);
-      setRecipients([]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const fetchGoogleStatus = async () => {
     try {
@@ -249,8 +277,6 @@ export default function AdminSettingsPage() {
   };
 
   useEffect(() => {
-    fetchRecipients();
-    fetchDepartmentEmails();
     fetchGoogleStatus();
     fetchAccounts();
     fetchThreshold();
@@ -296,94 +322,11 @@ export default function AdminSettingsPage() {
     }
   };
 
-  const handleDelete = async (recipientId: number) => {
-    if (!window.confirm('Delete this recipient?')) return;
 
-    try {
-      const res = await apiFetch(`/api/admin/notification-recipients/${recipientId}`, {
-        method: 'DELETE'
-      });
-      if (res.ok) {
-        setRecipients((prev) => prev.filter((r) => r.id !== recipientId));
-      }
-    } catch (err) {
-      console.error('Failed to delete recipient:', err);
-    }
-  };
-
-  const sendTestNotification = async (type: string) => {
-    try {
-      setTestResult(null);
-      const res = await apiFetch('/api/admin/notification-recipients/test', {
-        method: 'POST',
-        body: JSON.stringify({ type })
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        setTestResult({ type, message: data.message });
-        setTimeout(() => setTestResult(null), 3000);
-      }
-    } catch (err) {
-      console.error('Failed to send test notification:', err);
-      setTestResult({ type, message: 'Failed to send test notification.' });
-    }
-  };
 
   return (
     <div className="admin-settings">
       <PageHeader title="Settings" />
-
-      <div className="card">
-        <div className="panel-header">
-          <h2>Notification Recipients</h2>
-          <button className="btn btn--primary" type="button" onClick={() => setIsFormOpen(true)}>
-            + Add Recipient
-          </button>
-        </div>
-
-        {isLoading ? (
-          <div style={{ padding: '10px', textAlign: 'center', color: 'var(--muted)' }}>Loading…</div>
-        ) : recipients.length === 0 ? (
-          <div style={{ padding: '10px', textAlign: 'center', color: 'var(--muted)' }}>
-            No recipients yet. Add one to enable notifications.
-          </div>
-        ) : (
-          <div className="admin-settings__recipients-table">
-            <table className="custom-table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Email</th>
-                  <th>Phone</th>
-                  <th>Active</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recipients.map((recipient) => (
-                  <tr key={recipient.id}>
-                    <td className="admin-settings__name">{recipient.name}</td>
-                    <td className="admin-settings__email">{recipient.email || '—'}</td>
-                    <td className="admin-settings__phone">{recipient.phone || '—'}</td>
-                   
-                    <td>{recipient.isActive ? <Check className="h-4 w-4 text-emerald-600" /> : '—'}</td>
-                    <td>
-                      <button
-                        className="btn btn--small"
-                        type="button"
-                        onClick={() => handleDelete(recipient.id)}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
 
       <div className="card">
         <div className="panel-header">
@@ -426,6 +369,24 @@ export default function AdminSettingsPage() {
 
       <div className="card">
         <div className="panel-header">
+          <h2>Product Images</h2>
+        </div>
+
+        <p className="admin-settings__hint">
+          Queues products with no image (or a broken one) for an automatic lookup. Runs in the
+          background — repeat it to work through a large catalog.
+        </p>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button className="btn btn--primary" type="button" disabled={backfillBusy} onClick={runImageBackfill}>
+            {backfillBusy ? 'Queuing…' : 'Find missing images'}
+          </button>
+          {backfillFlash && <span style={{ fontSize: '11px', color: '#5b7196' }}>{backfillFlash}</span>}
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="panel-header">
           <h2>Quote Approval</h2>
         </div>
 
@@ -459,7 +420,7 @@ export default function AdminSettingsPage() {
 
       <div className="card">
         <div className="panel-header">
-          <h2>Accounts</h2>
+          <h2>Users</h2>
         </div>
 
         
@@ -470,6 +431,8 @@ export default function AdminSettingsPage() {
               <tr>
                 <th>Role</th>
                 <th>Username</th>
+                <th>Email</th>
+                <th>SMS number</th>
                 <th>New password</th>
                 <th>Confirm</th>
                 <th>Status</th>
@@ -479,8 +442,8 @@ export default function AdminSettingsPage() {
             <tbody>
               {accounts.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ padding: '10px', textAlign: 'center', color: 'var(--muted)' }}>
-                    No accounts found.
+                  <td colSpan={8} style={{ padding: '10px', textAlign: 'center', color: 'var(--muted)' }}>
+                    No users found.
                   </td>
                 </tr>
               ) : (
@@ -501,6 +464,41 @@ export default function AdminSettingsPage() {
                             setDrafts((prev) => ({
                               ...prev,
                               [account.id]: { ...draft, username: e.target.value }
+                            }))
+                          }
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="email"
+                          className="form-control"
+                          style={{ minWidth: '160px' }}
+                          placeholder="none — no emails"
+                          value={draft.email}
+                          autoComplete="off"
+                          onChange={(e) =>
+                            setDrafts((prev) => ({
+                              ...prev,
+                              [account.id]: { ...draft, email: e.target.value }
+                            }))
+                          }
+                        />
+                      </td>
+                      <td>
+                        {/* An SMS number here is the opt-in for texts: dispatch
+                            sends to whatever accounts hold the notification's
+                            role and have a number. */}
+                        <input
+                          type="tel"
+                          className="form-control"
+                          style={{ minWidth: '130px' }}
+                          placeholder="none — no SMS"
+                          value={draft.phone}
+                          autoComplete="off"
+                          onChange={(e) =>
+                            setDrafts((prev) => ({
+                              ...prev,
+                              [account.id]: { ...draft, phone: e.target.value }
                             }))
                           }
                         />
@@ -562,6 +560,14 @@ export default function AdminSettingsPage() {
                           >
                             {savingAccount === account.id ? 'Saving…' : 'Save'}
                           </button>
+                          <button
+                            className="btn btn--small"
+                            type="button"
+                            style={{ color: '#dc2626' }}
+                            onClick={() => removeUser(account)}
+                          >
+                            Remove
+                          </button>
                           {flash && (
                             <span
                               style={{
@@ -581,65 +587,65 @@ export default function AdminSettingsPage() {
             </tbody>
           </table>
         </div>
-      </div>
 
-      <div className="card">
-        <div className="panel-header">
-          <h2>Department Emails</h2>
-        </div>
-
-        <p className="admin-settings__hint">
-          One notification address per department.
-        </p>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxWidth: '440px' }}>
-          {departmentEmails.map((d) => (
-            <div key={d.department} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <label style={{ width: '78px', fontSize: '11px', fontWeight: 600, color: '#5b7196' }}>
-                {DEPARTMENT_LABELS[d.department] ?? d.department}
-              </label>
-              <input
-                type="email"
-                className="form-control"
-                style={{ flex: 1 }}
-                placeholder={`${DEPARTMENT_LABELS[d.department] ?? d.department} email…`}
-                value={d.email}
-                onChange={(e) =>
-                  setDepartmentEmails((prev) =>
-                    prev.map((x) => (x.department === d.department ? { ...x, email: e.target.value } : x))
-                  )
-                }
-              />
-              <button
-                className="btn btn--primary"
-                type="button"
-                disabled={savingDept === d.department}
-                onClick={() => saveDepartmentEmail(d.department, d.email)}
-              >
-                {deptSavedFlash === d.department ? (
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                    <Check className="h-3.5 w-3.5" /> Saved
-                  </span>
-                ) : savingDept === d.department ? (
-                  'Saving…'
-                ) : (
-                  'Save'
-                )}
-              </button>
-            </div>
-          ))}
+        {/* Adding a user is how the approver list grows: anyone with the
+            engineer or admin role and a contact detail becomes selectable in the
+            approval dialog. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '10px', flexWrap: 'wrap' }}>
+          <select
+            className="form-control"
+            style={{ width: '110px' }}
+            value={newUser.role}
+            onChange={(e) => setNewUser((p) => ({ ...p, role: e.target.value }))}
+          >
+            <option value="engineer">Engineer</option>
+            <option value="admin">Admin</option>
+            <option value="quotation">Sales</option>
+            <option value="purchasing">Purchasing</option>
+          </select>
+          <input
+            className="form-control"
+            style={{ width: '130px' }}
+            placeholder="username"
+            autoComplete="off"
+            value={newUser.username}
+            onChange={(e) => setNewUser((p) => ({ ...p, username: e.target.value }))}
+          />
+          <input
+            className="form-control"
+            style={{ width: '160px' }}
+            placeholder="email"
+            autoComplete="off"
+            value={newUser.email}
+            onChange={(e) => setNewUser((p) => ({ ...p, email: e.target.value }))}
+          />
+          <input
+            className="form-control"
+            style={{ width: '130px' }}
+            placeholder="SMS number"
+            autoComplete="off"
+            value={newUser.phone}
+            onChange={(e) => setNewUser((p) => ({ ...p, phone: e.target.value }))}
+          />
+          <input
+            className="form-control"
+            style={{ width: '130px' }}
+            type="password"
+            placeholder="password"
+            autoComplete="new-password"
+            value={newUser.password}
+            onChange={(e) => setNewUser((p) => ({ ...p, password: e.target.value }))}
+          />
+          <button className="btn btn--primary" type="button" disabled={addingUser} onClick={addUser}>
+            {addingUser ? 'Adding…' : '+ Add user'}
+          </button>
+          {addFlash && <span style={{ fontSize: '11px', color: '#5b7196' }}>{addFlash}</span>}
         </div>
       </div>
 
       
 
       <AnimatePresence>
-        {isFormOpen && (
-          <NotificationRecipientFormModal
-            onClose={() => setIsFormOpen(false)}
-            onSaved={fetchRecipients}
-          />
-        )}
       </AnimatePresence>
     </div>
   );

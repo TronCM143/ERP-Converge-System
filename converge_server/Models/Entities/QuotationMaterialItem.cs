@@ -51,6 +51,28 @@ namespace converge_server.Models.Entities
         [Column(TypeName = "decimal(18,2)")]
         public decimal DiscountAmount { get; set; }
 
+        /* Snapshot of the product's reference data, copied when the line is
+           created. The spec is explicit that a quotation uses the product's
+           information AS AT generation: a catalog edit next month must not
+           silently rewrite a quotation already sent to a client, and a product
+           later deactivated or deleted must not blank an old quote's PDF.
+           ItemName, Model and Specification already worked this way; these
+           extend the same snapshot to what the document actually renders. */
+        [MaxLength(60)]
+        public string? Sku { get; set; }
+
+        [MaxLength(100)]
+        public string? Brand { get; set; }
+
+        [MaxLength(500)]
+        public string? ImageUrl { get; set; }
+
+        [MaxLength(500)]
+        public string? DatasheetUrl { get; set; }
+
+        [MaxLength(150)]
+        public string? Manufacturer { get; set; }
+
         public int SortOrder { get; set; }
 
         [Column(TypeName = "decimal(14,2)")]

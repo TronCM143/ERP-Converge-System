@@ -13,10 +13,12 @@ namespace converge_server.Controllers
     public class ProductsController : ControllerBase
     {
         private readonly IProductService _productService;
+        private readonly IProductImageQueue _imageQueue;
         private readonly IProductSuggestionSearchService _suggestionSearchService;
 
-        public ProductsController(IProductService productService, IProductSuggestionSearchService suggestionSearchService)
+        public ProductsController(IProductService productService, IProductSuggestionSearchService suggestionSearchService, IProductImageQueue imageQueue)
         {
+            _imageQueue = imageQueue;
             _productService = productService;
             _suggestionSearchService = suggestionSearchService;
         }
@@ -87,6 +89,27 @@ namespace converge_server.Controllers
 
         // Click-to-resolve: returns the cached image immediately if one exists,
         // otherwise searches once and caches the result (found or not).
+        [HttpPost("images/backfill")]
+        [Authorize(Roles = "admin")]
+        public async Task<IActionResult> BackfillProductImages([FromQuery] int batchSize = 200, [FromQuery] bool force = false)
+        {
+            /* Returns as soon as the products are queued, not when the images
+               arrive - the work itself happens in ProductImageWorker at one
+               lookup every two seconds. Run it again to continue: the scan skips
+               what it has already handled, so repeated calls walk through the
+               catalog rather than redoing it. */
+            var (queued, scanned) = await _productService.QueueMissingProductImagesAsync(batchSize, force);
+            return Ok(new
+            {
+                queued,
+                scanned,
+                queueDepth = _imageQueue.ApproximateCount,
+                message = queued == 0
+                    ? "Nothing left to queue in this batch."
+                    : $"Queued {queued} product(s); images will appear as the worker processes them."
+            });
+        }
+
         [HttpPost("{productId:int}/image")]
         public async Task<IActionResult> ResolveProductImage(int productId)
         {

@@ -111,7 +111,7 @@ namespace converge_server.Services.Quotations
             };
         }
 
-        public async Task<QuoteApproval> SubmitAsync(int quotationId, string submittedBy)
+        public async Task<QuoteApproval> SubmitAsync(int quotationId, string submittedBy, List<int>? notifyUserIds = null)
         {
             var quotation = await _context.Quotations
                 .Include(q => q.Client)
@@ -161,8 +161,28 @@ namespace converge_server.Services.Quotations
                already committed, so it is caught and logged. */
             try
             {
-                await _dispatchService.DispatchAsync(NotificationType.QuotationApproval,
-                    "Quotation approval required", $"<p>{headline}</p>");
+                /* The subject doubles as the SMS body (see NotificationDispatchService),
+                   so it has to identify the quotation on its own - a text saying only
+                   "approval required" tells the approver nothing they can act on, and
+                   there is no HTML body to fall back to on a phone. Kept short enough
+                   to survive a single 160-character segment in the common case. */
+                var smsText = $"New quote request for approval: {quotation.QuotationNumber} from {submittedBy} for {clientName}, {quotation.GrandTotal:N0}.";
+
+                var body = $"<p>{headline}</p><p>Amount: {quotation.GrandTotal:N2}</p>";
+
+                /* Chosen recipients when the dialog supplied any, otherwise the
+                   role-based fan-out. Both paths exist on purpose: the dialog is
+                   the normal route, and a submission made any other way (an API
+                   call, a future automation) still reaches the approvers rather
+                   than silently notifying nobody. */
+                if (notifyUserIds != null && notifyUserIds.Count > 0)
+                {
+                    await _dispatchService.DispatchToUsersAsync(NotificationType.QuotationApproval, smsText, body, notifyUserIds);
+                }
+                else
+                {
+                    await _dispatchService.DispatchAsync(NotificationType.QuotationApproval, smsText, body);
+                }
             }
             catch (Exception ex)
             {
@@ -202,6 +222,30 @@ namespace converge_server.Services.Quotations
             var previousState = quotation.ApprovalState;
             quotation.ApprovalState = approve ? QuotationApprovalState.Approved : QuotationApprovalState.Rejected;
 
+            /* Approval moves the deal itself. Waiting for the salesperson to
+               drag the card again was busywork: approval IS the decision that
+               the quote may proceed, and a card sitting in Quote with an
+               "approved" quotation is a state nobody wants to see.
+
+               Done inline rather than through ClientService because that service
+               depends on THIS one for the gate - calling back into it would be a
+               circular dependency. Entering Proposal has no side effects of its
+               own (unlike Won, which books revenue, or Lost, which rejects a
+               quotation), so the stage write and its audit entry are all that is
+               needed. */
+            if (approve)
+            {
+                var client = await _context.Clients.FirstOrDefaultAsync(c => c.Id == quotation.ClientId);
+                if (client != null && client.Stage != ClientStage.Proposal && client.Stage != ClientStage.Won)
+                {
+                    var oldStage = client.Stage;
+                    client.Stage = ClientStage.Proposal;
+                    await _auditService.LogAsync("Client", client.Id.ToString(), "StageChanged", decidedBy,
+                        oldStage.ToString(), ClientStage.Proposal.ToString(),
+                        $"Moved to Proposal automatically - {quotation.QuotationNumber} approved by {decidedBy}");
+                }
+            }
+
             await _context.SaveChangesAsync();
 
             await _auditService.LogAsync("Quotation", quotation.Id.ToString(),
@@ -214,7 +258,7 @@ namespace converge_server.Services.Quotations
                 "quotation",
                 approve ? "QuotationApproved" : "QuotationRejected",
                 approve
-                    ? $"Quote #{quotation.QuotationNumber} approved by {decidedBy}."
+                    ? $"Quote #{quotation.QuotationNumber} approved by {decidedBy} — moved to Proposal."
                     : $"Quote #{quotation.QuotationNumber} rejected by {decidedBy}.",
                 approve ? null : approval.RejectionReason,
                 $"/sales/quotations?quotation={quotation.Id}");

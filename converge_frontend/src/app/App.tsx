@@ -141,11 +141,16 @@ export default function App() {
         <Route path="/purchasing/bill-of-materials/:billOfMaterialId" element={<Navigate to="/purchasing/purchase-requests?tab=bom" replace />} />
         <Route path="/purchasing/process/:purchaseRequestId" element={<Navigate to="/purchasing/purchase-requests?tab=bom" replace />} />
 
-        {/* Admin module (settings shared with sales so they can manage notification emails) */}
+        /* Settings is admin-only. It was shared with sales so they could manage
+           the department notification emails — that section no longer exists,
+           having been merged into Users, and everything left on the page (users,
+           the approval threshold, the Google account, product images) is backed
+           by admin-only endpoints. Sales could open it and then get a 403 from
+           every control on it, including an empty Users table. */
         <Route
           path="/admin/settings"
           element={
-            <RequireRole role={['admin', 'quotation']}>
+            <RequireRole role="admin">
               <AdminSettingsPage />
             </RequireRole>
           }

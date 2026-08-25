@@ -32,14 +32,34 @@ namespace converge_server.Services.Notifications
             _logger = logger;
         }
 
+        /* Who hears about what.
+
+           Notifications are addressed to ROLES, and the accounts holding those
+           roles are the recipients - see User.Email/Phone. One list of people,
+           the same list that logs in, so there is no way for a notification
+           address to exist for someone who is not a user (or to be missed
+           because nobody copied them into a second table).
+
+           Admin is on everything deliberately: it is the oversight role, and an
+           unattended notification is worse than a duplicate one. */
+        private static readonly Dictionary<NotificationType, string[]> RolesFor = new()
+        {
+            [NotificationType.StageChanged] = new[] { "admin" },
+            [NotificationType.WonApproval] = new[] { "admin", "quotation" },
+            [NotificationType.PurchaseRequestCompleted] = new[] { "admin", "purchasing" },
+            [NotificationType.QuotationApproval] = new[] { "engineer", "admin" }
+        };
+
         public async Task DispatchAsync(NotificationType type, string subject, string body, EmailAttachment? attachment = null)
         {
             try
             {
-                // Query active recipients
-                var recipients = await _context.NotificationRecipients
-                    .Where(r => r.IsActive)
-                    .Include(r => r.Preferences)
+                var roles = RolesFor.TryGetValue(type, out var mapped) ? mapped : new[] { "admin" };
+
+                var recipients = await _context.Users
+                    .AsNoTracking()
+                    .Where(u => roles.Contains(u.Role))
+                    .Select(u => new { u.Username, u.Role, u.Email, u.Phone })
                     .ToListAsync();
 
                 var emailAttempted = 0;
@@ -47,13 +67,12 @@ namespace converge_server.Services.Notifications
 
                 foreach (var recipient in recipients)
                 {
-                    // Get preference for this type; default to Email=true, SMS=false if missing
-                    var pref = recipient.Preferences.FirstOrDefault(p => p.Type == type);
-                    var emailEnabled = pref?.EmailEnabled ?? true;
-                    var smsEnabled = pref?.SmsEnabled ?? false;
-
-                    // Send email if enabled and recipient has email
-                    if (emailEnabled && !string.IsNullOrWhiteSpace(recipient.Email))
+                    /* Having the address IS the opt-in. The per-type email/SMS
+                       toggles that lived on NotificationRecipient are gone with
+                       it: they were a second thing to keep in step with the
+                       account, and "fill in a phone number to get texts" is a
+                       rule anyone can hold in their head. */
+                    if (!string.IsNullOrWhiteSpace(recipient.Email))
                     {
                         try
                         {
@@ -66,12 +85,14 @@ namespace converge_server.Services.Notifications
                         }
                     }
 
-                    // Send SMS if enabled and recipient has phone
-                    if (smsEnabled && !string.IsNullOrWhiteSpace(recipient.Phone))
+                    if (!string.IsNullOrWhiteSpace(recipient.Phone))
                     {
                         try
                         {
-                            await _smsSender.SendAsync(recipient.Phone, body);
+                            // SMS carries the subject line, not the HTML body -
+                            // a text message cannot render markup and gets
+                            // truncated long before the body would fit.
+                            await _smsSender.SendAsync(recipient.Phone, subject);
                             smsAttempted++;
                         }
                         catch (Exception ex)
@@ -98,6 +119,57 @@ namespace converge_server.Services.Notifications
             {
                 _logger.LogError(ex, "Failed to dispatch {Type} notification", type);
             }
+        }
+
+        public async Task DispatchToUsersAsync(NotificationType type, string subject, string body, List<int> userIds)
+        {
+            if (userIds == null || userIds.Count == 0)
+            {
+                _logger.LogInformation("No recipients selected for {Type}; nothing sent.", type);
+                return;
+            }
+
+            var recipients = await _context.Users
+                .AsNoTracking()
+                .Where(u => userIds.Contains(u.Id))
+                .Select(u => new { u.Id, u.Username, u.Email, u.Phone })
+                .ToListAsync();
+
+            var emails = 0;
+            var texts = 0;
+
+            foreach (var r in recipients)
+            {
+                if (!string.IsNullOrWhiteSpace(r.Email))
+                {
+                    try
+                    {
+                        await _emailSender.SendAsync(r.Email, subject, body);
+                        emails++;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to email {User}", r.Username);
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(r.Phone))
+                {
+                    try
+                    {
+                        // Subject, not body: an SMS cannot render the HTML body.
+                        await _smsSender.SendAsync(r.Phone, subject);
+                        texts++;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to text {User}", r.Username);
+                    }
+                }
+            }
+
+            await _auditService.LogAsync("Notification", type.ToString(), "NotificationSent", "system",
+                null, null, $"Dispatched {type} to {emails} email(s) and {texts} SMS(s) — chosen recipients");
         }
 
         public async Task DispatchToExplicitRecipientsAsync(NotificationType type, string subject, string body, List<string> emails, EmailAttachment? attachment = null)

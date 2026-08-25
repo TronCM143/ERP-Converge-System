@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AlertTriangle, CheckCircle2, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../shared/api';
+import QuotationPreviewModal from '../sales/quotation/QuotationPreviewModal';
 
 /* Quotation approval dashboard — the engineer's whole app.
 
@@ -63,6 +64,8 @@ export default function ApprovalDashboardPage() {
   // Request awaiting a rejection reason — rejecting always asks for one.
   const [rejecting, setRejecting] = useState<ApprovalRow | null>(null);
   const [reason, setReason] = useState('');
+  // The quotation being read before a decision.
+  const [previewing, setPreviewing] = useState<ApprovalRow | null>(null);
 
   const load = async (which = tab) => {
     setIsLoading(true);
@@ -224,12 +227,17 @@ export default function ApprovalDashboardPage() {
                   )}
 
                   <div className="mt-3 flex items-center gap-2">
-                    <a
-                      href={`/sales/quotations?quotation=${row.quotationId}`}
+                    {/* Opens the PDF preview in place. It used to link to
+                        /sales/quotations, which this role's guard rejects — the
+                        approver would have been bounced to their own dashboard
+                        rather than shown the document they are judging. */}
+                    <button
+                      type="button"
+                      onClick={() => setPreviewing(row)}
                       className="border border-zinc-700 px-3 py-1.5 text-[12px] text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-50"
                     >
                       View quotation
-                    </a>
+                    </button>
                     {row.status === 'Pending' && (
                       <>
                         <button
@@ -260,6 +268,18 @@ export default function ApprovalDashboardPage() {
           </div>
         )}
       </div>
+
+      <AnimatePresence>
+        {previewing && (
+          <QuotationPreviewModal
+            quotationId={previewing.quotationId}
+            quotationNumber={previewing.quotationNumber}
+            onClose={() => setPreviewing(null)}
+            // Reading, not sending: submission belongs to sales.
+            canSubmitForApproval={false}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Rejection reason. Required — sales cannot revise against "no". */}
       <AnimatePresence>

@@ -37,6 +37,25 @@ namespace converge_server.Models.Entities
         // been found and cached. Null means "not resolved yet".
         public string? ImageUrl { get; set; }
 
+        /* Reference material that belongs to the PRODUCT, not to whoever is
+           writing a quotation. Entered once here and pulled onto every
+           quotation line that uses this product - the spec's point being that
+           nobody should retype a datasheet link per quote. All optional: a
+           catalog row is useful long before anyone fills these in. */
+        [MaxLength(2000)]
+        public string? Description { get; set; }
+
+        [MaxLength(150)]
+        public string? Manufacturer { get; set; }
+
+        [MaxLength(500)]
+        public string? DatasheetUrl { get; set; }
+
+        [MaxLength(500)]
+        public string? ProductUrl { get; set; }
+
+        public ICollection<ProductAttachment> Attachments { get; set; } = new List<ProductAttachment>();
+
         // True once an image search has been attempted for this product,
         // regardless of outcome — prevents re-searching on every click when
         // nothing was found. Cleared only by an explicit manual refresh.

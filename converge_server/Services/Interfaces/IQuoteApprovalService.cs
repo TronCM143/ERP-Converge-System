@@ -17,7 +17,12 @@ namespace converge_server.Services.Interfaces
         /// </summary>
         Task<ApprovalGate> EvaluateClientAsync(int clientId);
 
-        Task<QuoteApproval> SubmitAsync(int quotationId, string submittedBy);
+        /// <param name="notifyUserIds">
+        /// Approvers the salesperson ticked in the dialog. They get the email and
+        /// the SMS; everyone else is left alone. Empty means nobody is contacted -
+        /// the request still exists and still shows on the dashboard.
+        /// </param>
+        Task<QuoteApproval> SubmitAsync(int quotationId, string submittedBy, List<int>? notifyUserIds = null);
         Task<QuoteApproval> DecideAsync(int approvalId, bool approve, string? rejectionReason, string decidedBy);
     }
 }

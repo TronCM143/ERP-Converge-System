@@ -78,7 +78,19 @@ namespace converge_server.Models.Entities
         [Column(TypeName = "decimal(5,2)")]
         public decimal TaxPercent { get; set; }
 
-        // Who this item is being purchased from.
+        /* Who this item is being purchased from.
+
+           SupplierId is the real link; the two text fields below are the
+           snapshot of what was agreed on this line. Both are kept on purpose -
+           renaming a supplier must not rewrite a completed purchase order, and a
+           line entered before the supplier existed as a record still has to say
+           who it was. When SupplierId is set, the text is filled from that
+           supplier at the time of writing. */
+        public int? SupplierId { get; set; }
+
+        [ForeignKey(nameof(SupplierId))]
+        public Supplier? SupplierRecord { get; set; }
+
         [MaxLength(200)]
         public string? Supplier { get; set; }
 
