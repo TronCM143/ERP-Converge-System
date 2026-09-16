@@ -1,0 +1,424 @@
+CONVERGE SYSTEM ROOT STRUCTURE
+
+Converge/
+|
++-- clear-sessions.ps1
+| PowerShell utility for clearing local session data.
+|
++-- note.txt
+| Project notes.
+|
++-- converge_frontend/
+| React and TypeScript frontend application.
+|
++-- converge_server/
+| ASP.NET Core backend API and business logic.
+|
++-- docs/
+|
++-- business-processes.md
+Documentation for roles, CRM stages, quotations,
+approval workflows, and purchasing processes.
+
+FRONTEND STRUCTURE
+
+converge_frontend/
+|
++-- index.html
+| Main HTML entry point for the Vite application.
+|
++-- package.json
+| Frontend dependencies and commands.
+| Uses React, TypeScript, Vite, Tailwind CSS, Framer Motion,
+| Recharts, SignalR, dnd-kit, Radix UI, and Lucide icons.
+|
++-- vite.config.ts
+| Vite development and build configuration.
+|
++-- tsconfig.json
+| TypeScript configuration.
+|
++-- tailwind.config.js
+| Tailwind CSS configuration.
+|
++-- postcss.config.js
+| PostCSS configuration.
+|
++-- public/
+| Static files served directly by the frontend.
+|
++-- src/
+|
++-- main.tsx
+| Frontend application bootstrap and React root.
+|
++-- globals.css
+| Global CSS and Tailwind-related styles.
+|
++-- admin/
+| Administration screens and functionality.
+| Includes settings, users, notifications, audit logs,
+| and system administration features.
+|
++-- app/
+| Application-level configuration and shared application wiring.
+|
++-- auth/
+| Login, authentication state, route protection,
+| and user session handling.
+|
++-- components/
+| Reusable UI components such as buttons, cards, dialogs,
+| forms, tables, and layout elements.
+|
++-- engineer/
+| Engineer-facing screens, primarily quotation approval workflows.
+|
++-- inventory/
+| Product catalog, product management, stock-related views,
+| and inventory screens.
+|
++-- layouts/
+| Shared page layouts, navigation, headers, sidebars,
+| and role-based application shells.
+|
++-- lib/
+| General frontend utility functions and shared libraries.
+|
++-- pages/
+| General application pages and route-level views.
+|
++-- purchasing/
+| Purchasing workflows:
+| purchase requests, bills of materials,
+| purchase orders, suppliers, and processing screens.
+|
++-- sales/
+| Sales and CRM functionality.
+| |
+| +-- crm/
+| | Customer relationship management and Kanban pipeline.
+| | Includes leads, quotations, proposals, pending approvals,
+| | won deals, lost deals, client forms, activity feeds,
+| | sales summaries, and charts.
+| |
+| +-- quotation/
+| | Quotation creation, editing, previewing,
+| | PDF generation, and quotation management.
+| |
+| +-- SalesHistoryPage.tsx
+| Sales history and reporting.
+|
++-- shared/
+| Shared services and components used by multiple modules.
+| Includes API helpers, caching, notifications,
+| activity feeds, shared dialogs, and common styles.
+|
++-- styles/
+Additional application-specific stylesheets.
+
+BACKEND STRUCTURE
+
+converge_server/
+|
++-- Program.cs
+| Backend startup and dependency injection configuration.
+| Configures:
+| - PostgreSQL through Entity Framework Core
+| - Redis or in-memory caching
+| - JWT authentication
+| - Google OAuth for Gmail access
+| - SignalR real-time communication
+| - Email and SMS providers
+| - Product image search
+| - AI quotation generation
+| - Background workers
+|
++-- converge_server.csproj
+| ASP.NET Core project definition and NuGet dependencies.
+|
++-- converge_server.slnx
+| Solution file.
+|
++-- appsettings.json
+| Default backend configuration.
+|
++-- appsettings.Development.json
+| Development-specific configuration.
+|
++-- converge_server.http
+| HTTP request examples for testing API endpoints.
+|
++-- endpoint-summary.txt
+| Summary of backend API endpoints.
+|
++-- gen-lang-client-0042965006-49a453ea06dc.json
+| Google service credentials file. This should be protected
+| and excluded from source control when appropriate.
+|
++-- Controllers/
+| HTTP API endpoints.
+| |
+| +-- AuthController.cs
+| | Login and authentication endpoints.
+| |
+| +-- ClientController.cs
+| | Client management and CRM pipeline movement.
+| |
+| +-- QuotationController.cs
+| | Quotation creation, editing, sending, PDF generation,
+| | and purchasing handoff.
+| |
+| +-- QuoteApprovalController.cs
+| | Approval submission and approval decisions.
+| |
+| +-- PurchaseRequestController.cs
+| | Purchase request management.
+| |
+| +-- PurchaseOrderController.cs
+| | Purchase order processing.
+| |
+| +-- ProductsController.cs
+| | Product catalog and product search.
+| |
+| +-- InvoicesController.cs
+| | Invoice-related operations.
+| |
+| +-- SuppliersController.cs
+| | Supplier management.
+| |
+| +-- AnalyticsController.cs
+| | Dashboard summaries and sales analytics.
+| |
+| +-- NotificationsController.cs
+| | User notification operations.
+| |
+| +-- NotificationRecipientsController.cs
+| | Notification recipient management.
+| |
+| +-- GoogleOAuthController.cs
+| | Google account connection for Gmail integration.
+| |
+| +-- OdooController.cs
+| | Read-only Odoo integration and historical sales data.
+| |
+| +-- SettingsController.cs
+| | System and business settings.
+| |
+| +-- AppSettingsController.cs
+| | Application configuration endpoints.
+| |
+| +-- UserAccountsController.cs
+| | User account administration.
+| |
+| +-- MyAccountController.cs
+| | Current-user account management.
+| |
+| +-- AuditLogController.cs
+| Audit history and activity records.
+|
++-- Data/
+| |
+| +-- AppDbContext.cs
+| | Entity Framework Core database context.
+| |
+| +-- Migrations/
+| Database schema migrations.
+|
++-- Hubs/
+| |
+| +-- NotificationHub.cs
+| SignalR hub for real-time notifications.
+|
++-- Middleware/
+| |
+| +-- SessionValidationMiddleware.cs
+| Validates user sessions and request access.
+|
++-- Models/
+| |
+| +-- Entities/
+| | Database entity classes such as clients,
+| | quotations, products, purchase requests,
+| | purchase orders, users, approvals, and notifications.
+| |
+| +-- DTOs/
+| Data transfer objects used by the API.
+|
++-- Services/
+| |
+| +-- Interfaces/
+| | Service contracts used for dependency injection.
+| |
+| +-- Auth/
+| | Authentication and login services.
+| |
+| +-- Client/
+| | CRM client and pipeline services.
+| |
+| +-- Quotation/
+| | Quotation lifecycle and approval-related services.
+| |
+| +-- PurchaseRequest/
+| | Purchase request business logic.
+| |
+| +-- PurchaseOrder/
+| | Purchase order business logic.
+| |
+| +-- BillOfMaterial/
+| | BOM creation and processing.
+| |
+| +-- Products/
+| | Product catalog, image search,
+| | suggestions, and background image processing.
+| |
+| +-- Invoicing/
+| | Invoice services.
+| |
+| +-- Notifications/
+| | Email, SMS, notification dispatch,
+| | Gmail, Resend, SMTP, and spreadsheet integrations.
+| |
+| +-- Audit/
+| | Audit logging.
+| |
+| +-- Caching/
+| | Redis and memory-cache implementation.
+| |
+| +-- Ai/
+| | AI-assisted quotation generation using Groq.
+| |
+| +-- Odoo/
+| Odoo integration services.
+|
++-- Migrations/
+| Additional or legacy Entity Framework migration files.
+|
++-- Properties/
+| ASP.NET Core launch and environment settings.
+|
++-- resources/
+| Backend resource files.
+|
++-- wwwroot/
+| Static files served by the backend.
+|
++-- bin/
+| Compiled build output.
+|
++-- obj/
+Temporary build and intermediate compiler files.
+
+SYSTEM DESCRIPTION
+
+Converge is an ERP and business operations system with four main user roles:
+
+quotation
+Manages clients, CRM opportunities, quotations, products,
+and invoices.
+
+engineer
+Reviews and decides quotation approval requests,
+subject to configured approval limits.
+
+purchasing
+Manages purchase requests, bills of materials,
+purchase orders, and suppliers.
+
+admin
+Manages users, system settings, integrations,
+notifications, and all major system functions.
+
+MAIN BUSINESS FLOW
+
+Client and CRM Pipeline:
+
+Leads
+-> Quote
+-> Proposal
+-> Pending
+-> Won
+
+A separate Lost stage records unsuccessful opportunities.
+
+Users can drag CRM cards between pipeline stages. Moving to Proposal may require
+engineer or administrator approval when the quotation exceeds the configured
+approval threshold.
+
+Moving an opportunity to Won can approve the latest sent quotation, record
+sales revenue, send notifications, and log the deal to a spreadsheet.
+
+Moving an opportunity to Lost can reject the latest sent quotation and update
+sales reporting.
+
+QUOTATION FLOW
+
+A user creates a quotation for a client using products from the catalog.
+
+Quotation features include:
+
+Draft, sent, approved, and rejected statuses.
+Automatic quotation numbering.
+Product and material line snapshots.
+Validity dates.
+PDF generation.
+AI-assisted quotation generation.
+Approval routing.
+Sending a quotation to purchasing.
+Quotation approval is separate from the commercial quotation status. An
+engineer approving a quotation does not automatically mean that the client has
+accepted it or that revenue has been recorded.
+
+APPROVAL FLOW
+
+A quotation exceeds the configured approval threshold.
+The CRM or quotation workflow submits it for approval.
+Engineers or administrators receive the request.
+The request can be approved or rejected.
+Rejections require a reason.
+Approval limits determine whether an engineer or administrator can approve.
+Notifications may be sent by email or SMS.
+Stale pending requests can be escalated by a background worker.
+PURCHASING FLOW
+
+Quotation
+-> Purchase Request
+-> Bill of Materials
+-> Purchase Order
+
+A quotation can be sent to purchasing when it exists, has material items, and
+has not already been linked to a purchase request.
+
+Material items are transferred into purchasing. Pricing and tax information
+can be taken from the originating quotation. Labor items do not participate in
+the material purchasing bridge.
+
+INTEGRATIONS
+
+The backend supports:
+
+PostgreSQL for persistent data.
+Redis for distributed caching, with in-memory caching as a fallback.
+JWT authentication.
+Google OAuth for Gmail access.
+Gmail, Resend, or SMTP email delivery.
+SMS notifications through the configured SMS provider.
+Google Sheets logging for won deals.
+SignalR for real-time notifications.
+Groq for AI-assisted quotation generation.
+Google services for product image search.
+Odoo for read-only historical sales information.
+TECHNICAL ARCHITECTURE
+
+The system uses a single repository containing two applications:
+
+Frontend:
+React + TypeScript + Vite + Tailwind CSS
+
+Backend:
+ASP.NET Core + Entity Framework Core + PostgreSQL
+
+The frontend communicates with the backend through REST API endpoints. SignalR
+is used for real-time notification events. The backend contains the main
+business rules, authorization, data persistence, integrations, background
+workers, and workflow enforcement.

@@ -10,9 +10,17 @@ namespace converge_server.Models.DTOs.Quotation
         [Required]
         public string QuotationName { get; set; } = string.Empty;
 
+        public string? ProjectType { get; set; }
+
+        public string? ProcurementType { get; set; }
+
         public string? OriginalPrompt { get; set; }
 
         public string? Notes { get; set; }
+
+        public string? EndorsedBy { get; set; }
+
+        public DateTime? EndorsementDate { get; set; }
 
         [Required]
         [MinLength(1)]

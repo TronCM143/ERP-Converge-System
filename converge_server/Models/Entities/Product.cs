@@ -37,6 +37,16 @@ namespace converge_server.Models.Entities
         // been found and cached. Null means "not resolved yet".
         public string? ImageUrl { get; set; }
 
+        /* What we pay for it, against Price which is what we charge.
+
+           Nullable on purpose: an unknown cost is a different fact from a zero
+           cost, and treating "not filled in yet" as free would report a 100%
+           margin on every un-costed line - the most dangerous possible default
+           on a screen someone approves prices from. A null cost makes the margin
+           unknown, and the approval dashboard says so. */
+        [Column(TypeName = "decimal(14,2)")]
+        public decimal? Cost { get; set; }
+
         /* Reference material that belongs to the PRODUCT, not to whoever is
            writing a quotation. Entered once here and pulled onto every
            quotation line that uses this product - the spec's point being that

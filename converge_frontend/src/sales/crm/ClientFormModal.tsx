@@ -3,6 +3,16 @@ import { motion } from 'framer-motion';
 import { X } from 'lucide-react';
 import { apiFetch } from '../../shared/api';
 import ClientFormFields, { ClientFormValues, emptyClientFormValues } from './ClientFormFields';
+/* This dialog is built from shared.css classes — modal-backdrop above all,
+   which is what makes it a centred overlay instead of an ordinary block.
+   The stylesheet used to arrive only because some OTHER component on the
+   page imported it (PageHeader / Breadcrumbs do). The CRM board uses
+   neither and every route is lazy-loaded into its own chunk, so on
+   /sales/crm the classes resolved to nothing: position:fixed was never
+   applied, the backdrop stayed in flow as a flex item of the page's root
+   row, and the dialog opened in the right-hand column beside the activity
+   rail. Import what this file uses rather than depending on a neighbour. */
+import '../../shared/shared.css';
 
 export interface ClientSummary {
   id: number;

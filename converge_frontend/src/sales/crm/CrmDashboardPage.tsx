@@ -20,6 +20,8 @@ import SalesTrendChart from './SalesTrendChart';
 import SalesOverview from './SalesOverview';
 import { CrmSummary, opportunityValue, peso } from './crmFormat';
 import { apiFetch } from '../../shared/api';
+// toast-container / toast at the bottom of this file come from here too.
+import '../../shared/shared.css';
 import { queryCache, CACHE_KEYS } from '../../shared/queryCache';
 import ClientFormModal, { ClientSummary } from './ClientFormModal';
 import KanbanCard from './KanbanCard';
@@ -29,7 +31,6 @@ import WonEmailDialog, { WonEmailCandidate } from './WonEmailDialog';
 import LossReasonDialog from './LossReasonDialog';
 import {
   AlertTriangle,
-  ArrowUpDown,
   CheckCircle2,
   PanelRightClose,
   PanelRightOpen,
@@ -136,6 +137,15 @@ export default function CrmDashboardPage() {
 
   const activeFilterCount = (minAmount.trim() !== '' ? 1 : 0) + (onlyWithQuotation ? 1 : 0);
   const isFilterActive = activeFilterCount > 0;
+
+  /* What the Filter button reports. Sort now lives inside the same popover, so
+     a non-default order has to be counted here or it becomes invisible the
+     moment the panel closes — the standalone select used to show it at all
+     times. Deliberately NOT folded into isFilterActive above: that flag also
+     decides whether an empty board reads as "no clients yet" or "nothing
+     matched", and sorting hides nothing. */
+  const isSortActive = sortBy !== 'manual';
+  const activeControlCount = activeFilterCount + (isSortActive ? 1 : 0);
 
   // Click-away closes the filter popover.
   useEffect(() => {
@@ -425,7 +435,7 @@ export default function CrmDashboardPage() {
 
         setApprovalGate({
           reason: gate.reason ?? 'approval-required',
-          message: gate.error ?? 'This quotation requires approval before it can be transferred to Proposal.',
+          message: gate.error ?? 'This quotation requires.',
           quotationId: gate.quotationId ?? null,
           quotationNumber: gate.quotationNumber ?? null,
           amount: gate.amount ?? 0,
@@ -434,7 +444,7 @@ export default function CrmDashboardPage() {
         });
         return;
       }
-
+0
       if (!res.ok) throw new Error(`Reorder failed with ${res.status}`);
 
       /* Card just landed in Won. The backend now also approves the client's
@@ -740,27 +750,41 @@ export default function CrmDashboardPage() {
               />
             </div>
 
-            {/* Filter. Only fields the API actually returns are offered —
-                salesperson, priority and follow-up date exist in the frontend
-                model but are not persisted server-side, so filtering on them
-                would silently match nothing. */}
-            <div className="relative" ref={filterRef}>
+            {/* Filter — the board's only view control, holding both what is
+                shown and the order it is shown in. Board order was a separate
+                select sitting next to this button; the two were one decision
+                ("which cards, arranged how") split across two widgets, and a
+                permanently-open select spent toolbar width on a setting that
+                is left alone most of the day.
+
+                ml-auto parks it at the far right, so the strip reads
+                action -> search on the left, view controls on the right, and
+                the popover opens from `right-0` — anchored left it would hang
+                off the edge of the page.
+
+                Only fields the API actually returns are offered — salesperson,
+                priority and follow-up date exist in the frontend model but are
+                not persisted server-side, so filtering on them would silently
+                match nothing. */}
+            <div className="relative ml-auto" ref={filterRef}>
               <button
                 type="button"
                 onClick={() => setIsFilterOpen((v) => !v)}
                 className={`inline-flex h-9 items-center gap-1.5 border px-3 text-[11px] font-bold uppercase tracking-[0.08em] transition-colors duration-150 ${
-                  isFilterActive
+                  activeControlCount > 0
                     ? 'border-orange-500 bg-orange-50 text-orange-700'
                     : 'border-zinc-700 bg-zinc-900 text-zinc-50 hover:bg-zinc-950'
                 }`}
               >
                 <SlidersHorizontal className="h-3.5 w-3.5" />
                 Filter
-                {isFilterActive && <span className="tabular-nums">({activeFilterCount})</span>}
+                {activeControlCount > 0 && (
+                  <span className="tabular-nums">({activeControlCount})</span>
+                )}
               </button>
 
               {isFilterOpen && (
-                <div className="absolute left-0 top-full z-40 mt-1 w-[230px] border border-zinc-700 bg-zinc-900 p-3 shadow-[0_8px_24px_-10px_rgba(27,47,76,0.3)]">
+                <div className="absolute right-0 top-full z-40 mt-1 w-[240px] border border-zinc-700 bg-zinc-900 p-3 shadow-[0_8px_24px_-10px_rgba(27,47,76,0.3)]">
                   <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-400">
                     Filter opportunities
                   </p>
@@ -785,38 +809,47 @@ export default function CrmDashboardPage() {
                     Only with a quotation
                   </label>
 
+                  {/* Order. Still a native select — a custom listbox here would
+                      add a second dropdown pattern for no gain. */}
+                  <div className="mb-3 border-t border-zinc-700 pt-3">
+                    <label
+                      htmlFor="crm-board-order"
+                      className="mb-1 block text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-400"
+                    >
+                      Order
+                    </label>
+                    <select
+                      id="crm-board-order"
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value as SortKey)}
+                      className="h-8 w-full border border-zinc-700 bg-zinc-900 px-2 text-[12px] font-medium text-zinc-50 focus:border-blue-600 focus:outline-none"
+                    >
+                      <option value="manual">Board order</option>
+                      <option value="updated">Recently updated</option>
+                      <option value="value">Highest value</option>
+                      <option value="lowestValue">Lowest value</option>
+                      <option value="oldest">Oldest first</option>
+                      <option value="newest">Newest first</option>
+                      <option value="name">Client name</option>
+                    </select>
+                  </div>
+
+                  {/* Resets the order along with the filters: it is one of this
+                      panel's settings now, and a reset that left the board
+                      sorted by value would look like it had not worked. */}
                   <button
                     type="button"
                     onClick={() => {
                       setMinAmount('');
                       setOnlyWithQuotation(false);
+                      setSortBy('manual');
                     }}
                     className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-zinc-50 transition-colors hover:bg-zinc-800"
                   >
-                    Clear filters
+                    Reset all
                   </button>
                 </div>
               )}
-            </div>
-
-            {/* Sort. Native select, styled square — a custom popover here would
-                add a second dropdown pattern for no gain. */}
-            <div className="relative">
-              <ArrowUpDown className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as SortKey)}
-                title="Sort"
-                className="h-9 appearance-none border border-zinc-700 bg-zinc-900 pl-8 pr-7 text-[12px] font-medium text-zinc-50 focus:border-blue-600 focus:outline-none"
-              >
-                <option value="manual">Board order</option>
-                <option value="updated">Recently updated</option>
-                <option value="value">Highest value</option>
-                <option value="lowestValue">Lowest value</option>
-                <option value="oldest">Oldest first</option>
-                <option value="newest">Newest first</option>
-                <option value="name">Client name</option>
-              </select>
             </div>
           </div>
 
@@ -863,13 +896,10 @@ export default function CrmDashboardPage() {
               >
                 {STAGES.map((stage, stageIndex) => {
                   const stageClients = filteredClients.filter((c) => c.stage === stage);
-                  const stageValue = stageClients.reduce((sum, c) => sum + opportunityValue(c), 0);
                   return (
                     <KanbanColumn
                       key={stage}
                       stage={stage}
-                      count={stageClients.length}
-                      value={stageValue}
                       isLast={stageIndex === STAGES.length - 1}
                     >
                       <SortableContext

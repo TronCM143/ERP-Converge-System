@@ -15,7 +15,7 @@ import {
   SortableTh,
   autoGrow,
   bomLineTotal,
-  bomRowTintCls,
+  bomRowBgCls,
   bomTotals,
   borderlessInputCls,
   dateTimeFmt,
@@ -447,8 +447,12 @@ export default function PurchaseOrderDetailPage() {
 
   // Header cells carry the same vertical rule as the body cells, so a column's
   // heading and its values read as one column rather than two loose stacks.
+  /* Near-opaque rather than solid: the header picks up the same frosted
+     treatment as the panel, but at 90% + its own blur so rows passing beneath
+     it are diffused into the fill instead of reading through it. Dropping much
+     below this starts to show ghost text under the column names. */
   const thCls =
-    'sticky top-0 z-10 bg-zinc-900 px-3 py-2 border-l border-zinc-800/60 text-left text-[10px] text-zinc-300 tracking-wide';
+    'sticky top-0 z-10 bg-zinc-900/90 backdrop-blur-xl px-3 py-2 border-l border-zinc-800/60 text-left text-[10px] text-zinc-300 tracking-wide';
 
   const handleDeleteItem = async (itemId: string) => {
     try {
@@ -654,7 +658,12 @@ export default function PurchaseOrderDetailPage() {
               ))}
             </datalist>
 
-            <div className="overflow-x-auto rounded-lg border border-zinc-800">
+            {/* Frosted panel. The table used to sit on a transparent
+                background, so the page's wave band ran straight through the
+                rows and competed with the figures. Blurring what is behind it
+                keeps that colour present but out of focus, which is what lets
+                the numbers read cleanly. */}
+            <div className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-900/55 backdrop-blur-xl shadow-[0_1px_3px_rgba(27,47,76,0.06)]">
               <table className="w-full text-[16px]">
                 <thead>
                   <tr>
@@ -674,7 +683,7 @@ export default function PurchaseOrderDetailPage() {
                 </thead>
                 <tbody>
                   {selectedBom
-                    ? sortBomItems(selectedBom.items, itemSort).map((item) => {
+                    ? sortBomItems(selectedBom.items, itemSort).map((item, index) => {
                         // Open by default when the panel holds anything at all — a supplier
                         // recorded earlier would otherwise be invisible behind a closed
                         // pencil, which is how the old column's data would appear lost.
@@ -685,7 +694,7 @@ export default function PurchaseOrderDetailPage() {
                         return (
                           <tr
                             key={item.id}
-                            className={`border-b border-zinc-800/60 transition-colors ${bomRowTintCls(item.status)}`}
+                            className={`border-b border-zinc-800/60 transition-colors ${bomRowBgCls(item.status, index)}`}
                           >
                             <td className="px-3 py-2 align-top">
                               <div className="relative pr-6">
@@ -946,8 +955,13 @@ export default function PurchaseOrderDetailPage() {
                           </tr>
                         );
                       })
-                    : selectedPr.items.map((item) => (
-                        <tr key={item.id} className="border-b border-zinc-800/60">
+                    : selectedPr.items.map((item, index) => (
+                        /* Same striping as the BOM branch above. These rows
+                           carry no status tint, so the stripe is all there is. */
+                        <tr
+                          key={item.id}
+                          className={`border-b border-zinc-800/60 ${bomRowBgCls(item.status, index)}`}
+                        >
                           <td className="px-3 py-2 font-medium text-zinc-50">{formatProductName(item.itemName)}</td>
                           <td className="px-3 py-2 border-l border-zinc-800/60 text-zinc-300 whitespace-nowrap">
                             {item.quantity} {item.unit}

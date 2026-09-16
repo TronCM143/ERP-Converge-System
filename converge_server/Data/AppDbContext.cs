@@ -21,6 +21,9 @@ namespace converge_server.Data
         public DbSet<AppSetting> AppSettings { get; set; }
         public DbSet<ProductAttachment> ProductAttachments { get; set; }
         public DbSet<Supplier> Suppliers { get; set; }
+        public DbSet<Invoice> Invoices { get; set; }
+        public DbSet<InvoiceItem> InvoiceItems { get; set; }
+        public DbSet<Payment> Payments { get; set; }
         public DbSet<Client> Clients { get; set; }
         public DbSet<Quotation> Quotations { get; set; }
         public DbSet<QuotationMaterialItem> QuotationMaterialItems { get; set; }

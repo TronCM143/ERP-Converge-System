@@ -22,6 +22,10 @@ namespace converge_server.Models.DTOs.Products
         [Range(0, double.MaxValue)]
         public decimal Price { get; set; }
 
+        /// <summary>What we pay. Null means not known, not zero.</summary>
+        [Range(0, double.MaxValue)]
+        public decimal? Cost { get; set; }
+
         public bool IsActive { get; set; } = true;
 
         // All optional reference data - see Product for why it lives there.

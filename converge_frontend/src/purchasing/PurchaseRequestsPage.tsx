@@ -239,6 +239,16 @@ export default function PurchaseRequestsPage() {
       <div className="shrink-0 px-4 py-3 border-b border-zinc-800 flex flex-wrap items-center gap-3">
         <h1 className="text-[15px] font-bold text-zinc-200 uppercase tracking-wide translate-y-[10px]">Bill of Materials</h1>
 
+        {/* The supplier master sits beside the work that uses it, not in admin
+            settings: purchasing owns the list and edits it while sourcing. */}
+        <button
+          type="button"
+          onClick={() => navigate('/purchasing/suppliers')}
+          className="rounded px-2 py-1 text-[12px] font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-50"
+        >
+          Suppliers
+        </button>
+
         <div className="relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500" />
           <input

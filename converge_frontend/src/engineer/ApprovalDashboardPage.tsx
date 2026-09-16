@@ -25,6 +25,37 @@ interface ApprovalRow {
   decidedBy: string | null;
   decidedAt: string | null;
   rejectionReason: string | null;
+  totalCost: number;
+  costedLines: number;
+  totalLines: number;
+  previousAmount: number | null;
+  previousRejectionReason: string | null;
+  submissionCount: number;
+}
+
+interface HistoryRow {
+  id: number;
+  status: 'Pending' | 'Approved' | 'Rejected';
+  amountAtSubmission: number;
+  submittedBy: string;
+  submittedAt: string;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  rejectionReason: string | null;
+}
+
+interface SlaReport {
+  windowDays: number;
+  decidedCount: number;
+  averageHours: number;
+  medianHours: number;
+  slowestHours: number;
+  withinOneDay: number;
+  approvedCount: number;
+  rejectedCount: number;
+  oldestPendingHours: number;
+  pendingValue: number;
+  byApprover: { approver: string; decided: number; averageHours: number }[];
 }
 
 interface ApprovalStats {
@@ -47,6 +78,15 @@ const dateTime = (v: string) =>
    data actually supports — the spec asks for "approval priority" and there is
    no priority field to read, so age stands in for it honestly rather than
    inventing a ranking. Value is shown separately on every card. */
+/* Margin from the per-line cost snapshots. Returns null when nothing is costed
+   — a margin computed from two costed lines out of nine is not a margin, and
+   printing a confident wrong number on the screen prices get approved from is
+   worse than printing nothing. */
+function margin(row: { amount: number; totalCost: number; costedLines: number }): number | null {
+  if (row.costedLines === 0 || row.amount <= 0) return null;
+  return ((row.amount - row.totalCost) / row.amount) * 100;
+}
+
 function waitPriority(submittedAt: string): { label: string; className: string } {
   const hours = (Date.now() - new Date(submittedAt).getTime()) / 3_600_000;
   if (hours >= 48) return { label: 'Overdue', className: 'bg-rose-500/10 text-rose-600' };
@@ -66,6 +106,71 @@ export default function ApprovalDashboardPage() {
   const [reason, setReason] = useState('');
   // The quotation being read before a decision.
   const [previewing, setPreviewing] = useState<ApprovalRow | null>(null);
+  // Bulk approve: rejection is never bulk — one reason across a batch looks
+  // specific and is not.
+  const [selected, setSelected] = useState<number[]>([]);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  // Full approval trail for one quotation, opened on demand.
+  const [historyFor, setHistoryFor] = useState<ApprovalRow | null>(null);
+  const [history, setHistory] = useState<HistoryRow[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  // How fast this queue is being cleared. Loaded on demand — it is a report,
+  // not something an approver needs in front of them to decide.
+  const [sla, setSla] = useState<SlaReport | null>(null);
+  const [slaOpen, setSlaOpen] = useState(false);
+
+  const openSla = async () => {
+    setSlaOpen(true);
+    if (sla) return;
+    try {
+      const res = await apiFetch('/api/approvals/sla?days=30');
+      if (res.ok) setSla(await res.json());
+    } catch (err) {
+      console.error('Failed to load the SLA report:', err);
+    }
+  };
+
+  const openHistory = async (row: ApprovalRow) => {
+    setHistoryFor(row);
+    setHistory([]);
+    setHistoryLoading(true);
+    try {
+      const res = await apiFetch(`/api/approvals/history/${row.quotationId}`);
+      if (res.ok) setHistory(await res.json());
+    } catch (err) {
+      console.error('Failed to load approval history:', err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const bulkApprove = async () => {
+    if (selected.length === 0) return;
+    setBulkBusy(true);
+    try {
+      const res = await apiFetch('/api/approvals/bulk-approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approvalIds: selected })
+      });
+      if (res.ok) {
+        const d = await res.json();
+        setToast({
+          message: `${d.approvedCount} approved${d.failed.length ? `, ${d.failed.length} failed` : ''}.`,
+          error: d.failed.length > 0
+        });
+        setSelected([]);
+        await load(tab);
+      } else {
+        setToast({ message: 'Could not approve those.', error: true });
+      }
+    } catch (err) {
+      console.error('Bulk approve failed:', err);
+      setToast({ message: 'Server connection error.', error: true });
+    } finally {
+      setBulkBusy(false);
+    }
+  };
 
   const load = async (which = tab) => {
     setIsLoading(true);
@@ -145,6 +250,13 @@ export default function ApprovalDashboardPage() {
           </div>
           <button
             type="button"
+            onClick={() => void openSla()}
+            className="border border-zinc-700 px-3 py-1.5 text-[12px] text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-50"
+          >
+            Turnaround
+          </button>
+          <button
+            type="button"
             onClick={() => void load(tab)}
             disabled={isLoading}
             className="inline-flex items-center gap-1.5 border border-zinc-700 px-3 py-1.5 text-[12px] text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-50 disabled:opacity-50"
@@ -180,6 +292,30 @@ export default function ApprovalDashboardPage() {
           ))}
         </div>
 
+        {selected.length > 0 && (
+          <div className="mb-3 flex items-center gap-3 border border-orange-500/40 bg-orange-500/5 px-3 py-2">
+            <span className="text-[12px] text-zinc-200">{selected.length} selected</span>
+            <button
+              type="button"
+              disabled={bulkBusy}
+              onClick={() => void bulkApprove()}
+              className="border border-emerald-700 bg-emerald-700 px-3 py-1 text-[12px] font-medium text-emerald-50 transition-colors hover:bg-emerald-800 disabled:opacity-50"
+            >
+              {bulkBusy ? 'Approving…' : `Approve ${selected.length}`}
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelected([])}
+              className="text-[12px] text-zinc-400 underline underline-offset-2 hover:text-zinc-200"
+            >
+              Clear
+            </button>
+            <span className="text-[11px] italic text-zinc-500">
+              Rejecting stays one at a time — each needs its own reason.
+            </span>
+          </div>
+        )}
+
         {isLoading ? (
           <p className="py-10 text-center text-[13px] italic text-zinc-500">Loading…</p>
         ) : rows.length === 0 ? (
@@ -193,6 +329,19 @@ export default function ApprovalDashboardPage() {
               return (
                 <div key={row.id} className="border border-zinc-700 bg-zinc-900 px-4 py-3">
                   <div className="flex items-baseline justify-between gap-3">
+                    <div className="flex min-w-0 items-baseline gap-2">
+                      {row.status === 'Pending' && (
+                        <input
+                          type="checkbox"
+                          className="mt-1 shrink-0"
+                          checked={selected.includes(row.id)}
+                          onChange={() =>
+                            setSelected((prev) =>
+                              prev.includes(row.id) ? prev.filter((x) => x !== row.id) : [...prev, row.id]
+                            )
+                          }
+                        />
+                      )}
                     <div className="min-w-0">
                       <p className="truncate text-[14px] font-bold text-zinc-50">
                         {row.quotationNumber}
@@ -203,8 +352,59 @@ export default function ApprovalDashboardPage() {
                         {row.itemCount === 1 ? '' : 's'}
                       </p>
                     </div>
+                    </div>
                     <p className="shrink-0 text-[15px] font-bold tabular-nums text-zinc-50">{peso(row.amount)}</p>
                   </div>
+
+                  {/* Margin sits with the amount because it is the question
+                      behind the decision. "cost unknown" is stated rather than
+                      hidden: an approver must never mistake missing data for a
+                      healthy number. */}
+                  <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px]">
+                    {(() => {
+                      const m = margin(row);
+                      if (m === null) {
+                        return <span className="text-zinc-500 italic">margin unknown — no costs recorded</span>;
+                      }
+                      const partial = row.costedLines < row.totalLines;
+                      return (
+                        <span className={m < 15 ? 'font-semibold text-rose-600' : 'font-semibold text-emerald-700'}>
+                          {m.toFixed(1)}% margin
+                          <span className="ml-1 font-normal text-zinc-500">
+                            (cost {peso(row.totalCost)}
+                            {partial && `, ${row.costedLines}/${row.totalLines} lines costed`})
+                          </span>
+                        </span>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Resubmission: what changed since the version that was
+                      rejected, so this is a comparison rather than a memory
+                      test. */}
+                  {row.submissionCount > 1 && (
+                    <div className="mt-2 border-l-2 border-amber-500 bg-amber-500/5 px-2 py-1 text-[11px]">
+                      <span className="font-semibold text-amber-700">
+                        Resubmission #{row.submissionCount}
+                      </span>
+                      {row.previousAmount != null && (
+                        <span className="ml-1.5 text-zinc-400">
+                          was {peso(row.previousAmount)}
+                          {row.previousAmount !== row.amount && (
+                            <span className={row.amount < row.previousAmount ? ' text-emerald-700' : ' text-rose-600'}>
+                              {' '}({row.amount < row.previousAmount ? '−' : '+'}
+                              {peso(Math.abs(row.amount - row.previousAmount))})
+                            </span>
+                          )}
+                        </span>
+                      )}
+                      {row.previousRejectionReason && (
+                        <p className="mt-0.5 italic text-zinc-400">
+                          Previously rejected: {row.previousRejectionReason}
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
                     <span>Submitted {dateTime(row.submittedAt)}</span>
@@ -238,6 +438,15 @@ export default function ApprovalDashboardPage() {
                     >
                       View quotation
                     </button>
+                    {row.submissionCount > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => void openHistory(row)}
+                        className="border border-zinc-700 px-3 py-1.5 text-[12px] text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-50"
+                      >
+                        History ({row.submissionCount})
+                      </button>
+                    )}
                     {row.status === 'Pending' && (
                       <>
                         <button
@@ -268,6 +477,158 @@ export default function ApprovalDashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Turnaround. The slowest request is shown next to the average because
+          an average of four hours across a month hides the one that sat for
+          three days — and that one is the deal that was lost waiting. */}
+      <AnimatePresence>
+        {slaOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+            onClick={() => setSlaOpen(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-lg border border-zinc-700 bg-zinc-950 p-4"
+            >
+              <h2 className="text-[14px] font-bold text-zinc-50">Approval turnaround</h2>
+              <p className="mt-0.5 text-[12px] text-zinc-400">
+                Last {sla?.windowDays ?? 30} days, measured from submission to decision.
+              </p>
+
+              {!sla ? (
+                <p className="py-6 text-center text-[12px] text-zinc-500">Loading…</p>
+              ) : sla.decidedCount === 0 ? (
+                <p className="py-6 text-center text-[12px] text-zinc-500">
+                  Nothing has been decided in this window yet.
+                </p>
+              ) : (
+                <>
+                  <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {[
+                      ['Decided', String(sla.decidedCount), `${sla.approvedCount} ok / ${sla.rejectedCount} back`],
+                      ['Median', `${sla.medianHours}h`, `avg ${sla.averageHours}h`],
+                      ['Slowest', `${sla.slowestHours}h`, `${sla.withinOneDay} within 1d`],
+                      ['Oldest open', sla.oldestPendingHours > 0 ? `${sla.oldestPendingHours}h` : '—', peso(sla.pendingValue)]
+                    ].map(([label, value, sub]) => (
+                      <div key={label} className="border border-zinc-800 p-2">
+                        <p className="text-[10px] uppercase tracking-wide text-zinc-500">{label}</p>
+                        <p className="text-[16px] font-bold tabular-nums text-zinc-50">{value}</p>
+                        <p className="text-[10px] text-zinc-500">{sub}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {sla.byApprover.length > 0 && (
+                    <div className="mt-3">
+                      <p className="mb-1 text-[11px] uppercase tracking-wide text-zinc-500">By approver</p>
+                      <ul className="space-y-1">
+                        {sla.byApprover.map((a) => (
+                          <li key={a.approver} className="flex justify-between text-[12px] text-zinc-300">
+                            <span>{a.approver}</span>
+                            <span className="tabular-nums text-zinc-500">
+                              {a.decided} decided · {a.averageHours}h avg
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              )}
+
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setSlaOpen(false)}
+                  className="border border-zinc-700 px-3 py-1.5 text-[12px] text-zinc-300 transition-colors hover:bg-zinc-800"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Every cycle this quotation has been through. Read-only: the trail is
+          a record, and a record you can edit answers nothing. */}
+      <AnimatePresence>
+        {historyFor && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+            onClick={() => setHistoryFor(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-lg border border-zinc-700 bg-zinc-950 p-4"
+            >
+              <h2 className="text-[14px] font-bold text-zinc-50">
+                Approval history — {historyFor.quotationNumber}
+              </h2>
+              <p className="mt-0.5 text-[12px] text-zinc-400">{historyFor.clientName}</p>
+
+              <div className="mt-3 max-h-[60vh] overflow-y-auto">
+                {historyLoading ? (
+                  <p className="py-6 text-center text-[12px] text-zinc-500">Loading…</p>
+                ) : history.length === 0 ? (
+                  <p className="py-6 text-center text-[12px] text-zinc-500">Nothing recorded.</p>
+                ) : (
+                  <ol className="space-y-2">
+                    {history.map((h, i) => (
+                      <li key={h.id} className="border-l-2 border-zinc-700 pl-3">
+                        <div className="flex items-baseline justify-between gap-3">
+                          <span className="text-[12px] font-semibold text-zinc-100">
+                            {/* Numbered from the bottom: cycle 1 is the first
+                                submission, which is how people refer to it. */}
+                            Cycle {history.length - i} · {h.status}
+                          </span>
+                          <span className="text-[11px] tabular-nums text-zinc-500">
+                            {peso(h.amountAtSubmission)}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 text-[11px] text-zinc-500">
+                          Submitted by {h.submittedBy} on {dateTime(h.submittedAt)}
+                        </p>
+                        {h.decidedAt && (
+                          <p className="text-[11px] text-zinc-500">
+                            {h.status} by {h.decidedBy ?? '—'} on {dateTime(h.decidedAt)}
+                          </p>
+                        )}
+                        {h.rejectionReason && (
+                          <p className="mt-0.5 text-[11px] italic text-rose-600">{h.rejectionReason}</p>
+                        )}
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setHistoryFor(null)}
+                  className="border border-zinc-700 px-3 py-1.5 text-[12px] text-zinc-300 transition-colors hover:bg-zinc-800"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {previewing && (

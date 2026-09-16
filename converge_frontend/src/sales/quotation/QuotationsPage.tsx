@@ -63,9 +63,14 @@ interface QuotationLaborItem {
 interface Quotation {
   id: number;
   quotationNumber: string;
+  serviceRequestNumber: string;
   quotationName: string;
+  projectType: string | null;
+  procurementType: string | null;
   originalPrompt: string | null;
   notes: string | null;
+  endorsedBy: string | null;
+  endorsementDate: string | null;
   salesPerson: string | null;
   clientId: number;
   clientName: string;

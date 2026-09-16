@@ -23,6 +23,9 @@ export interface Product {
   model?: string;
   specs: string;
   price: number;
+  /* What we pay, against price which is what we charge. Null means unknown —
+     the approval dashboard reports margin as unknown rather than assuming zero. */
+  cost?: number | null;
   isActive: boolean;
   createdAt: string;
   updatedAt?: string;

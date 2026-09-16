@@ -118,7 +118,10 @@ interface ProductSuggestion {
 export interface EditableQuotation {
   id: number;
   quotationNumber: string;
+  serviceRequestNumber: string;
   quotationName: string;
+  projectType: string | null;
+  procurementType: string | null;
   clientName: string;
   /* 'Draft' | 'Sent' | 'Approved' | 'Rejected'. This screen is the only
      quotation view there is — a finished quotation opens here too — so it needs
@@ -126,6 +129,8 @@ export interface EditableQuotation {
   status: string;
   originalPrompt: string | null;
   notes: string | null;
+  endorsedBy: string | null;
+  endorsementDate: string | null;
   salesPerson: string | null;
   materialItems: {
     productId: number | null;
@@ -144,12 +149,14 @@ export interface EditableQuotation {
   }[];
 }
 
-// Standing rate for a fresh quotation's labor field. The server holds the same
-// figure under Quotation:DefaultLaborRatePerPersonPerDay (appsettings.json) and
-// uses it for the AI budget check when a prompt asks for installation without
-// naming a rate. Different languages, so the value lives in both places — change
-// them together or the budget check will disagree with the form's totals.
-const DEFAULT_LABOR_RATE = 1560;
+/* Last-resort fallback for a fresh quotation's labour field.
+
+   The real figure lives in Settings (quotation.labor.rate) and is fetched below
+   — this constant is only what a brand-new install shows before an admin has set
+   anything, and what the form falls back to if the settings call fails. It used
+   to BE the rate, which meant an admin could change the number in Settings and
+   watch the form ignore it. */
+const FALLBACK_LABOR_RATE = 1560;
 
 // Stable per-row identity for drag-and-drop. Rows used to be keyed by array
 // index, which breaks the moment they can be reordered: the index belongs to the
@@ -158,7 +165,7 @@ const DEFAULT_LABOR_RATE = 1560;
 let nextRowId = 0;
 const newRowId = () => `row-${++nextRowId}`;
 
-const emptyProductRow = (): ProductDraftRow => ({
+const emptyProductRow = (taxPercent = 0): ProductDraftRow => ({
   id: newRowId(),
   productId: null,
   productLabel: '',
@@ -166,7 +173,9 @@ const emptyProductRow = (): ProductDraftRow => ({
   unit: 'pcs',
   unitPrice: null,
   discountAmount: 0,
-  taxPercent: 0,
+  // Seeded from the configured default so a line does not start untaxed in a
+  // company that charges tax on everything.
+  taxPercent,
   note: '',
   showNote: false
 });
@@ -247,6 +256,8 @@ export default function QuotationFormModal({
   // Form state — pre-filled from the quotation when editing.
   const existingLabor = quotation?.laborItems?.[0];
   const [quotationName, setQuotationName] = useState(quotation?.quotationName ?? '');
+  const [projectType, setProjectType] = useState(quotation?.projectType ?? '');
+  const [procurementType, setProcurementType] = useState(quotation?.procurementType ?? '');
   const [productRows, setProductRows] = useState<ProductDraftRow[]>(() =>
     quotation && quotation.materialItems.length > 0
       ? quotation.materialItems.map((mi) => ({
@@ -265,7 +276,14 @@ export default function QuotationFormModal({
   );
   const [laborPersons, setLaborPersons] = useState<number | null>(existingLabor?.persons ?? null);
   const [laborDays, setLaborDays] = useState<number | null>(existingLabor?.days ?? null);
-  const [laborRate, setLaborRate] = useState(existingLabor?.ratePerPersonPerDay ?? DEFAULT_LABOR_RATE);
+  const [laborRate, setLaborRate] = useState(existingLabor?.ratePerPersonPerDay ?? FALLBACK_LABOR_RATE);
+
+  /* Defaults from Settings, applied to NEW quotations only.
+
+     An existing quotation keeps the rate and tax it was written with — those are
+     stored on its own lines, and re-applying today's settings to a saved
+     quotation would rewrite history the moment someone opened it to read. */
+  const [defaultTaxPercent, setDefaultTaxPercent] = useState(0);
   // Set when the AI had to guess the crew size (installation requested, headcount
   // not stated), so the field can be flagged as a suggestion to confirm.
   const [laborPersonsInferred, setLaborPersonsInferred] = useState(false);
@@ -276,6 +294,38 @@ export default function QuotationFormModal({
   // is the row being kept up to date - seeded from the quotation being edited,
   // or set by the first autosave of a new one.
   const [savedQuotationId, setSavedQuotationId] = useState<number | null>(quotation?.id ?? null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const res = await apiFetch('/api/settings/app');
+        if (!res.ok || cancelled) return;
+
+        const settings = await res.json();
+
+        const rate = Number(settings['quotation.labor.rate']);
+        if (Number.isFinite(rate) && rate > 0 && !existingLabor && !quotation) {
+          setLaborRate(rate);
+        }
+
+        const tax = Number(settings['quotation.tax.rate']);
+        if (Number.isFinite(tax) && tax >= 0) {
+          setDefaultTaxPercent(tax);
+        }
+      } catch {
+        // Settings are a convenience here, not a gate: a failed fetch leaves the
+        // fallback rate in place and the quotation can still be written.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // Runs once per opened form.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [savedQuotationNumber, setSavedQuotationNumber] = useState<string | null>(
     quotation?.quotationNumber ?? null
   );
@@ -299,6 +349,10 @@ export default function QuotationFormModal({
   const [isOdooConfigured, setIsOdooConfigured] = useState<boolean | null>(null);
   const [isOdooSearching, setIsOdooSearching] = useState(false);
   const [notes, setNotes] = useState(quotation?.notes ?? '');
+  const [endorsedBy, setEndorsedBy] = useState(quotation?.endorsedBy ?? '');
+  const [endorsementDate, setEndorsementDate] = useState(
+    quotation?.endorsementDate ? quotation.endorsementDate.slice(0, 10) : ''
+  );
   // Rep who owns this sale — carried onto the PR/PO and the won-deal log.
   const [salesPerson, setSalesPerson] = useState(quotation?.salesPerson ?? '');
   const [originalPrompt, setOriginalPrompt] = useState(quotation?.originalPrompt ?? '');
@@ -390,10 +444,17 @@ export default function QuotationFormModal({
     clients.find((c) => c.name.toLowerCase() === clientQuery.trim().toLowerCase()) ??
     null;
 
-  // What the header shows: the real reference once anything has been saved,
-  // otherwise the server's preview of the number this will be given.
-  const displayQuotationNumber =
-    createdQuotation?.quotationNumber ?? savedQuotationNumber ?? previewNumber ?? 'Quotation';
+  /* The real reference once anything has been saved, otherwise the server's
+     preview of the number this will be given. Null only in the moment before
+     that preview arrives (or if the request for it failed). */
+  const quotationNumber =
+    createdQuotation?.quotationNumber ?? savedQuotationNumber ?? previewNumber ?? null;
+
+  /* Same value, but never null — the PDF filename and the dialogs that take a
+     quotationNumber prop need a string no matter what. The header does NOT use
+     this: it prints the word "Quotation" itself, and would otherwise render
+     "Quotation Quotation" during the moment the number is still unknown. */
+  const displayQuotationNumber = quotationNumber ?? 'Quotation';
 
   /* The record the PDF actions act on: the one just created, else the draft
      autosave has persisted, else the quotation this screen was opened with.
@@ -494,8 +555,12 @@ export default function QuotationFormModal({
     laborDays,
     laborRate,
     notes,
+    endorsedBy,
+    endorsementDate,
     salesPerson,
     quotationName,
+    projectType,
+    procurementType,
     originalPrompt,
     createdQuotation
   ]);
@@ -506,8 +571,12 @@ export default function QuotationFormModal({
   const buildQuotationPayload = () => ({
     clientId: selectedClient!.id,
     quotationName: quotationName.trim() || 'Untitled Quotation',
+    projectType: projectType.trim() || null,
+    procurementType: procurementType.trim() || null,
     originalPrompt: originalPrompt || null,
     notes: notes.trim() || null,
+    endorsedBy: endorsedBy.trim() || null,
+    endorsementDate: endorsementDate || null,
     salesPerson: salesPerson.trim() || null,
     materialItems: productRows
       .filter((r) => r.productId && r.quantity > 0)
@@ -1325,8 +1394,14 @@ export default function QuotationFormModal({
             below a 32px title, pushing the form itself well down the page. */}
         <div className="shrink-0 z-10 flex items-center justify-between px-6 py-3">
           <div className="flex items-baseline gap-3 min-w-0">
-            <h2 className="text-2xl font-bold text-zinc-50 tracking-[0.04em]">
-              {displayQuotationNumber}
+            {/* Labelled rather than a bare reference: "Q260701" on its own
+                says nothing about what this screen is to someone who has not
+                memorised the numbering scheme. The number is still the part
+                that identifies the record, so it keeps the full weight while
+                the label sits back a shade. */}
+            <h2 className="text-2xl font-bold text-zinc-50 tracking-[0.04em] whitespace-nowrap">
+              <span className="font-medium text-zinc-400">Quotation</span>
+              {quotationNumber ? ` ${quotationNumber}` : ''}
             </h2>
             {/* On a finished quotation the autosave line is replaced by its
                 status: nothing is being saved, and the reason the fields no
@@ -1527,6 +1602,22 @@ export default function QuotationFormModal({
                 onChange={(e) => setSalesPerson(e.target.value)}
               />
 
+              <input
+                type="text"
+                className="w-full px-3 py-2 bg-transparent text-zinc-50 placeholder-zinc-500 focus:outline-none focus:bg-zinc-700/40 transition-colors"
+                placeholder="Project type (optional)"
+                value={projectType}
+                onChange={(e) => setProjectType(e.target.value)}
+              />
+
+              <input
+                type="text"
+                className="w-full px-3 py-2 bg-transparent text-zinc-50 placeholder-zinc-500 focus:outline-none focus:bg-zinc-700/40 transition-colors"
+                placeholder="Procurement type (optional)"
+                value={procurementType}
+                onChange={(e) => setProcurementType(e.target.value)}
+              />
+
               {client ? (
                 <div className="px-3 py-2 text-zinc-300">{client.name}</div>
               ) : (
@@ -1582,6 +1673,24 @@ export default function QuotationFormModal({
                 setNotes(e.target.value);
               }}
             />
+
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="text"
+                className="min-w-0 px-3 py-2 border border-zinc-700/60 rounded-md bg-zinc-900/40 text-zinc-50 placeholder-zinc-500 focus:outline-none focus:bg-zinc-700/40 transition-colors"
+                placeholder="Endorsed by (optional)"
+                value={endorsedBy}
+                onChange={(e) => setEndorsedBy(e.target.value)}
+              />
+              <input
+                type="date"
+                className="min-w-0 px-3 py-2 border border-zinc-700/60 rounded-md bg-zinc-900/40 text-zinc-50 placeholder-zinc-500 focus:outline-none focus:bg-zinc-700/40 transition-colors"
+                aria-label="Endorsement date (optional)"
+                title="Endorsement date (optional)"
+                value={endorsementDate}
+                onChange={(e) => setEndorsementDate(e.target.value)}
+              />
+            </div>
 
             <div className="space-y-2">
               <textarea
@@ -2160,7 +2269,7 @@ export default function QuotationFormModal({
               className="m-2 h-6 w-6 flex items-center justify-center border border-dashed border-zinc-600 text-zinc-400 hover:text-zinc-50 hover:border-zinc-500 rounded transition-colors"
               type="button"
               title="Add a product row"
-              onClick={() => setProductRows((rows) => [...rows, emptyProductRow()])}
+              onClick={() => setProductRows((rows) => [...rows, emptyProductRow(defaultTaxPercent)])}
             >
               <Plus className="h-3.5 w-3.5" />
             </button>

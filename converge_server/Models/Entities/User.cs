@@ -40,6 +40,22 @@ namespace converge_server.Models.Entities
 
         public DateTime? ActiveSessionIssuedAt { get; set; }
 
+        /* The device's long-lived key back into its own session.
+
+           Only a SHA-256 hash is kept: the raw token is a credential equivalent
+           to a password, and a stolen database dump must not hand out live
+           sessions. It is rotated on every use, so a token that has already been
+           exchanged is dead - if an old one shows up, it was copied, and the
+           refusal ends the session rather than serving both holders.
+
+           One per account rather than a table of them, matching the
+           single-device rule the rest of auth already enforces. */
+        [MaxLength(100)]
+        public string? RefreshTokenHash { get; set; }
+
+        /// <summary>Absolute end of the session. Extended each time the token is rotated.</summary>
+        public DateTime? RefreshTokenExpiresAt { get; set; }
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
 }

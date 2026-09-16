@@ -73,6 +73,13 @@ namespace converge_server.Models.Entities
         [MaxLength(150)]
         public string? Manufacturer { get; set; }
 
+        /* Cost as it stood when the line was written. Margin has to be judged
+           against what the item cost THEN - a supplier price rise next quarter
+           must not retroactively turn an approved quote into a loss-maker in
+           the reports. Null where the product had no cost recorded. */
+        [Column(TypeName = "decimal(14,2)")]
+        public decimal? UnitCost { get; set; }
+
         public int SortOrder { get; set; }
 
         [Column(TypeName = "decimal(14,2)")]

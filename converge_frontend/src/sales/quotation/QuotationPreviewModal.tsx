@@ -15,7 +15,7 @@ import { apiFetch } from '../../shared/api';
 
    That also means everything the spec lists as required content — company and
    client details, quote number, date, validity, salesperson, the item table
-   with images, discounts, taxes, totals, terms, notes, signature block — is
+   with images, discounts, taxes, totals, notes, signature block — is
    whatever the PDF generator emits. Nothing is duplicated here to drift. */
 export default function QuotationPreviewModal({
   quotationId,

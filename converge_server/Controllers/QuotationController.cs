@@ -37,6 +37,16 @@ namespace converge_server.Controllers
             return Ok(response);
         }
 
+        /* Lets the editor title itself with the reference the quotation is
+           going to get, instead of the bare word "Quotation", from the moment
+           the form opens. Readable by every role that can open the editor. */
+        [HttpGet("next-number")]
+        [Authorize(Roles = "quotation,admin,engineer")]
+        public async Task<IActionResult> GetNextQuotationNumber()
+        {
+            return Ok(new { number = await _quotationService.GetNextQuotationNumberAsync() });
+        }
+
         [HttpGet("{quotationId:int}")]
         [Authorize(Roles = "quotation,admin,engineer")]
         public async Task<IActionResult> GetQuotation(int quotationId)
@@ -228,9 +238,14 @@ namespace converge_server.Controllers
             {
                 Id = quotation.Id,
                 QuotationNumber = quotation.QuotationNumber,
+                ServiceRequestNumber = quotation.ServiceRequestNumber,
                 QuotationName = quotation.QuotationName,
+                ProjectType = quotation.ProjectType,
+                ProcurementType = quotation.ProcurementType,
                 OriginalPrompt = quotation.OriginalPrompt,
                 Notes = quotation.Notes,
+                EndorsedBy = quotation.EndorsedBy,
+                EndorsementDate = quotation.EndorsementDate,
                 ClientId = quotation.ClientId,
                 ClientName = quotation.Client?.Name ?? string.Empty,
                 Status = quotation.Status.ToString(),

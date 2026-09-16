@@ -54,6 +54,11 @@ namespace converge_server.Models.Entities
 
         public DateTime? DecidedAt { get; set; }
 
+        /* When the approvers were last chased about this request. Stored so a
+           request is escalated once rather than on every sweep of the worker -
+           an approver texted every ten minutes stops reading the texts. */
+        public DateTime? EscalatedAt { get; set; }
+
         // Required by the API when rejecting — sales cannot act on "no".
         [MaxLength(1000)]
         public string? RejectionReason { get; set; }

@@ -22,6 +22,7 @@ namespace converge_server.Services.Quotations
         private readonly ICacheService _cache;
         private readonly IEmailSender _emailSender;
         private readonly IWonDealSheetService _wonDealSheetService;
+        private readonly ISalesTrackerService _salesTrackerService;
         private readonly IQuotationPdfService _pdfService;
         private readonly IUserNotificationService _userNotificationService;
 
@@ -35,6 +36,7 @@ namespace converge_server.Services.Quotations
             ICacheService cache,
             IEmailSender emailSender,
             IWonDealSheetService wonDealSheetService,
+            ISalesTrackerService salesTrackerService,
             IQuotationPdfService pdfService,
             IUserNotificationService userNotificationService)
         {
@@ -47,8 +49,75 @@ namespace converge_server.Services.Quotations
             _cache = cache;
             _emailSender = emailSender;
             _wonDealSheetService = wonDealSheetService;
+            _salesTrackerService = salesTrackerService;
             _pdfService = pdfService;
             _userNotificationService = userNotificationService;
+        }
+
+        /* Quotation validity, from Settings.
+
+           Read per creation rather than cached: quotations are created rarely,
+           and an admin who changes the period expects the very next quote to use
+           it. Falls back to 30 days when unset or unparseable, which is what the
+           system did when the number was compiled in. */
+        private async Task<int> GetValidityDaysAsync()
+        {
+            var row = await _context.AppSettings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Key == AppSettingKeys.QuotationValidityDays);
+
+            return row != null && int.TryParse(row.Value, out var days) && days > 0 ? days : 30;
+        }
+
+        /* The reference the next created quotation would be given:
+           QTN-{year}-{sequence}, the sequence restarting each calendar year.
+
+           Ordering by the string works only because the sequence is zero-padded
+           to a fixed width — "0010" sorts after "0009". If the padding ever
+           changes, this has to become a numeric comparison or the year's 10th
+           quotation starts handing out numbers that already exist. */
+        public async Task<string> GetNextQuotationNumberAsync()
+        {
+            var year = DateTime.UtcNow.Year;
+            var prefix = $"QTN-{year}-";
+
+            var lastNumber = await _context.Quotations
+                .Where(q => q.QuotationNumber.StartsWith(prefix))
+                .OrderByDescending(q => q.QuotationNumber)
+                .Select(q => q.QuotationNumber)
+                .FirstOrDefaultAsync();
+
+            var nextSequence = 1;
+            if (!string.IsNullOrEmpty(lastNumber))
+            {
+                var lastSequenceText = lastNumber.Split('-').Last();
+                if (int.TryParse(lastSequenceText, out var lastSequence))
+                {
+                    nextSequence = lastSequence + 1;
+                }
+            }
+
+            return $"{prefix}{nextSequence:0000}";
+        }
+
+        private async Task<string> GetNextServiceRequestNumberAsync()
+        {
+            var year = DateTime.UtcNow.ToString("yy");
+            var prefix = $"SR-{year}-";
+            var lastNumber = await _context.Quotations
+                .Where(q => q.ServiceRequestNumber.StartsWith(prefix))
+                .OrderByDescending(q => q.ServiceRequestNumber)
+                .Select(q => q.ServiceRequestNumber)
+                .FirstOrDefaultAsync();
+
+            var nextSequence = 1;
+            if (!string.IsNullOrEmpty(lastNumber) &&
+                int.TryParse(lastNumber.Split('-').Last(), out var lastSequence))
+            {
+                nextSequence = lastSequence + 1;
+            }
+
+            return $"{prefix}{nextSequence:000}";
         }
 
         public async Task<Models.Entities.Quotation> CreateQuotationAsync(CreateQuotationDto dto)
@@ -70,31 +139,28 @@ namespace converge_server.Services.Quotations
                 throw new InvalidOperationException($"Unknown product id(s): {string.Join(", ", missing)}");
             }
 
-            var year = DateTime.UtcNow.Year;
-            var lastNumber = await _context.Quotations
-                .Where(q => q.QuotationNumber.StartsWith($"QTN-{year}-"))
-                .OrderByDescending(q => q.QuotationNumber)
-                .Select(q => q.QuotationNumber)
-                .FirstOrDefaultAsync();
-
-            var nextSequence = 1;
-            if (!string.IsNullOrEmpty(lastNumber))
-            {
-                var lastSequenceText = lastNumber.Split('-').Last();
-                if (int.TryParse(lastSequenceText, out var lastSequence))
-                {
-                    nextSequence = lastSequence + 1;
-                }
-            }
-
             var quotation = new Models.Entities.Quotation
             {
-                QuotationNumber = $"QTN-{year}-{nextSequence:0000}",
+                /* Same call the editor's header uses to preview this reference.
+                   Shared rather than duplicated on purpose: two copies of the
+                   sequence rule would eventually disagree, and the one place it
+                   would show up is a quotation whose header said one number and
+                   whose saved record said another. */
+                QuotationNumber = await GetNextQuotationNumberAsync(),
+                ServiceRequestNumber = await GetNextServiceRequestNumberAsync(),
                 QuotationName = dto.QuotationName,
+                ProjectType = string.IsNullOrWhiteSpace(dto.ProjectType) ? null : dto.ProjectType.Trim(),
+                ProcurementType = string.IsNullOrWhiteSpace(dto.ProcurementType) ? null : dto.ProcurementType.Trim(),
                 OriginalPrompt = dto.OriginalPrompt,
                 Notes = string.IsNullOrWhiteSpace(dto.Notes) ? null : dto.Notes.Trim(),
+                EndorsedBy = string.IsNullOrWhiteSpace(dto.EndorsedBy) ? null : dto.EndorsedBy.Trim(),
+                EndorsementDate = dto.EndorsementDate?.Date,
                 ClientId = client.Id,
                 Status = QuotationStatus.Draft,
+                /* Stamped from Settings at creation and never recomputed. The
+                   admin may change the validity period tomorrow; a quote already
+                   in a client's inbox keeps the deadline it was sent with. */
+                ValidUntil = DateTime.UtcNow.Date.AddDays(await GetValidityDaysAsync()),
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -132,6 +198,7 @@ namespace converge_server.Services.Quotations
                     ImageUrl = product.ImageUrl,
                     DatasheetUrl = product.DatasheetUrl,
                     Manufacturer = product.Manufacturer,
+                    UnitCost = product.Cost,
                     Quantity = itemDto.Quantity,
                     Unit = string.IsNullOrWhiteSpace(itemDto.Unit) ? "pcs" : itemDto.Unit,
                     UnitPrice = unitPrice,
@@ -191,6 +258,8 @@ namespace converge_server.Services.Quotations
             await _cache.RemoveAsync(CacheKeys.Clients);
 
             await _auditService.LogAsync("Quotation", quotation.Id.ToString(), "Created", "system", null, quotation.QuotationNumber);
+
+            await _salesTrackerService.SyncQuotationAsync(quotation, client);
 
             /* Audited like any other stage change, so the activity log explains
                why a card moved rather than leaving it looking like someone
@@ -274,6 +343,7 @@ namespace converge_server.Services.Quotations
                     ImageUrl = product.ImageUrl,
                     DatasheetUrl = product.DatasheetUrl,
                     Manufacturer = product.Manufacturer,
+                    UnitCost = product.Cost,
                     Quantity = itemDto.Quantity,
                     Unit = string.IsNullOrWhiteSpace(itemDto.Unit) ? "pcs" : itemDto.Unit,
                     UnitPrice = unitPrice,
@@ -310,8 +380,12 @@ namespace converge_server.Services.Quotations
             var totalBeforeEdit = quotation.GrandTotal;
 
             quotation.QuotationName = dto.QuotationName;
+            quotation.ProjectType = string.IsNullOrWhiteSpace(dto.ProjectType) ? null : dto.ProjectType.Trim();
+            quotation.ProcurementType = string.IsNullOrWhiteSpace(dto.ProcurementType) ? null : dto.ProcurementType.Trim();
             quotation.OriginalPrompt = dto.OriginalPrompt;
             quotation.Notes = string.IsNullOrWhiteSpace(dto.Notes) ? null : dto.Notes.Trim();
+            quotation.EndorsedBy = string.IsNullOrWhiteSpace(dto.EndorsedBy) ? null : dto.EndorsedBy.Trim();
+            quotation.EndorsementDate = dto.EndorsementDate?.Date;
             quotation.MaterialsTotal = materialsTotal;
             quotation.LaborTotal = laborTotal;
             quotation.GrandTotal = materialsTotal + taxTotal + laborTotal;
@@ -330,6 +404,12 @@ namespace converge_server.Services.Quotations
             await _cache.RemoveAsync(CacheKeys.Clients);
 
             await _auditService.LogAsync("Quotation", quotation.Id.ToString(), "Updated", actorUsername, null, quotation.QuotationNumber);
+
+            var client = await _context.Clients.FindAsync(quotation.ClientId);
+            if (client != null)
+            {
+                await _salesTrackerService.SyncQuotationAsync(quotation, client);
+            }
 
             return quotation;
         }

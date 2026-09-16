@@ -170,6 +170,7 @@ builder.Services.AddScoped<IQuotationService, converge_server.Services.Quotation
 builder.Services.AddSingleton<converge_server.Services.Interfaces.IQuotationPdfService, converge_server.Services.Quotations.QuotationPdfService>();
 builder.Services.AddScoped<converge_server.Services.Interfaces.IQuotationGenerationService, converge_server.Services.Ai.GroqQuotationGenerationService>();
 builder.Services.AddScoped<converge_server.Services.Interfaces.IQuoteApprovalService, converge_server.Services.Quotations.QuoteApprovalService>();
+builder.Services.AddScoped<converge_server.Services.Interfaces.IInvoiceService, converge_server.Services.Invoicing.InvoiceService>();
 builder.Services.AddScoped<converge_server.Services.Interfaces.IClientService, converge_server.Services.Clients.ClientService>();
 builder.Services.AddScoped<converge_server.Services.Interfaces.IAuditService, converge_server.Services.Audit.AuditService>();
 builder.Services.AddScoped<converge_server.Services.Interfaces.INotificationRecipientService, converge_server.Services.Notifications.NotificationRecipientService>();
@@ -201,6 +202,7 @@ builder.Services.AddScoped<converge_server.Services.Interfaces.ISmsSender, conve
 builder.Services.AddScoped<converge_server.Services.Interfaces.INotificationDispatchService, converge_server.Services.Notifications.NotificationDispatchService>();
 builder.Services.AddScoped<converge_server.Services.Interfaces.IUserNotificationService, converge_server.Services.Notifications.UserNotificationService>();
 builder.Services.AddScoped<converge_server.Services.Interfaces.IWonDealSheetService, converge_server.Services.Notifications.GoogleWonDealSheetService>();
+builder.Services.AddScoped<converge_server.Services.Interfaces.ISalesTrackerService, converge_server.Services.Notifications.GoogleSalesTrackerService>();
 
 // Products: image search (Google Custom Search, no-ops until configured) +
 // the product service itself (also needs its own HttpClient to download the
@@ -212,6 +214,9 @@ builder.Services.AddHttpClient<converge_server.Services.Interfaces.IProductImage
 // channel); the worker is the single consumer that honours the rate limit.
 builder.Services.AddSingleton<converge_server.Services.Interfaces.IProductImageQueue, converge_server.Services.Products.ProductImageQueue>();
 builder.Services.AddHostedService<converge_server.Services.Products.ProductImageWorker>();
+// Chases approval requests left pending past the configured limit. Does nothing
+// until an admin sets quote.approval.escalationHours.
+builder.Services.AddHostedService<converge_server.Services.Quotations.ApprovalEscalationWorker>();
 builder.Services.AddHttpClient<converge_server.Services.Interfaces.IProductSuggestionSearchService, converge_server.Services.Products.GoogleProductSuggestionSearchService>();
 builder.Services.AddHttpClient<converge_server.Services.Products.ProductService>();
 builder.Services.AddScoped<converge_server.Services.Interfaces.IProductService, converge_server.Services.Products.ProductService>();

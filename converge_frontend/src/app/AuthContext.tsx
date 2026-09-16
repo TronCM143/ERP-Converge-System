@@ -3,7 +3,9 @@ import {
   apiFetch,
   clearStoredAuth,
   getStoredAuth,
+  refreshSession,
   setStoredAuth,
+  TOKEN_REFRESHED_EVENT,
   UNAUTHORIZED_EVENT
 } from '../shared/api';
 
@@ -21,6 +23,10 @@ interface AuthState {
 
 interface AuthContextValue extends AuthState {
   isAuthenticated: boolean;
+  /* True only during the first moments after a reload, while the session is
+     being restored. Routes wait on it rather than bouncing to /login, which is
+     what made a returning user see the login form for a frame. */
+  isRestoring: boolean;
   login: (username: string, password: string) => Promise<Role>;
   logout: () => Promise<void>;
 }
@@ -35,6 +41,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       : { token: null, username: null, role: null };
   });
 
+  /* Nothing stored means one of two things, and they look identical from here:
+     a visitor who has never signed in, or a signed-in user whose localStorage
+     was cleared while their refresh cookie is still good. Asking the server
+     costs one request and is the difference between those two people. */
+  const [isRestoring, setIsRestoring] = useState(() => getStoredAuth() === null);
+
   const logout = useCallback(async () => {
     try {
       await apiFetch('/api/auth/logout', { method: 'POST' });
@@ -43,6 +55,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     clearStoredAuth();
     setState({ token: null, username: null, role: null });
+  }, []);
+
+  useEffect(() => {
+    if (!isRestoring) return;
+
+    let cancelled = false;
+    void refreshSession().then((revived) => {
+      if (cancelled) return;
+      if (revived) {
+        const stored = getStoredAuth();
+        if (stored) {
+          setState({ token: stored.token, username: stored.username, role: stored.role as Role });
+        }
+      }
+      setIsRestoring(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+    // Runs once on mount; isRestoring only ever goes true -> false.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // A silent refresh swaps the access token underneath us; keep context in step
+  // with what is actually stored.
+  useEffect(() => {
+    const handleRefreshed = () => {
+      const stored = getStoredAuth();
+      if (stored) {
+        setState({ token: stored.token, username: stored.username, role: stored.role as Role });
+      }
+    };
+    window.addEventListener(TOKEN_REFRESHED_EVENT, handleRefreshed);
+    return () => window.removeEventListener(TOKEN_REFRESHED_EVENT, handleRefreshed);
   }, []);
 
   useEffect(() => {
@@ -58,6 +105,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const response = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      // The refresh cookie rides on this request (so a browser can reclaim its
+      // own session) and the new one comes back on the response.
+      credentials: 'same-origin',
       body: JSON.stringify({ username, password })
     });
 
@@ -76,6 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value: AuthContextValue = {
     ...state,
     isAuthenticated: Boolean(state.token),
+    isRestoring,
     login,
     logout
   };

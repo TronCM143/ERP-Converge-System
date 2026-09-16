@@ -1,10 +1,71 @@
-**/bin/
-**/obj/
-converge_server/gen-lang-client-0042965006-49a453ea06dc.json
-converge_server/.env
+# Converge ERP — one ignore file for the whole repo (server + frontend).
+#
+# Reminder: .gitignore only affects files git is not ALREADY tracking. If
+# something ignored here still shows up in `git status`, it is tracked and needs
+# `git rm --cached <path>` once to drop it from the index (the file stays on
+# disk). That is how node_modules and bin/obj came to be committed here.
+
+# ── Secrets — never commit ─────────────────────────────────────────────────
+# Real credentials live in converge_server/.env (Groq, Resend, M360 SMS, Google
+# OAuth) and the Google service-account key is a gen-lang-client-*.json.
+# appsettings.json is ignored too because connection strings are kept in it;
+# appsettings.Development.json holds only log levels and stays tracked.
+**/.env
+**/.env.*
+!**/.env.example
 converge_server/appsettings.json
 converge_frontend/appsettings.json
+**/gen-lang-client-*.json
+*.pfx
+*.p12
+*.pem
+*.key
 
-converge_frontend/node_modules/
-converge_frontend/dist/
-converge_frontend/.vite/
+# ── .NET build output ──────────────────────────────────────────────────────
+# bin/ matters for more than size: the build copies .env and the service-account
+# key next to the DLLs, so a tracked bin/ leaks them a second time.
+**/bin/
+**/obj/
+*.user
+*.suo
+.vs/
+*.userprefs
+
+# ── Node / Vite ────────────────────────────────────────────────────────────
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.tsbuildinfo
+.eslintcache
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── Editors / OS ───────────────────────────────────────────────────────────
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ── Local tooling ──────────────────────────────────────────────────────────
+# Per-developer Claude Code settings. A shared .claude/settings.json, if one is
+# ever added, is deliberately still tracked.
+.claude/settings.local.json
+
+# ── Runtime uploads ────────────────────────────────────────────────────────
+# Proof-of-transaction images and product photos are uploaded by users at run
+# time and deleted by the app (removing an attachment deletes the file), so a
+# tracked copy is a file the repository keeps resurrecting after the app has
+# thrown it away. The directories are kept via .gitkeep so a fresh clone still
+# has somewhere to write. A missing evidence file degrades gracefully — the
+# item shows "attachment file is missing, click to upload a replacement".
+converge_server/wwwroot/images/evidence/*
+converge_server/wwwroot/images/products/*
+!converge_server/wwwroot/images/evidence/.gitkeep
+!converge_server/wwwroot/images/products/.gitkeep
+
+# ── Logs ───────────────────────────────────────────────────────────────────
+*.log

@@ -17,7 +17,7 @@ namespace converge_server.Services.Clients
             {
                 "awaiting-approval" => "This quotation is awaiting approval and cannot move to Proposal yet.",
                 "rejected" => "This quotation was rejected. Revise it and resubmit for approval.",
-                _ => "This quotation requires approval before it can be transferred to Proposal."
+                _ => "."
             })
         {
             Gate = gate;

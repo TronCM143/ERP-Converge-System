@@ -1,23 +1,45 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import ERPLayout from '../layouts/ERPLayout';
 import LoginPage from '../auth/LoginPage';
-import PurchaseRequestsPage from '../purchasing/PurchaseRequestsPage';
-import PurchaseOrderDetailPage from '../purchasing/PurchaseOrderDetailPage';
-import CrmDashboardPage from '../sales/crm/CrmDashboardPage';
-import ClientProfilePage from '../sales/crm/ClientProfilePage';
-import SalesHistoryPage from '../sales/SalesHistoryPage';
-import AdminHomePage from '../admin/AdminHomePage';
-import QuotationsListPage from '../sales/quotation/QuotationsListPage';
-import ApprovalDashboardPage from '../engineer/ApprovalDashboardPage';
-import ProductsPage from '../inventory/ProductsPage';
-import AdminSettingsPage from '../admin/AdminSettingsPage';
 import RequireRole from './RequireRole';
 import { useAuth } from './AuthContext';
 import { roleHome } from './roleHome';
 
+/* Every page below this line is a separate chunk, fetched the first time it is
+   visited.
+
+   The whole app used to ship as one 1.1 MB bundle: a purchasing user downloaded
+   and parsed the CRM board, the quotation generator, recharts, dnd-kit and the
+   approval dashboard before the login form appeared, and none of it was for
+   them. Roles here use disjoint parts of the app — the engineer only ever opens
+   one page — so splitting by route is the split that matches how it is actually
+   used.
+
+   ERPLayout and LoginPage stay eagerly imported: the layout wraps every route,
+   and login is the first thing everyone sees, so deferring either would only add
+   a round trip. */
+const PurchaseRequestsPage = lazy(() => import('../purchasing/PurchaseRequestsPage'));
+const PurchaseOrderDetailPage = lazy(() => import('../purchasing/PurchaseOrderDetailPage'));
+const CrmDashboardPage = lazy(() => import('../sales/crm/CrmDashboardPage'));
+const ClientProfilePage = lazy(() => import('../sales/crm/ClientProfilePage'));
+const SalesHistoryPage = lazy(() => import('../sales/SalesHistoryPage'));
+const AdminHomePage = lazy(() => import('../admin/AdminHomePage'));
+const QuotationsListPage = lazy(() => import('../sales/quotation/QuotationsListPage'));
+const ApprovalDashboardPage = lazy(() => import('../engineer/ApprovalDashboardPage'));
+const ProductsPage = lazy(() => import('../inventory/ProductsPage'));
+const AdminSettingsPage = lazy(() => import('../admin/AdminSettingsPage'));
+const SuppliersPage = lazy(() => import('../purchasing/SuppliersPage'));
+
+/* Shown while a route's chunk downloads. Deliberately plain: a spinner that
+   appears for 80ms on a warm cache is worse than a quiet pause. */
+function RouteFallback() {
+  return <div className="p-10 text-center text-[13px] italic text-zinc-500">Loading…</div>;
+}
+
 function HomeRedirect() {
-  const { isAuthenticated, role } = useAuth();
+  const { isAuthenticated, isRestoring, role } = useAuth();
+  if (isRestoring) return <RouteFallback />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   return <Navigate to={roleHome(role!)} replace />;
 }
@@ -29,6 +51,7 @@ function LegacyClientRedirect() {
 
 export default function App() {
   return (
+    <Suspense fallback={<RouteFallback />}>
     <Routes>
       <Route path="/login" element={<LoginPage />} />
 
@@ -97,6 +120,16 @@ export default function App() {
             is now the chart in the CRM header (SalesTrendChart), and the
             month-by-month detail below still lives at /sales/history. */}
 
+        {/* The supplier master. Purchasing owns it; admin can reach it too. */}
+        <Route
+          path="/purchasing/suppliers"
+          element={
+            <RequireRole role={['purchasing', 'admin']}>
+              <SuppliersPage />
+            </RequireRole>
+          }
+        />
+
         {/* Detailed sales reporting, split off the CRM dashboard so that page
             can stay a workspace. Reached from the analytics page. */}
         <Route
@@ -141,16 +174,18 @@ export default function App() {
         <Route path="/purchasing/bill-of-materials/:billOfMaterialId" element={<Navigate to="/purchasing/purchase-requests?tab=bom" replace />} />
         <Route path="/purchasing/process/:purchaseRequestId" element={<Navigate to="/purchasing/purchase-requests?tab=bom" replace />} />
 
-        /* Settings is admin-only. It was shared with sales so they could manage
-           the department notification emails — that section no longer exists,
-           having been merged into Users, and everything left on the page (users,
-           the approval threshold, the Google account, product images) is backed
-           by admin-only endpoints. Sales could open it and then get a 403 from
-           every control on it, including an empty Users table. */
+        /* Settings is open to every signed-in role, and the PAGE decides what
+           each of them sees: everyone gets their own account (password, email,
+           SMS number), admins additionally get the organisation-wide sections.
+
+           It was admin-only for a while because the shared version showed sales
+           a page whose every control 403'd. Hiding the sections rather than the
+           page is the right fix — a user who cannot change their own password
+           has to ask an admin to do it for them. */
         <Route
           path="/admin/settings"
           element={
-            <RequireRole role="admin">
+            <RequireRole role={['admin', 'quotation', 'purchasing', 'engineer']}>
               <AdminSettingsPage />
             </RequireRole>
           }
@@ -165,5 +200,6 @@ export default function App() {
         <Route path="*" element={<HomeRedirect />} />
       </Route>
     </Routes>
+    </Suspense>
   );
 }

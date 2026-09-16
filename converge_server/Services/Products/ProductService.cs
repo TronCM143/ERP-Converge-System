@@ -102,6 +102,7 @@ namespace converge_server.Services.Products
                 DatasheetUrl = Clean(dto.DatasheetUrl),
                 ProductUrl = Clean(dto.ProductUrl),
                 Price = dto.Price,
+                Cost = dto.Cost,
                 IsActive = dto.IsActive,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -147,6 +148,7 @@ namespace converge_server.Services.Products
             product.DatasheetUrl = Clean(dto.DatasheetUrl);
             product.ProductUrl = Clean(dto.ProductUrl);
             product.Price = dto.Price;
+            product.Cost = dto.Cost;
             product.IsActive = dto.IsActive;
             product.UpdatedAt = DateTime.UtcNow;
 
@@ -512,6 +514,7 @@ namespace converge_server.Services.Products
 
         private static ProductDetailDto ToDetail(Product p) => new()
         {
+            Cost = p.Cost,
             Description = p.Description,
             Manufacturer = p.Manufacturer,
             DatasheetUrl = p.DatasheetUrl,

@@ -35,6 +35,9 @@ namespace converge_server.Models.Entities
         [MaxLength(50)]
         public string QuotationNumber { get; set; } = string.Empty;
 
+        [MaxLength(30)]
+        public string ServiceRequestNumber { get; set; } = string.Empty;
+
         [Required]
         [MaxLength(200)]
         public string QuotationName { get; set; } = string.Empty;
@@ -44,6 +47,17 @@ namespace converge_server.Models.Entities
         // Free-form quotation-level note (terms, delivery remarks, etc.)
         public string? Notes { get; set; }
 
+        [MaxLength(200)]
+        public string? ProjectType { get; set; }
+
+        [MaxLength(200)]
+        public string? ProcurementType { get; set; }
+
+        [MaxLength(200)]
+        public string? EndorsedBy { get; set; }
+
+        public DateTime? EndorsementDate { get; set; }
+
         [Required]
         public int ClientId { get; set; }
 
@@ -52,6 +66,16 @@ namespace converge_server.Models.Entities
 
         [Required]
         public QuotationStatus Status { get; set; } = QuotationStatus.Draft;
+
+        /* The date this quotation stops being an offer, stamped when it is
+           created from the validity period in Settings.
+
+           STORED, not computed from CreatedAt on the way out. The setting is
+           allowed to change, and a quote already sent to a client has to keep
+           the deadline it was sent with - recalculating would silently move a
+           deadline the client is holding us to. Null for quotations raised
+           before this existed; the PDF simply omits the line. */
+        public DateTime? ValidUntil { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

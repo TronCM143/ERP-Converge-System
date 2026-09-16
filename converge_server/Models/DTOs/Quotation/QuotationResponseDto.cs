@@ -35,9 +35,14 @@
     {
         public int Id { get; set; }
         public string QuotationNumber { get; set; } = string.Empty;
+        public string ServiceRequestNumber { get; set; } = string.Empty;
         public string QuotationName { get; set; } = string.Empty;
+        public string? ProjectType { get; set; }
+        public string? ProcurementType { get; set; }
         public string? OriginalPrompt { get; set; }
         public string? Notes { get; set; }
+        public string? EndorsedBy { get; set; }
+        public DateTime? EndorsementDate { get; set; }
         public int ClientId { get; set; }
         public string ClientName { get; set; } = string.Empty;
         public string Status { get; set; } = string.Empty;

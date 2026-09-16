@@ -13,6 +13,7 @@ namespace converge_server.Models.DTOs.Products
         public string Model { get; set; } = string.Empty;
         public string Specs { get; set; } = string.Empty;
         public decimal Price { get; set; }
+        public decimal? Cost { get; set; }
         public bool IsActive { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }

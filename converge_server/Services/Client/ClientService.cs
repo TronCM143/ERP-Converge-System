@@ -411,8 +411,22 @@ namespace converge_server.Services.Clients
            quotation for the chart to count. */
         private async Task<Quotation?> RejectLostQuotationAsync(Client client, string actorUsername, string? lossReason)
         {
+            /* Draft OR Sent, unlike the Won path which insists on Sent.
+
+               The asymmetry is real, not an oversight. Approving a draft would
+               book revenue for a quotation the client was never shown, so Won
+               requires it to have gone out. Losing one does not: deals fall
+               through before the quote is formally sent all the time — the
+               client goes elsewhere, the project is shelved — and that is
+               genuinely a lost opportunity.
+
+               Restricting this to Sent is what produced a board showing a lost
+               deal worth 37,270 next to a won/lost chart reporting nothing lost
+               at all: the card moved, the quotation stayed a draft, and the
+               chart counts rejected quotations. */
             var quotation = await _context.Quotations
-                .Where(q => q.ClientId == client.Id && q.Status == QuotationStatus.Sent)
+                .Where(q => q.ClientId == client.Id
+                            && (q.Status == QuotationStatus.Sent || q.Status == QuotationStatus.Draft))
                 .OrderByDescending(q => q.UpdatedAt)
                 .FirstOrDefaultAsync();
 

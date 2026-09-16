@@ -5,7 +5,9 @@ using System.Net;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using converge_server.Data;
 using converge_server.Models.Entities;
+using Microsoft.EntityFrameworkCore;
 using converge_server.Services.Interfaces;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Logging;
@@ -26,15 +28,47 @@ namespace converge_server.Services.Quotations
         private readonly ILogger<QuotationPdfService> _logger;
         private readonly string _logoPath;
 
-        private const string CompanyAddress = "Judge Alba St., Zone III City of Koronadal, South Cotabato";
-        private const string CompanyPhone = "(83)887-4886";
-        private const string CompanyEmail = "sales@converge.ph";
-        private const string CompanyWebsite = "www.converge.ph";
-        private const string TermsUrl = "https://convergeit-solutions-inc3.odoo.com/terms";
+        /* Fallbacks only. The live values come from AppSettings so an admin can
+           change the company phone number without a code change and a redeploy —
+           see AppSettingsController. These constants are what a fresh database
+           prints before anyone has set anything. */
+        private const string DefaultCompanyAddress = "Judge Alba St., Zone III City of Koronadal, South Cotabato";
+        private const string DefaultCompanyPhone = "(83)887-4886";
+        private const string DefaultCompanyEmail = "sales@converge.ph";
+        private const string DefaultCompanyWebsite = "www.converge.ph";
 
-        public QuotationPdfService(ILogger<QuotationPdfService> logger, IWebHostEnvironment env)
+        private string CompanyAddress = DefaultCompanyAddress;
+        private string CompanyPhone = DefaultCompanyPhone;
+        private string CompanyEmail = DefaultCompanyEmail;
+        private string CompanyWebsite = DefaultCompanyWebsite;
+
+        /* Loaded per render rather than cached: a PDF is generated rarely and an
+           admin who changes the address expects the very next document to show
+           it, not the one after a restart. */
+        private async Task LoadCompanyDetailsAsync(AppDbContext context)
+        {
+            var stored = await context.AppSettings
+                .AsNoTracking()
+                .ToDictionaryAsync(x => x.Key, x => x.Value);
+
+            string Get(string key, string fallback) =>
+                stored.TryGetValue(key, out var v) && !string.IsNullOrWhiteSpace(v) ? v : fallback;
+
+            CompanyAddress = Get(AppSettingKeys.CompanyAddress, DefaultCompanyAddress);
+            CompanyPhone = Get(AppSettingKeys.CompanyPhone, DefaultCompanyPhone);
+            CompanyEmail = Get(AppSettingKeys.CompanyEmail, DefaultCompanyEmail);
+            CompanyWebsite = Get(AppSettingKeys.CompanyWebsite, DefaultCompanyWebsite);
+            /* No terms line is rendered any more, so company.terms.url is not
+               read here. The key and its stored value are left in place so the
+               link can be restored without anyone re-entering it. */
+        }
+
+        private readonly IServiceScopeFactory? _dbFactory;
+
+        public QuotationPdfService(ILogger<QuotationPdfService> logger, IWebHostEnvironment env, IServiceScopeFactory? dbFactory = null)
         {
             _logger = logger;
+            _dbFactory = dbFactory;
             _logoPath = Path.Combine(env.ContentRootPath, "resources", "CSiLogo_web.png");
         }
 
@@ -93,6 +127,22 @@ namespace converge_server.Services.Quotations
 
         public async Task<byte[]> GeneratePdfAsync(Models.Entities.Quotation quotation)
         {
+            // Company details come from settings; a failure to read them must not
+            // stop a quotation printing, so it falls back to the constants.
+            try
+            {
+                if (_dbFactory != null)
+                {
+                    using var scope = _dbFactory.CreateScope();
+                    var ctx = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                    await LoadCompanyDetailsAsync(ctx);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not load company settings for the quotation PDF; using defaults.");
+            }
+
             var html = BuildHtml(quotation, GetLogoDataUri());
             var browser = await GetBrowserAsync();
 
@@ -130,7 +180,9 @@ namespace converge_server.Services.Quotations
 
         private static string Esc(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
 
-        private static string BuildHtml(Models.Entities.Quotation quotation, string logoDataUri)
+        // Not static: it reads the company details loaded from settings for
+        // this render (see LoadCompanyDetailsAsync).
+        private string BuildHtml(Models.Entities.Quotation quotation, string logoDataUri)
         {
             var client = quotation.Client;
 
@@ -198,6 +250,18 @@ namespace converge_server.Services.Quotations
 
             var quotationDate = quotation.CreatedAt.ToString("MM/dd/yyyy");
 
+            /* Validity, from the date stamped when the quotation was created.
+               Omitted entirely for quotations raised before the field existed -
+               printing "Valid until 01/01/0001" would be worse than saying
+               nothing, and inventing one from today would move a deadline the
+               client already holds. */
+            var validityBlock = quotation.ValidUntil == null
+                ? string.Empty
+                : $@"<div>
+          <div style=""font-size:11px;font-weight:700;color:#1f6fb2;"">Valid Until</div>
+          <div style=""font-size:13px;"">{quotation.ValidUntil.Value:MM/dd/yyyy}</div>
+        </div>";
+
             return $@"
 <!DOCTYPE html>
 <html>
@@ -241,6 +305,7 @@ namespace converge_server.Services.Quotations
           <div style=""font-size:11px;font-weight:700;color:#1f6fb2;"">Status</div>
           <div style=""font-size:13px;"">{Esc(quotation.Status.ToString())}</div>
         </div>
+        {validityBlock}
       </div>
 
       <table style=""width:100%;border-collapse:collapse;font-size:13px;"">
@@ -277,10 +342,6 @@ namespace converge_server.Services.Quotations
             <span>Total</span><span>{Peso(total)}</span>
           </div>
         </div>
-      </div>
-
-      <div style=""margin-top:36px;font-size:12px;"">
-        Terms &amp; Conditions: <span style=""color:#1f6fb2"">{Esc(TermsUrl)}</span>
       </div>
     </div>
 

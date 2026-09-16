@@ -114,7 +114,7 @@ export const documentTypeShort = (pr: PurchaseRequest) =>
    from dead ones without reading the status column. Pending (and the in-flight
    Ordered/Received) stay untinted — colouring every state would leave nothing
    for the eye to catch on. */
-export const bomRowTintCls = (status: string) => {
+const bomRowTintCls = (status: string) => {
   switch (status) {
     case 'Ready':
       return 'bg-emerald-500/10';
@@ -126,6 +126,21 @@ export const bomRowTintCls = (status: string) => {
       return '';
   }
 };
+
+/* The background for one table row: the status tint where there is one,
+   otherwise a zebra stripe.
+
+   The precedence matters and is why this is computed in JS rather than with a
+   CSS `tr:nth-child(even)` rule. That selector scores (0,1,2) against a
+   Tailwind utility's (0,1,0), so a stripe rule would out-specify the status
+   tint and quietly erase the Ready/Cancelled colouring the table depends on.
+   Returning one class per row makes the status win by construction.
+
+   The two stripe values are the palette's white (900) and page grey (950) at
+   partial alpha, so they tint the frosted panel underneath rather than
+   painting over it — the blur has to stay visible through the rows. */
+export const bomRowBgCls = (status: string, index: number) =>
+  bomRowTintCls(status) || (index % 2 === 0 ? 'bg-zinc-900/50' : 'bg-zinc-950/70');
 
 // Grow a note/notes textarea with its content instead of scrolling inside it.
 export const autoGrow = (el: HTMLTextAreaElement | null) => {

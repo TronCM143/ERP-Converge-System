@@ -1,0 +1,131 @@
+/* Compact overrides for the Add/Edit Product dialog.
+
+   The shared form styles are sized for a page, not for a dialog with eleven
+   fields in it: 16px between groups, 8px under every label and 11px of input
+   padding added up to ~80px per row, so the form ran past the bottom of a
+   laptop screen and had to be scrolled to reach Save.
+
+   Everything here is scoped to .product-form-modal so no other form changes.
+   Paired with .modal-panel for specificity — these have to beat shared.css
+   regardless of which order the two stylesheets land in the bundle. */
+
+.modal-panel.product-form-modal {
+  /* Column layout so the field area is the only part that scrolls: the title
+     and the Save/Cancel bar stay put. Previously the whole panel scrolled,
+     which is how you could end up looking at a form with no visible Save
+     button. overflow: hidden is what keeps the body's scroll inside. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  max-height: 88vh;
+  padding: 18px 20px;
+}
+
+.product-form-modal .panel-header {
+  flex-shrink: 0;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+}
+
+.product-form-modal form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  /* Without min-height:0 a flex child refuses to shrink below its content,
+     and the body would never scroll — the panel would just grow instead. */
+  min-height: 0;
+}
+
+.product-form-modal__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* Room for focus rings, which are drawn outside the input's box. */
+  padding-right: 2px;
+}
+
+/* Row spacing now comes from the grid gap alone. */
+.product-form-modal .form-group {
+  margin-bottom: 0;
+}
+
+.product-form-modal .form-group label {
+  font-size: 10px;
+  margin-bottom: 3px;
+  letter-spacing: 0.04em;
+}
+
+.product-form-modal .form-control {
+  padding: 6px 9px;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+/* The field grid. Four columns divide evenly at this width and let the long
+   fields span two, so eleven inputs sit on four rows instead of eight. */
+.product-form-modal__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px 12px;
+  /* Fields in a row are different heights (a 2-row textarea beside a single
+     input); top-align them rather than stretching the short one. */
+  align-items: start;
+}
+
+.product-form-modal__span2 {
+  grid-column: span 2;
+}
+
+.product-form-modal__full {
+  grid-column: 1 / -1;
+}
+
+/* Specs are the one unbounded part of this form — a product with a dozen of
+   them used to make the dialog arbitrarily tall. Capped and scrolled instead,
+   so the dialog's height no longer depends on the data in it. */
+.product-form-modal__specs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 132px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.product-form-modal__spec-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.product-form-modal .btn-remove-item {
+  padding: 2px 4px;
+  line-height: 0;
+}
+
+.product-form-modal__add-spec {
+  width: 100%;
+  border-style: dashed;
+  margin-top: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.product-form-modal .action-bar {
+  flex-shrink: 0;
+  margin-top: 12px;
+  padding-top: 10px;
+}
+
+/* The error message is a flex child of the form, deliberately outside the
+   scrolling body so a validation failure is visible without scrolling back
+   up. flex-shrink guards it from being squeezed to nothing when the body
+   wants the space. */
+.product-form-modal .toast {
+  flex-shrink: 0;
+}

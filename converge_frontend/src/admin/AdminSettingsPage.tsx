@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Check } from 'lucide-react';
 import PageHeader from '../shared/PageHeader';
 import { apiFetch } from '../shared/api';
+import { useAuth } from '../app/AuthContext';
 import './AdminSettingsPage.css';
 
 interface GoogleStatusDto {
@@ -34,6 +35,109 @@ const ROLE_LABELS: Record<string, string> = {
 
 
 export default function AdminSettingsPage() {
+  /* Everyone sees My Account; only admins see the organisation-wide sections.
+     Gating the sections rather than the page is what lets a salesperson change
+     their own password without asking someone. */
+  const { role, username } = useAuth();
+  const isAdmin = role === 'admin';
+
+  // ── My account ────────────────────────────────────────────────────────────
+  const [me, setMe] = useState<{ email: string; phone: string }>({ email: '', phone: '' });
+  const [pw, setPw] = useState({ current: '', next: '', confirm: '' });
+  const [savingMe, setSavingMe] = useState(false);
+  const [meFlash, setMeFlash] = useState<{ message: string; error: boolean } | null>(null);
+
+  const fetchMe = async () => {
+    try {
+      const res = await apiFetch('/api/me');
+      if (res.ok) {
+        const d = await res.json();
+        setMe({ email: d.email ?? '', phone: d.phone ?? '' });
+      }
+    } catch (err) {
+      console.error('Failed to load your account:', err);
+    }
+  };
+
+  const saveMe = async () => {
+    const changingPassword = pw.next.length > 0;
+    if (changingPassword) {
+      if (pw.next.length < 8) {
+        setMeFlash({ message: 'New password needs at least 8 characters.', error: true });
+        return;
+      }
+      if (pw.next !== pw.confirm) {
+        setMeFlash({ message: 'The new passwords do not match.', error: true });
+        return;
+      }
+      if (!pw.current) {
+        setMeFlash({ message: 'Enter your current password to change it.', error: true });
+        return;
+      }
+    }
+
+    setSavingMe(true);
+    setMeFlash(null);
+    try {
+      const res = await apiFetch('/api/me', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: me.email,
+          phone: me.phone,
+          currentPassword: changingPassword ? pw.current : undefined,
+          newPassword: changingPassword ? pw.next : undefined
+        })
+      });
+
+      if (res.ok) {
+        const d = await res.json();
+        setPw({ current: '', next: '', confirm: '' });
+        setMeFlash({
+          message: d.signedOut
+            ? 'Saved — you will need to sign in again with your new password.'
+            : 'Saved.',
+          error: false
+        });
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setMeFlash({ message: err.error || 'Could not save.', error: true });
+      }
+    } catch (err) {
+      console.error('Failed to save your account:', err);
+      setMeFlash({ message: 'Server connection error.', error: true });
+    } finally {
+      setSavingMe(false);
+    }
+  };
+
+  // ── Organisation settings (admin writes, everyone reads) ──────────────────
+  const [appSettings, setAppSettings] = useState<Record<string, string>>({});
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+
+  const fetchAppSettings = async () => {
+    try {
+      const res = await apiFetch('/api/settings/app');
+      if (res.ok) setAppSettings(await res.json());
+    } catch (err) {
+      console.error('Failed to load settings:', err);
+    }
+  };
+
+  const saveAppSetting = async (key: string) => {
+    setSavingKey(key);
+    try {
+      await apiFetch('/api/settings/app', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key, value: appSettings[key] ?? '' })
+      });
+    } catch (err) {
+      console.error('Failed to save setting:', err);
+    } finally {
+      setSavingKey(null);
+    }
+  };
   const [googleStatus, setGoogleStatus] = useState<GoogleStatusDto | null>(null);
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
   const [googleToast, setGoogleToast] = useState<string | null>(null);
@@ -278,8 +382,12 @@ export default function AdminSettingsPage() {
 
   useEffect(() => {
     fetchGoogleStatus();
-    fetchAccounts();
-    fetchThreshold();
+    fetchMe();
+    fetchAppSettings();
+    if (role === 'admin') {
+      fetchAccounts();
+      fetchThreshold();
+    }
 
     // Landed back here from the Google consent redirect.
     const params = new URLSearchParams(window.location.search);
@@ -328,6 +436,131 @@ export default function AdminSettingsPage() {
     <div className="admin-settings">
       <PageHeader title="Settings" />
 
+      {/* Everyone's own account. First on the page because it is the only
+          section most users will ever need. */}
+      <div className="card">
+        <div className="panel-header">
+          <h2>My Account</h2>
+        </div>
+
+        <p className="admin-settings__hint">
+          Signed in as <strong>{username}</strong> ({role}). Your email and SMS number are where the
+          system reaches you.
+        </p>
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px', maxWidth: '640px' }}>
+          <input
+            className="form-control"
+            style={{ width: '190px' }}
+            type="email"
+            placeholder="email"
+            value={me.email}
+            onChange={(e) => setMe((p) => ({ ...p, email: e.target.value }))}
+          />
+          <input
+            className="form-control"
+            style={{ width: '150px' }}
+            type="tel"
+            placeholder="SMS number"
+            value={me.phone}
+            onChange={(e) => setMe((p) => ({ ...p, phone: e.target.value }))}
+          />
+        </div>
+
+        <p className="admin-settings__hint" style={{ marginTop: '10px' }}>
+          To change your password, enter your current one first.
+        </p>
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px', maxWidth: '640px' }}>
+          <input
+            className="form-control"
+            style={{ width: '150px' }}
+            type="password"
+            autoComplete="current-password"
+            placeholder="current password"
+            value={pw.current}
+            onChange={(e) => setPw((p) => ({ ...p, current: e.target.value }))}
+          />
+          <input
+            className="form-control"
+            style={{ width: '150px' }}
+            type="password"
+            autoComplete="new-password"
+            placeholder="new password"
+            value={pw.next}
+            onChange={(e) => setPw((p) => ({ ...p, next: e.target.value }))}
+          />
+          <input
+            className="form-control"
+            style={{
+              width: '150px',
+              borderColor: pw.next && pw.confirm && pw.next !== pw.confirm ? '#dc2626' : undefined
+            }}
+            type="password"
+            autoComplete="new-password"
+            placeholder="repeat it"
+            disabled={!pw.next}
+            value={pw.confirm}
+            onChange={(e) => setPw((p) => ({ ...p, confirm: e.target.value }))}
+          />
+          <button className="btn btn--primary" type="button" disabled={savingMe} onClick={saveMe}>
+            {savingMe ? 'Saving…' : 'Save'}
+          </button>
+          {meFlash && (
+            <span style={{ fontSize: '11px', color: meFlash.error ? '#dc2626' : '#16a34a' }}>
+              {meFlash.message}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Printed on every quotation PDF. These were compiled-in constants, so
+          changing a phone number meant a redeploy. */}
+      {isAdmin && (
+        <div className="card">
+          <div className="panel-header">
+            <h2>Company Details</h2>
+          </div>
+
+          <p className="admin-settings__hint">Shown in the header of every quotation PDF.</p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxWidth: '560px' }}>
+            {[
+              ['company.name', 'Name'],
+              ['company.address', 'Address'],
+              ['company.phone', 'Phone'],
+              ['company.email', 'Email'],
+              ['company.website', 'Website'],
+              ['company.terms.url', 'Terms URL'],
+              ['quotation.labor.rate', 'Labor rate / day'],
+              ['quotation.validity.days', 'Quote valid (days)'],
+              ['quotation.tax.rate', 'Default tax %']
+            ].map(([key, label]) => (
+              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <label style={{ width: '130px', fontSize: '11px', fontWeight: 600, color: '#5b7196' }}>
+                  {label}
+                </label>
+                <input
+                  className="form-control"
+                  style={{ flex: 1 }}
+                  value={appSettings[key] ?? ''}
+                  onChange={(e) => setAppSettings((p) => ({ ...p, [key]: e.target.value }))}
+                />
+                <button
+                  className="btn"
+                  type="button"
+                  disabled={savingKey === key}
+                  onClick={() => saveAppSetting(key)}
+                >
+                  {savingKey === key ? '…' : 'Save'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {isAdmin && (
       <div className="card">
         <div className="panel-header">
           <h2>Google Account (Gmail Sending)</h2>
@@ -366,7 +599,9 @@ export default function AdminSettingsPage() {
           )}
         </AnimatePresence>
       </div>
+      )}
 
+      {isAdmin && (
       <div className="card">
         <div className="panel-header">
           <h2>Product Images</h2>
@@ -384,7 +619,9 @@ export default function AdminSettingsPage() {
           {backfillFlash && <span style={{ fontSize: '11px', color: '#5b7196' }}>{backfillFlash}</span>}
         </div>
       </div>
+      )}
 
+      {isAdmin && (
       <div className="card">
         <div className="panel-header">
           <h2>Quote Approval</h2>
@@ -416,8 +653,56 @@ export default function AdminSettingsPage() {
             <span style={{ fontSize: '11px', color: '#5b7196' }}>{thresholdFlash}</span>
           )}
         </div>
-      </div>
 
+        {/* Routing and chasing. All three are blank/zero by default, and each
+            one off means that behaviour simply does not happen — an install
+            that ignores this section works exactly as it did before. */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxWidth: '560px', marginTop: '12px' }}>
+          {[
+            [
+              'quote.approval.engineerCeiling',
+              'Engineer limit',
+              'Above this, only an admin can approve. 0 = the engineer approves any amount. Rejecting is never limited.'
+            ],
+            [
+              'quote.approval.escalationHours',
+              'Chase after (h)',
+              'Notify admins again when a request has sat undecided this long. 0 = never chase.'
+            ],
+            [
+              'app.publicBaseUrl',
+              'Public URL',
+              'Where this system is reachable from a phone, e.g. https://erp.example.com. Set it to put a one-tap Approve link in the approval SMS and email; left blank, no link is sent.'
+            ]
+          ].map(([key, label, hint]) => (
+            <div key={key}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <label style={{ width: '110px', fontSize: '11px', fontWeight: 600, color: '#5b7196' }}>
+                  {label}
+                </label>
+                <input
+                  className="form-control"
+                  style={{ flex: 1 }}
+                  value={appSettings[key] ?? ''}
+                  onChange={(e) => setAppSettings((p) => ({ ...p, [key]: e.target.value }))}
+                />
+                <button
+                  className="btn"
+                  type="button"
+                  disabled={savingKey === key}
+                  onClick={() => saveAppSetting(key)}
+                >
+                  {savingKey === key ? '…' : 'Save'}
+                </button>
+              </div>
+              <p style={{ margin: '2px 0 0 118px', fontSize: '10px', color: '#8b9cb5' }}>{hint}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+      )}
+
+      {isAdmin && (
       <div className="card">
         <div className="panel-header">
           <h2>Users</h2>
@@ -642,6 +927,7 @@ export default function AdminSettingsPage() {
           {addFlash && <span style={{ fontSize: '11px', color: '#5b7196' }}>{addFlash}</span>}
         </div>
       </div>
+      )}
 
       
 

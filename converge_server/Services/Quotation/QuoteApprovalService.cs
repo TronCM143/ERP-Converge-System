@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using converge_server.Data;
 using converge_server.Models.Entities;
 using converge_server.Services.Interfaces;
@@ -71,6 +73,83 @@ namespace converge_server.Services.Quotations
 
             await _auditService.LogAsync("Setting", AppSettingKeys.QuoteApprovalThreshold, "Updated",
                 actorUsername, previous, row.Value, "Quote approval threshold changed");
+        }
+
+        private async Task<string?> ReadSettingAsync(string key)
+        {
+            var row = await _context.AppSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Key == key);
+            return string.IsNullOrWhiteSpace(row?.Value) ? null : row!.Value.Trim();
+        }
+
+        public async Task<decimal> GetEngineerCeilingAsync()
+        {
+            var raw = await ReadSettingAsync(AppSettingKeys.QuoteApprovalEngineerCeiling);
+            return raw != null && decimal.TryParse(raw, System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out var parsed) && parsed > 0 ? parsed : 0m;
+        }
+
+        /* The signing key for one-tap approval links. Generated once and kept in
+           the settings table rather than appsettings.json so it survives a
+           redeploy and never sits in source control. It is deliberately not in
+           the settings API whitelist: anyone who can read it can approve
+           anything. */
+        private async Task<byte[]> GetLinkSecretAsync()
+        {
+            var existing = await _context.AppSettings.FirstOrDefaultAsync(s => s.Key == AppSettingKeys.ApprovalLinkSecret);
+            if (existing != null && existing.Value.Length >= 32)
+            {
+                return Convert.FromBase64String(existing.Value);
+            }
+
+            var generated = RandomNumberGenerator.GetBytes(32);
+            var encoded = Convert.ToBase64String(generated);
+
+            if (existing == null)
+            {
+                _context.AppSettings.Add(new AppSetting { Key = AppSettingKeys.ApprovalLinkSecret, Value = encoded });
+            }
+            else
+            {
+                existing.Value = encoded;
+                existing.UpdatedAt = DateTime.UtcNow;
+            }
+
+            await _context.SaveChangesAsync();
+            return generated;
+        }
+
+        /* The token binds the request id AND its submission time. Resubmitting a
+           rejected quotation creates a new row with a new time, so a link from an
+           old cycle cannot decide the new one. Single use comes from state rather
+           than a stored flag: the endpoint only acts on a Pending request, so a
+           second tap on the same link finds nothing to decide. */
+        private async Task<string> SignAsync(QuoteApproval approval)
+        {
+            var secret = await GetLinkSecretAsync();
+            var payload = $"{approval.Id}:{approval.SubmittedAt.Ticks}";
+            using var hmac = new HMACSHA256(secret);
+            var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(payload));
+            return Convert.ToBase64String(hash).Replace("+", "-").Replace("/", "_").TrimEnd('=');
+        }
+
+        public async Task<bool> ValidateDecisionTokenAsync(QuoteApproval approval, string token)
+        {
+            if (string.IsNullOrWhiteSpace(token)) return false;
+
+            var expected = await SignAsync(approval);
+            // Fixed-time compare: a token is a credential, and plain string
+            // equality leaks how much of a guess was right.
+            return CryptographicOperations.FixedTimeEquals(
+                Encoding.UTF8.GetBytes(expected), Encoding.UTF8.GetBytes(token));
+        }
+
+        public async Task<string?> BuildApprovalLinkAsync(QuoteApproval approval)
+        {
+            var baseUrl = await ReadSettingAsync(AppSettingKeys.PublicBaseUrl);
+            if (string.IsNullOrWhiteSpace(baseUrl)) return null;
+
+            var token = await SignAsync(approval);
+            return $"{baseUrl.TrimEnd('/')}/api/approvals/act/{approval.Id}?token={Uri.EscapeDataString(token)}";
         }
 
         public async Task<ApprovalGate> EvaluateClientAsync(int clientId)
@@ -168,16 +247,39 @@ namespace converge_server.Services.Quotations
                    to survive a single 160-character segment in the common case. */
                 var smsText = $"New quote request for approval: {quotation.QuotationNumber} from {submittedBy} for {clientName}, {quotation.GrandTotal:N0}.";
 
-                var body = $"<p>{headline}</p><p>Amount: {quotation.GrandTotal:N2}</p>";
+                /* One-tap approval. The link is signed and only ever approves -
+                   rejecting needs a reason, and a reason cannot be typed into a
+                   tapped link, so the reject path stays in the dashboard where
+                   the approver can say why. Null when no public URL is
+                   configured, and then the text simply goes out without it. */
+                var link = await BuildApprovalLinkAsync(approval);
+                if (link != null)
+                {
+                    smsText += $" Approve: {link}";
+                }
+
+                var body = $"<p>{headline}</p><p>Amount: {quotation.GrandTotal:N2}</p>"
+                           + (link != null ? $"<p><a href=\"{link}\">Approve this quote</a></p>" : "");
 
                 /* Chosen recipients when the dialog supplied any, otherwise the
                    role-based fan-out. Both paths exist on purpose: the dialog is
                    the normal route, and a submission made any other way (an API
                    call, a future automation) still reaches the approvers rather
                    than silently notifying nobody. */
-                if (notifyUserIds != null && notifyUserIds.Count > 0)
+                if (notifyUserIds != null)
                 {
-                    await _dispatchService.DispatchToUsersAsync(NotificationType.QuotationApproval, smsText, body, notifyUserIds);
+                    /* An explicit choice is honoured exactly, INCLUDING an empty
+                       one: unticking every approver in the dialog has to mean
+                       nobody is texted, or the checkboxes are decorative. The
+                       request still exists and still shows on the dashboard.
+
+                       Null is different - it means no choice was expressed (an
+                       API call, a future automation), and then the role fan-out
+                       runs so a submission never silently notifies nobody. */
+                    if (notifyUserIds.Count > 0)
+                    {
+                        await _dispatchService.DispatchToUsersAsync(NotificationType.QuotationApproval, smsText, body, notifyUserIds);
+                    }
                 }
                 else
                 {
@@ -192,7 +294,7 @@ namespace converge_server.Services.Quotations
             return approval;
         }
 
-        public async Task<QuoteApproval> DecideAsync(int approvalId, bool approve, string? rejectionReason, string decidedBy)
+        public async Task<QuoteApproval> DecideAsync(int approvalId, bool approve, string? rejectionReason, string decidedBy, bool deciderIsAdmin = false)
         {
             var approval = await _context.QuoteApprovals
                 .Include(a => a.Quotation)
@@ -211,6 +313,20 @@ namespace converge_server.Services.Quotations
             if (!approve && string.IsNullOrWhiteSpace(rejectionReason))
             {
                 throw new InvalidOperationException("A rejection reason is required.");
+            }
+
+            /* Amount-band routing. Above the ceiling the decision is admin-only,
+               and the check lives here so the dashboard, the bulk endpoint and
+               the one-tap link are all bound by the same rule.
+
+               Rejection stays open to the engineer at any amount: sending work
+               back is never the risky direction, and blocking it would only
+               leave the request rotting while sales waits for an answer. */
+            var ceiling = await GetEngineerCeilingAsync();
+            if (approve && ceiling > 0 && approval.AmountAtSubmission > ceiling && !deciderIsAdmin)
+            {
+                throw new UnauthorizedAccessException(
+                    $"{approval.AmountAtSubmission:N2} is above the {ceiling:N2} an engineer may approve. This one needs an admin.");
             }
 
             approval.Status = approve ? QuoteApprovalStatus.Approved : QuoteApprovalStatus.Rejected;
@@ -264,6 +380,74 @@ namespace converge_server.Services.Quotations
                 $"/sales/quotations?quotation={quotation.Id}");
 
             return approval;
+        }
+
+        /* Chase requests nobody has decided.
+
+           Escalation is a second notification, not a reassignment: the request
+           stays where it is and stays visible on the dashboard. Handing it to
+           someone else would mean the person originally asked can no longer act
+           on the link already in their pocket, which is a worse failure than one
+           extra text. EscalatedAt is stamped so a request is chased once rather
+           than on every sweep - an approver texted every ten minutes stops
+           reading the texts. */
+        public async Task<int> EscalateStalePendingAsync()
+        {
+            var raw = await ReadSettingAsync(AppSettingKeys.QuoteApprovalEscalationHours);
+            if (raw == null || !int.TryParse(raw, out var hours) || hours <= 0)
+            {
+                return 0;
+            }
+
+            var cutoff = DateTime.UtcNow.AddHours(-hours);
+
+            var stale = await _context.QuoteApprovals
+                .Include(a => a.Quotation)!
+                .ThenInclude(q => q!.Client)
+                .Where(a => a.Status == QuoteApprovalStatus.Pending
+                            && a.SubmittedAt <= cutoff
+                            && a.EscalatedAt == null)
+                .ToListAsync();
+
+            if (stale.Count == 0) return 0;
+
+            foreach (var approval in stale)
+            {
+                approval.EscalatedAt = DateTime.UtcNow;
+
+                var number = approval.Quotation?.QuotationNumber ?? $"#{approval.QuotationId}";
+                var clientName = approval.Quotation?.Client?.Name ?? "a client";
+                var waited = (int)Math.Round((DateTime.UtcNow - approval.SubmittedAt).TotalHours);
+
+                await _userNotifications.AddAsync(
+                    "admin", "QuotationApproval",
+                    $"Quote #{number} has been waiting {waited}h for approval.",
+                    $"{approval.AmountAtSubmission:N2} - submitted by {approval.SubmittedBy}",
+                    "/engineer/approvals");
+
+                try
+                {
+                    var link = await BuildApprovalLinkAsync(approval);
+                    var sms = $"Still awaiting approval after {waited}h: {number} for {clientName}, {approval.AmountAtSubmission:N0}."
+                              + (link != null ? $" Approve: {link}" : "");
+
+                    await _dispatchService.DispatchAsync(NotificationType.QuotationApproval, sms,
+                        $"<p>Quote #{number} for {clientName} has been pending approval for {waited} hours.</p>"
+                        + $"<p>Amount: {approval.AmountAtSubmission:N2}</p>"
+                        + (link != null ? $"<p><a href=\"{link}\">Approve it</a></p>" : ""));
+                }
+                catch (Exception ex)
+                {
+                    /* An escalation that cannot be sent must not block the stamp.
+                       Otherwise the sweep retries the same rows forever and
+                       floods every approver the moment the provider recovers. */
+                    _logger.LogWarning(ex, "Escalation dispatch failed for approval {Id}", approval.Id);
+                }
+            }
+
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("Escalated {Count} pending approval(s) older than {Hours}h", stale.Count, hours);
+            return stale.Count;
         }
     }
 }
