@@ -5,7 +5,6 @@ import { RefreshCw, Search } from 'lucide-react';
 import { apiFetch } from './api';
 import { queryCache, CACHE_KEYS } from './queryCache';
 import { useAuth } from '../app/AuthContext';
-import { formatRelativeTime } from './formatRelativeTime';
 import './ActivityFeed.css';
 
 interface ActivityEntry {
@@ -108,15 +107,12 @@ function describe(entry: ActivityEntry, clientName?: string): Described {
    flipping to day-first on a non-US locale. */
 function timeLabel(iso: string): string {
   const d = new Date(iso);
-  const hoursAgo = (Date.now() - d.getTime()) / 3_600_000;
-  if (hoursAgo < 24) return formatRelativeTime(d);
-
   const clock = d
     .toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
     .replace(/\s/g, '')
     .toLowerCase();
   const date = d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' });
-  return `${clock} ${date}`;
+  return `${clock} | ${date}`;
 }
 
 /* Which module's records the feed covers. Purchasing and sales touch different
@@ -318,23 +314,13 @@ export default function ActivityFeed({
                 title={target ? 'Open this record' : undefined}
               >
                 <div className="activity-feed__head">
-                  <span className="activity-feed__event">{described.title}</span>
+                  <span className="activity-feed__event">
+                    {described.title}
+                    {described.record && <span className="activity-feed__record">: {described.record.replace(/^Client:\s*/, '')}</span>}
+                    {change && <span className="activity-feed__record"> ({change})</span>}
+                  </span>
                   <span className="activity-feed__time">{timeLabel(entry.changedAt)}</span>
                 </div>
-
-                {change && (
-                  <div className="activity-feed__details">
-                    {change}
-                    {target && (
-                      <>
-                        <span aria-hidden="true"> · </span>
-                    
-                      </>
-                    )}
-                  </div>
-                )}
-
-                {described.record && <div className="activity-feed__details">{described.record}</div>}
               </motion.div>
             );
           })

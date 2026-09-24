@@ -7,7 +7,7 @@
 
 .client-profile__header {
   background: linear-gradient(135deg, white 0%, #f5f8fc 100%);
-  border-bottom: 2px solid var(--border);
+  border-bottom: none;
   padding: 24px;
   border-radius: 0;
   margin-bottom: 0;

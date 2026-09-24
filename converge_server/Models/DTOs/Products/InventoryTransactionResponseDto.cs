@@ -11,6 +11,9 @@ namespace converge_server.Models.DTOs.Products
         public int Quantity { get; set; }
         public int ResultingStock { get; set; }
         public string? Reason { get; set; }
+        public string? PointPerson { get; set; }
+        public DateTime? BorrowedAt { get; set; }
+        public DateTime? ReturnedAt { get; set; }
         public string PerformedBy { get; set; } = string.Empty;
         public DateTime OccurredAt { get; set; }
     }

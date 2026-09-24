@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Activity, Bell, LogOut, Package, Settings, X } from 'lucide-react';
+import { Activity, Bell, Inbox, LogOut, Menu, Package, Settings, X } from 'lucide-react';
 import { useAuth } from '../app/AuthContext';
 import { roleHome } from '../app/roleHome';
 import { useNotificationHub, UserNotificationItem } from '../shared/useNotificationHub';
@@ -23,11 +23,6 @@ export default function ERPLayout() {
      but it does need the notification bell: an approval request arriving is the
      only thing that starts this role's work. */
   const isEngineer = role === 'engineer';
-  /* The admin module picker. It's a landing page, so the header drops the
-     module tabs and the per-module tools (inventory, activity log) — the page
-     itself is the navigation. Settings and Log out stay: without them there
-     would be no way off this screen except picking a module. */
-  const isAdminHome = location.pathname === '/admin';
   const {
     notification,
     clearNotification,
@@ -35,16 +30,18 @@ export default function ERPLayout() {
     unreadCount,
     markAllRead,
     markOneRead
-  } = useNotificationHub(isPurchasing || isQuotation || isEngineer);
+  } = useNotificationHub(isPurchasing || isQuotation || isEngineer || isAdmin);
   const [isNotificationsPanelOpen, setIsNotificationsPanelOpen] = useState(false);
   const [isClientPickerOpen, setIsClientPickerOpen] = useState(false);
   const [isActivityLogOpen, setIsActivityLogOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   // Logging out drops unsaved work on the current page, so it always asks first.
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   // Sales-side PO news ticker: scrolls until clicked, click opens the dropdown.
   const [isTickerDismissed, setIsTickerDismissed] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   // A fresh unread notification brings the ticker back.
   useEffect(() => {
@@ -65,6 +62,16 @@ export default function ERPLayout() {
     const handleClickOutside = (e: MouseEvent) => {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
         setIsNotifOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setIsMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -177,42 +184,6 @@ export default function ERPLayout() {
                 a 36px header, so its lower half was clipped off on every page —
                 it rendered as a permanently half-cut word rather than a label. */}
 
-            {/* Admin-only module switcher.
-
-                Admin is the only role with more than one module, so this row
-                would be a single dead tab for everyone else. Hidden on the
-                module picker itself (/admin), where the page IS the switcher
-                and the header would only repeat it.
-
-                The active module is matched on the path prefix rather than an
-                exact route, so it stays lit on nested pages (a client profile,
-                a PO detail). */}
-            {isAdmin && !isAdminHome && (
-              <nav className="ml-6 flex items-center gap-1" aria-label="Modules">
-                {[
-                  { label: 'Sales', to: '/sales/crm', prefix: '/sales' },
-                  { label: 'Inventory', to: '/inventory', prefix: '/inventory' },
-                  { label: 'Purchasing', to: '/purchasing/purchase-requests', prefix: '/purchasing' }
-                ].map((m) => {
-                  const active = location.pathname.startsWith(m.prefix);
-                  return (
-                    <button
-                      key={m.label}
-                      type="button"
-                      onClick={() => navigate(m.to)}
-                      aria-current={active ? 'page' : undefined}
-                      className={`border-b-2 px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${
-                        active
-                          ? 'border-orange-500 text-zinc-50'
-                          : 'border-transparent text-zinc-400 hover:text-zinc-50'
-                      }`}
-                    >
-                      {m.label}
-                    </button>
-                  );
-                })}
-              </nav>
-            )}
           </div>
 
           {/* gap-3 rather than gap-4: at 20px the icons no longer need as much
@@ -406,66 +377,95 @@ export default function ERPLayout() {
             )}
 
 
-            {/* What used to be a profile dropdown is now flat: every
-                destination is one click, in a fixed order — notifications
-                (above), inventory, activity log, settings, logout. The
-                "Profile" entry itself is gone; it was a disabled placeholder. */}
-            {!isAdminHome && (
+            <div className="relative" ref={menuRef}>
               <button
                 type="button"
-                title="Inventory"
-                aria-label="Inventory"
-                className={`p-1 transition-colors ${
-                  location.pathname === '/inventory'
-                    ? 'text-zinc-50'
-                    : 'text-zinc-300 hover:text-zinc-50'
-                }`}
-                onClick={() => navigate('/inventory')}
+                title="Open menu"
+                aria-label="Open menu"
+                aria-expanded={isMenuOpen}
+                className="p-1 text-zinc-300 transition-colors hover:text-zinc-50"
+                onClick={() => setIsMenuOpen((v) => !v)}
               >
-                <Package className="h-5 w-5" />
+                <Menu className="h-5 w-5" />
               </button>
-            )}
 
-            {!isAdminHome && (
-              <button
-                type="button"
-                title="Activity Log"
-                aria-label="Activity Log"
-                className="p-1 text-zinc-300 hover:text-zinc-50 transition-colors"
-                onClick={() => setIsActivityLogOpen(true)}
-              >
-                <Activity className="h-5 w-5" />
-              </button>
-            )}
-
-            {/* Settings covers notification-email management, which is why
-                sales has it too — purchasing has no settings page to reach. */}
-            {/* Everyone has settings now — their own account at minimum. */}
-            {true && (
-              <button
-                type="button"
-                title="Settings"
-                aria-label="Settings"
-                className={`p-1 transition-colors ${
-                  location.pathname === '/admin/settings'
-                    ? 'text-zinc-50'
-                    : 'text-zinc-300 hover:text-zinc-50'
-                }`}
-                onClick={() => navigate('/admin/settings')}
-              >
-                <Settings className="h-5 w-5" />
-              </button>
-            )}
-
-            <button
-              type="button"
-              title="Log out"
-              aria-label="Log out"
-              className="p-1 text-zinc-300 hover:text-red-600 transition-colors"
-              onClick={() => setIsLogoutConfirmOpen(true)}
-            >
-              <LogOut className="h-5 w-5" />
-            </button>
+              <AnimatePresence>
+                {isMenuOpen && (
+                  <motion.div
+                    className="fixed right-0 top-[36px] z-50 h-[calc(100vh-36px)] w-60 border-l border-zinc-700 bg-zinc-900 shadow-2xl"
+                    initial={{ x: '100%' }}
+                    animate={{ x: 0 }}
+                    exit={{ x: '100%' }}
+                    transition={{ type: 'tween', duration: 0.2 }}
+                  >
+                    <div className="border-b border-zinc-800 px-4 py-3">
+                      <p className="text-sm text-zinc-200">{username}</p>
+                    </div>
+                    <nav className="p-3" aria-label="Application menu">
+                      {!isEngineer && (
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-3 px-3 py-3 text-left text-sm text-zinc-200 transition-colors hover:bg-zinc-800 hover:text-zinc-50"
+                          onClick={() => {
+                            setIsMenuOpen(false);
+                            navigate('/inventory');
+                          }}
+                        >
+                          <Package className="h-4 w-4 text-zinc-400" />
+                          Products
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-3 px-3 py-3 text-left text-sm text-zinc-200 transition-colors hover:bg-zinc-800 hover:text-zinc-50"
+                        onClick={() => {
+                          setIsMenuOpen(false);
+                          setIsNotificationsPanelOpen(true);
+                        }}
+                      >
+                        <Inbox className="h-4 w-4 text-zinc-400" />
+                        Notifications
+                        {unreadCount > 0 && <span className="ml-auto text-xs text-orange-400">{unreadCount}</span>}
+                      </button>
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-3 px-3 py-3 text-left text-sm text-zinc-200 transition-colors hover:bg-zinc-800 hover:text-zinc-50"
+                        onClick={() => {
+                          setIsMenuOpen(false);
+                          setIsActivityLogOpen(true);
+                        }}
+                      >
+                        <Activity className="h-4 w-4 text-zinc-400" />
+                        Activity history
+                      </button>
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-3 px-3 py-3 text-left text-sm text-zinc-200 transition-colors hover:bg-zinc-800 hover:text-zinc-50"
+                        onClick={() => {
+                          setIsMenuOpen(false);
+                          navigate('/admin/settings');
+                        }}
+                      >
+                        <Settings className="h-4 w-4 text-zinc-400" />
+                        Settings
+                      </button>
+                      <div className="my-2 border-t border-zinc-800" />
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-3 px-3 py-3 text-left text-sm text-red-400 transition-colors hover:bg-red-950/40 hover:text-red-300"
+                        onClick={() => {
+                          setIsMenuOpen(false);
+                          setIsLogoutConfirmOpen(true);
+                        }}
+                      >
+                        <LogOut className="h-4 w-4" />
+                        Logout
+                      </button>
+                    </nav>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         </div>
       </header>

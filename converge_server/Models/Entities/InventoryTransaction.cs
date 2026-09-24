@@ -36,6 +36,13 @@ namespace converge_server.Models.Entities
         [MaxLength(300)]
         public string? Reason { get; set; }
 
+        [MaxLength(150)]
+        public string? PointPerson { get; set; }
+
+        public DateTime? BorrowedAt { get; set; }
+
+        public DateTime? ReturnedAt { get; set; }
+
         [Required]
         [MaxLength(50)]
         public string PerformedBy { get; set; } = string.Empty;

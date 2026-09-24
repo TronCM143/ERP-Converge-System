@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, FileText } from 'lucide-react';
+import { ArrowLeft, Download, FileText } from 'lucide-react';
 import QuotationFormModal, { EditableQuotation } from './QuotationFormModal';
 import { apiFetch } from '../../shared/api';
 import { queryCache, CACHE_KEYS } from '../../shared/queryCache';
@@ -40,6 +40,13 @@ interface Quotation extends EditableQuotation {
   laborItems: QuotationLaborItem[];
 }
 
+interface ExportClient {
+  id: number;
+  address: string;
+}
+
+const csvCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+
 export default function QuotationsListPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -52,6 +59,10 @@ export default function QuotationsListPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingQuotation, setEditingQuotation] = useState<Quotation | null>(null);
+  const [isExportOpen, setIsExportOpen] = useState(false);
+  const [exportFrom, setExportFrom] = useState('');
+  const [exportTo, setExportTo] = useState('');
+  const [exportClients, setExportClients] = useState<ExportClient[]>([]);
 
   const fetchQuotations = async () => {
     const hasCache = queryCache.get<Quotation[]>(CACHE_KEYS.quotationsAll) !== undefined;
@@ -102,6 +113,63 @@ export default function QuotationsListPage() {
   const dateFmt = (value: string) =>
     new Date(value).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
 
+  const exportRows = quotations.filter((q) => {
+    const created = q.createdAt.slice(0, 10);
+    return (!exportFrom || created >= exportFrom) && (!exportTo || created <= exportTo);
+  });
+
+  const addressFor = (clientId: number) => exportClients.find((c) => c.id === clientId)?.address ?? '';
+
+  const loadExportClients = async (): Promise<ExportClient[]> => {
+    if (exportClients.length > 0) return exportClients;
+    try {
+      const res = await apiFetch('/api/clients');
+      if (res.ok) {
+        const clients: ExportClient[] = await res.json();
+        setExportClients(clients);
+        return clients;
+      }
+    } catch (err) {
+      console.error('Failed to load client addresses:', err);
+    }
+    return [];
+  };
+
+  const exportSales = async (format: 'csv' | 'pdf') => {
+    const clients = await loadExportClients();
+    const headers = ['Status', 'Client', 'Client Address', 'Project Name', 'Quote Name', 'Quote Number', 'Date', 'Amount'];
+    const rows = exportRows.map((q) => [
+      q.status,
+      q.clientName,
+      clients.find((c) => c.id === q.clientId)?.address ?? '',
+      q.projectType ?? '',
+      q.quotationName,
+      q.quotationNumber,
+      q.createdAt.slice(0, 10),
+      q.grandTotal
+    ]);
+
+    if (format === 'csv') {
+      const csv = [headers, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n');
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+      link.download = `sales-${exportFrom || 'all'}-${exportTo || 'all'}.csv`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+      return;
+    }
+
+    const printable = [headers, ...rows]
+      .map((row) => `<tr>${row.map((cell) => `<td>${String(cell ?? '').replace(/[&<>]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[char] ?? char))}</td>`).join('')}</tr>`)
+      .join('');
+    const printWindow = window.open('', '_blank', 'noopener,noreferrer');
+    if (!printWindow) return;
+    printWindow.document.write(`<title>Sales Export</title><style>body{font:12px Arial;color:#111}h1{font-size:18px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #bbb;padding:6px;text-align:left}th{background:#eee}</style><h1>Sales Export</h1><p>${exportFrom || 'All dates'} to ${exportTo || 'All dates'}</p><table><thead><tr>${headers.map((header) => `<th>${header}</th>`).join('')}</tr></thead><tbody>${printable}</tbody></table>`);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  };
+
   return (
     <div className="min-h-screen app-surface">
       <div className="px-6 py-5 space-y-5">
@@ -139,6 +207,31 @@ export default function QuotationsListPage() {
           >
             Create
           </motion.button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setIsExportOpen((open) => !open);
+                void loadExportClients();
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-zinc-200 hover:text-zinc-50 transition-colors"
+            >
+              <Download className="h-4 w-4" /> Export
+            </button>
+            {isExportOpen && (
+              <div className="absolute right-0 top-full z-30 mt-2 w-64 border border-zinc-700 bg-zinc-900 p-3 shadow-xl">
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">Sales date range</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="text-[11px] text-zinc-500">From<input type="date" value={exportFrom} onChange={(e) => setExportFrom(e.target.value)} className="mt-1 w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200" /></label>
+                  <label className="text-[11px] text-zinc-500">To<input type="date" value={exportTo} onChange={(e) => setExportTo(e.target.value)} className="mt-1 w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200" /></label>
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <button type="button" onClick={() => void exportSales('csv')} className="flex-1 border border-zinc-600 px-2 py-1.5 text-xs text-zinc-200 hover:bg-zinc-800">Excel / CSV</button>
+                  <button type="button" onClick={() => void exportSales('pdf')} className="flex-1 border border-zinc-600 px-2 py-1.5 text-xs text-zinc-200 hover:bg-zinc-800">PDF</button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* List */}

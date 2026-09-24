@@ -339,6 +339,16 @@ namespace converge_server.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
+                    b.Property<DateTime?> ("BorrowedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PointPerson")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<DateTime?> ("ReturnedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int>("ProductId")
                         .HasColumnType("integer");
 

@@ -232,6 +232,10 @@ namespace converge_server.Services.Quotations
                 "engineer", "QuotationApproval", headline,
                 $"{quotation.GrandTotal:N2} - submitted {approval.SubmittedAt:g}",
                 "/engineer/approvals");
+            await _userNotifications.AddAsync(
+                "admin", "QuotationApproval", headline,
+                $"{quotation.GrandTotal:N2} - submitted {approval.SubmittedAt:g}",
+                "/engineer/approvals");
 
             /* SMS and email go through the existing dispatcher rather than a
                provider call here: it already fans out to the configured

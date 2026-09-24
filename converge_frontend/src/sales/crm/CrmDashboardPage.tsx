@@ -36,7 +36,6 @@ import {
   PanelRightOpen,
   Plus,
   Search,
-  SlidersHorizontal,
   Users
 } from 'lucide-react';
 
@@ -145,8 +144,6 @@ export default function CrmDashboardPage() {
      decides whether an empty board reads as "no clients yet" or "nothing
      matched", and sorting hides nothing. */
   const isSortActive = sortBy !== 'manual';
-  const activeControlCount = activeFilterCount + (isSortActive ? 1 : 0);
-
   // Click-away closes the filter popover.
   useEffect(() => {
     if (!isFilterOpen) return;
@@ -659,8 +656,7 @@ export default function CrmDashboardPage() {
           <nav className="mb-4 flex items-end gap-6 border-b border-zinc-700" aria-label="Sales sections">
             {[
               { label: 'CRM', to: '/sales/crm', active: true },
-              { label: 'Projects', to: '/sales/quotations', active: false },
-              { label: 'Products', to: '/inventory', active: false }
+              { label: 'Projects', to: '/sales/quotations', active: false }
             ].map((tab) => (
               <button
                 key={tab.label}
@@ -695,9 +691,6 @@ export default function CrmDashboardPage() {
     <h1 className="text-[20px] font-semibold tracking-tight text-zinc-50">
       Sales
     </h1>
-    <span className="rounded-md border border-zinc-700 bg-zinc-800/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-zinc-400">
-      CRM
-    </span>
   </div>
 
   <p className="mt-0.5 text-[12px] font-medium text-zinc-400">
@@ -717,7 +710,7 @@ export default function CrmDashboardPage() {
                   -36px to -76px so the bottom edge stays where it was and the
                   panel rises further over the tab row instead of pushing the
                   board down. Change the two together or it grows downward. */}
-              <div className="h-[172px] w-full min-w-[320px] lg:-mt-[76px] lg:w-[60%]">
+              <div className="mt-3 h-[172px] w-full min-w-[320px] lg:-mt-[60px] lg:w-[60%]">
                 <SalesTrendChart refreshToken={chartVersion} />
               </div>
             </div>
@@ -739,14 +732,14 @@ export default function CrmDashboardPage() {
             </Button>
 
             {/* Search: square input with a leading icon. */}
-            <div className="relative">
+            <div className="relative flex-1 min-w-[180px] max-w-[420px]">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
               <input
                 type="text"
                 placeholder="Search clients..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-9 w-[240px] border border-zinc-700 bg-zinc-900 pl-8 pr-2 text-[13px] text-zinc-50 placeholder:not-italic placeholder:text-zinc-500 focus:border-blue-600 focus:outline-none"
+                className="h-9 w-full border-0 bg-transparent pl-8 pr-2 text-[13px] text-zinc-50 placeholder:not-italic placeholder:text-zinc-500 focus:outline-none"
               />
             </div>
 
@@ -771,16 +764,12 @@ export default function CrmDashboardPage() {
                 type="button"
                 onClick={() => setIsFilterOpen((v) => !v)}
                 className={`inline-flex h-9 items-center gap-1.5 border px-3 text-[11px] font-bold uppercase tracking-[0.08em] transition-colors duration-150 ${
-                  activeControlCount > 0
+                  (isFilterActive || isSortActive)
                     ? 'border-orange-500 bg-orange-50 text-orange-700'
                     : 'border-zinc-700 bg-zinc-900 text-zinc-50 hover:bg-zinc-950'
                 }`}
               >
-                <SlidersHorizontal className="h-3.5 w-3.5" />
                 Filter
-                {activeControlCount > 0 && (
-                  <span className="tabular-nums">({activeControlCount})</span>
-                )}
               </button>
 
               {isFilterOpen && (
@@ -927,7 +916,7 @@ export default function CrmDashboardPage() {
 
           {/* Fills what was empty space below the board. Both sections are
               derived from data already on this page, so they cost no requests. */}
-          <SalesOverview clients={clients} summary={summary} />
+          {/* <SalesOverview clients={clients} summary={summary} /> */}
         </div>
 
       </div>

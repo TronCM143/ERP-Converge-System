@@ -7,7 +7,7 @@ import { formatProductName } from '../shared/formatProductName';
 import { useAuth } from '../app/AuthContext';
 import ProductFormModal from './ProductFormModal';
 import MiniLineChart, { MiniLineChartPoint } from '../shared/MiniLineChart';
-import { AlertTriangle, ArrowLeft, Download, ImageOff, Link2, Loader2, Plus, RefreshCw, Search, Trash2, Upload, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowDownToLine, ArrowUpFromLine, Download, ImageOff, Link2, Loader2, Plus, RefreshCw, Search, Trash2, Upload, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { roleHome } from '../app/roleHome';
 
@@ -48,9 +48,9 @@ export interface InventoryTransaction {
   quantity: number;
   resultingStock: number;
   reason?: string | null;
-  // Who physically pulled the item out / returned it. Null on rows written
-  // before this was captured.
-  personName?: string | null;
+  pointPerson?: string | null;
+  borrowedAt?: string | null;
+  returnedAt?: string | null;
   // The signed-in user who recorded the movement.
   performedBy: string;
   occurredAt: string;
@@ -109,6 +109,7 @@ export default function ProductsPage() {
   const navigate = useNavigate();
   // Inventory is visible to every role, but only sales and admin can modify it.
   const canModify = role === 'quotation' || role === 'admin';
+  const canAdjustStock = canModify || role === 'purchasing';
 
   // Back button: step back through history when there's somewhere to go back
   // to, otherwise fall back to the role's home page (inventory is reachable
@@ -147,6 +148,14 @@ export default function ProductsPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [weeklyPurchases, setWeeklyPurchases] = useState<MiniLineChartPoint[]>([]);
   const [inventoryHistory, setInventoryHistory] = useState<InventoryTransaction[]>([]);
+  const [movementDirection, setMovementDirection] = useState<'In' | 'Out'>('Out');
+  const [movementQuantity, setMovementQuantity] = useState('1');
+  const [movementPointPerson, setMovementPointPerson] = useState('');
+  const [movementBorrowedAt, setMovementBorrowedAt] = useState('');
+  const [movementReturnedAt, setMovementReturnedAt] = useState('');
+  const [movementReason, setMovementReason] = useState('');
+  const [movementError, setMovementError] = useState<string | null>(null);
+  const [isMovementSaving, setIsMovementSaving] = useState(false);
   // Who physically takes the item out or brings it back - not the signed-in
   // user, who is recorded separately as the person who logged the movement.
 
@@ -176,6 +185,45 @@ export default function ProductsPage() {
   useEffect(() => {
     fetchInventoryHistory();
   }, []);
+
+  const handleStockMovement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedProduct) return;
+    setMovementError(null);
+    setIsMovementSaving(true);
+    try {
+      const res = await apiFetch(`/api/products/${selectedProduct.id}/inventory-transactions`, {
+        method: 'POST',
+        body: JSON.stringify({
+          direction: movementDirection,
+          quantity: Number(movementQuantity),
+          pointPerson: movementPointPerson.trim() || null,
+          borrowedAt: movementBorrowedAt ? `${movementBorrowedAt}T00:00:00Z` : null,
+          returnedAt: movementReturnedAt ? `${movementReturnedAt}T00:00:00Z` : null,
+          reason: movementReason.trim() || null
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMovementError(data.error || 'Could not save the stock movement.');
+        return;
+      }
+      setSelectedProduct(data);
+      setProducts((prev) => prev.map((p) => (p.id === data.id ? data : p)));
+      queryCache.invalidate(CACHE_KEYS.products);
+      setMovementQuantity('1');
+      setMovementPointPerson('');
+      setMovementBorrowedAt('');
+      setMovementReturnedAt('');
+      setMovementReason('');
+      await fetchInventoryHistory();
+    } catch (err) {
+      console.error('Failed to save stock movement:', err);
+      setMovementError('Server connection error.');
+    } finally {
+      setIsMovementSaving(false);
+    }
+  };
 
 
   // Increments per request so late responses from superseded fetches
@@ -730,9 +778,28 @@ export default function ProductsPage() {
             <MiniLineChart data={weeklyPurchases} height={140} />
           </div>
 
-          {/* The "Log Movement" form that stood here has been removed: recording
-              stock in/out moves to a separate account, so this page is now a
-              read-only view of the catalogue and its ledger. */}
+          {canAdjustStock && selectedProduct && (
+            <form onSubmit={handleStockMovement} className="border-y border-zinc-200 bg-white p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Record movement</p>
+                <div className="flex gap-1">
+                  <button type="button" onClick={() => setMovementDirection('Out')} className={`px-2 py-1 text-[10px] font-bold ${movementDirection === 'Out' ? 'bg-amber-100 text-amber-700' : 'text-zinc-500'}`}>OUT</button>
+                  <button type="button" onClick={() => setMovementDirection('In')} className={`px-2 py-1 text-[10px] font-bold ${movementDirection === 'In' ? 'bg-emerald-100 text-emerald-700' : 'text-zinc-500'}`}>IN</button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <input type="number" min="1" required value={movementQuantity} onChange={(e) => setMovementQuantity(e.target.value)} placeholder="Quantity" aria-label="Quantity" className="h-8 border border-zinc-300 px-2 text-xs text-zinc-800" />
+                <input type="text" required={movementDirection === 'Out'} value={movementPointPerson} onChange={(e) => setMovementPointPerson(e.target.value)} placeholder="Point person" aria-label="Point person" className="h-8 border border-zinc-300 px-2 text-xs text-zinc-800" />
+                <input type="date" required={movementDirection === 'Out'} value={movementBorrowedAt} onChange={(e) => setMovementBorrowedAt(e.target.value)} aria-label="Borrowed date" className="h-8 border border-zinc-300 px-2 text-xs text-zinc-800" />
+                <input type="date" required={movementDirection === 'In'} value={movementReturnedAt} onChange={(e) => setMovementReturnedAt(e.target.value)} aria-label="Return date" className="h-8 border border-zinc-300 px-2 text-xs text-zinc-800" />
+              </div>
+              <input type="text" value={movementReason} onChange={(e) => setMovementReason(e.target.value)} placeholder="Reason or reference" aria-label="Reason or reference" className="mt-2 h-8 w-full border border-zinc-300 px-2 text-xs text-zinc-800" />
+              {movementError && <p className="mt-2 text-[11px] text-red-600">{movementError}</p>}
+              <button type="submit" disabled={isMovementSaving} className="mt-2 w-full bg-zinc-800 px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-white hover:bg-zinc-700 disabled:opacity-50">
+                {isMovementSaving ? 'Saving...' : `Record ${movementDirection}`}
+              </button>
+            </form>
+          )}
 
           {/* IN/OUT ledger — what's been pulled out and what's come back in */}
           <div className="px-4 pt-4 pb-4 flex-1 min-h-0 flex flex-col">
@@ -759,14 +826,18 @@ export default function ProductsPage() {
                       {/* Who handled the stock leads, since that's what anyone
                           reading this ledger is chasing. The signed-in user who
                           recorded it is secondary, and italic marks it as such. */}
-                      {tx.personName && (
+                      {tx.pointPerson && (
                         <p className="text-zinc-300 truncate">
                           {tx.direction === 'In' ? 'Returned by' : 'Pulled out by'}{' '}
-                          <span className="font-medium">{tx.personName}</span>
+                          <span className="font-medium">{tx.pointPerson}</span>
                         </p>
                       )}
                       <p className="text-zinc-500 truncate">
-                        {formatDate(tx.occurredAt)} · <span className="italic">logged by {tx.performedBy}</span>
+                        {tx.direction === 'Out' && tx.borrowedAt
+                          ? `Borrowed ${formatDate(tx.borrowedAt)}`
+                          : tx.direction === 'In' && tx.returnedAt
+                            ? `Returned ${formatDate(tx.returnedAt)}`
+                            : formatDate(tx.occurredAt)} · <span className="italic">logged by {tx.performedBy}</span>
                         {tx.reason ? ` · ${tx.reason}` : ''}
                       </p>
                     </div>

@@ -87,23 +87,6 @@ export default function SalesTrendChart({ refreshToken = 0 }: { refreshToken?: n
 
   return (
     <div className="flex h-full flex-col border border-zinc-700 bg-zinc-900">
-      {/* Legend is not optional with two series — it is the only thing naming
-          which bar is which, and it doubles as the relief for the grey's low
-          contrast against the card. */}
-      <div className="flex shrink-0 items-center justify-between border-b border-zinc-700 px-3 py-1.5">
-        <h2 className="text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-400">
-          Sales {year} — won vs lost
-        </h2>
-        <div className="flex items-center gap-3 text-[10px] text-zinc-500">
-          <span className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5" style={{ background: WON_COLOR }} /> Won
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5" style={{ background: LOST_COLOR }} /> Lost
-          </span>
-        </div>
-      </div>
-
       <div className="min-h-0 flex-1 px-2 py-1.5">
         {failed ? (
           <p className="px-2 py-4 text-[11px] italic text-zinc-500">Could not load sales figures.</p>

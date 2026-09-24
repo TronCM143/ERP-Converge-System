@@ -436,6 +436,21 @@ namespace converge_server.Services.Products
                 throw new InvalidOperationException("Direction must be 'In' or 'Out'.");
             }
 
+            if (direction == InventoryDirection.Out && string.IsNullOrWhiteSpace(dto.PointPerson))
+            {
+                throw new InvalidOperationException("Point person is required when pulling stock out.");
+            }
+
+            if (direction == InventoryDirection.Out && !dto.BorrowedAt.HasValue)
+            {
+                throw new InvalidOperationException("Borrowed date is required when pulling stock out.");
+            }
+
+            if (direction == InventoryDirection.In && !dto.ReturnedAt.HasValue)
+            {
+                throw new InvalidOperationException("Return date is required when bringing stock in.");
+            }
+
             var product = await _context.Products.FindAsync(productId);
             if (product == null)
             {
@@ -458,6 +473,9 @@ namespace converge_server.Services.Products
                 Quantity = dto.Quantity,
                 ResultingStock = product.StockQuantity,
                 Reason = string.IsNullOrWhiteSpace(dto.Reason) ? null : dto.Reason.Trim(),
+                PointPerson = string.IsNullOrWhiteSpace(dto.PointPerson) ? null : dto.PointPerson.Trim(),
+                BorrowedAt = dto.BorrowedAt?.ToUniversalTime(),
+                ReturnedAt = dto.ReturnedAt?.ToUniversalTime(),
                 PerformedBy = actorUsername,
                 OccurredAt = DateTime.UtcNow
             });
@@ -502,6 +520,9 @@ namespace converge_server.Services.Products
                 Quantity = t.Quantity,
                 ResultingStock = t.ResultingStock,
                 Reason = t.Reason,
+                PointPerson = t.PointPerson,
+                BorrowedAt = t.BorrowedAt,
+                ReturnedAt = t.ReturnedAt,
                 PerformedBy = t.PerformedBy,
                 OccurredAt = t.OccurredAt
             }).ToList();

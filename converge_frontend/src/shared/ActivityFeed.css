@@ -43,7 +43,7 @@
 .activity-feed__search {
   position: relative;
   flex-shrink: 0;
-  padding: 8px 16px;
+  padding: 4px 16px;
   border-bottom: 1px solid #ccd6e6;
 }
 
@@ -58,9 +58,9 @@
 
 .activity-feed__search-input {
   width: 100%;
-  padding: 6px 10px 6px 28px;
-  background: #ffffff;
-  border: 1px solid #ccd6e6;
+  padding: 4px 0 4px 28px;
+  background: transparent;
+  border: none;
   border-radius: 0;
   color: #1b2f4c;
   font-size: 12px;
@@ -68,7 +68,6 @@
 
 .activity-feed__search-input:focus {
   outline: none;
-  border-color: #3a598f;
 }
 
 .activity-feed__search-input::placeholder {
@@ -283,6 +282,11 @@
 
 .activity-feed__details + .activity-feed__details {
   margin-top: 2px;
+}
+
+.activity-feed__record {
+  color: #2b446b;
+  font-weight: 500;
 }
 
 .activity-feed__time {
